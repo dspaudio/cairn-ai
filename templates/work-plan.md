@@ -9,6 +9,15 @@
 - `MEMORY.md`
 - `docs/memory/<domain>.md`
 
+## 모델 지침
+
+- 적용 모델 계열: Codex 또는 Claude.
+- 참조 지침:
+  - `docs/model-guidance/README.md`
+  - `docs/model-guidance/<claude-or-codex>.md`
+- 적용 이유:
+- 역할별 보정:
+
 ## 복잡도 트리아지
 
 - 선택 경로: 빠른 경로 또는 전체 경로.
