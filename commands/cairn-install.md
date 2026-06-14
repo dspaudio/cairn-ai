@@ -5,7 +5,7 @@ Goal: install Cairn into Codex, Claude Code, and Antigravity.
 Run:
 
 ```sh
-scripts/cairn install
+node scripts/cairn.mjs install
 ```
 
 With the published package:

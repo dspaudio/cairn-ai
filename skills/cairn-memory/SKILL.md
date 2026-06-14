@@ -13,7 +13,7 @@ The root `MEMORY.md` is an index, not detailed knowledge. Record details in `doc
 
 ## Procedure
 
-1. Run `scripts/cairn-state.sh manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
+1. Run `node scripts/cairn-state.mjs manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
 2. Explore the repository before asking the user.
 3. Delegate when it materially improves speed or quality instead of asking the user.
    - `explorer`: read-only domain discovery, boundaries, invariants, policies, contradictions, and stale facts when available.

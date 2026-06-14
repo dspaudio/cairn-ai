@@ -11,7 +11,7 @@ bunx cairn-ai@latest upgrade
 When running from local source:
 
 ```sh
-scripts/cairn upgrade
+node scripts/cairn.mjs upgrade
 ```
 
 After upgrade, check status with the `cairn-doctor` workflow.

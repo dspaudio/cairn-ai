@@ -17,7 +17,7 @@ Execute only one module slice at a time. Instead of a repeated red-green loop, p
 2. Read the `docs/model-guidance/*.md` inputs recorded in the plan.
 3. Select the first incomplete module slice.
 4. Confirm that required LSP, typecheck, lint, dry-run, and verification tools are available from the plan's tool readiness section.
-5. If a required tool is missing, run `scripts/cairn toolcheck --install` or the closest repository-native install command, then rerun the tool before continuing.
+5. If a required tool is missing, run `node scripts/cairn.mjs toolcheck --install` or the closest repository-native install command, then rerun the tool before continuing.
 6. Confirm the selected Light Path or Heavy Path in the plan.
 7. For Light Path, implement directly or delegate to one bounded `worker`; keep the verification gate.
 8. For Heavy Path, follow the full planning and review pipeline recorded in the plan. Run pre-implementation review before mutation and read-only review after evidence exists.
@@ -43,7 +43,7 @@ CONTEXT: docs/plan/<topic>.md slice, relevant docs/memory notes, applied model g
 ## Tool Readiness Policy
 
 - Run the repository tool readiness command recorded in the plan before implementation.
-- If no command is recorded, run `scripts/cairn toolcheck` when available.
+- If no command is recorded, run `node scripts/cairn.mjs toolcheck` when available.
 - Missing LSP, typecheck, lint, dry-run, or verification tools must trigger a project-local or repository-native install attempt.
 - After installation, rerun the exact tool command and record evidence.
 - If installation fails, stop the slice and record the blocker rather than silently falling back to less precise exploration.

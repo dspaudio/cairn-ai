@@ -11,7 +11,7 @@ bunx cairn-ai@latest install
 When running from local source:
 
 ```sh
-scripts/cairn install
+node scripts/cairn.mjs install
 ```
 
 After installation, check status with the `cairn-doctor` workflow.

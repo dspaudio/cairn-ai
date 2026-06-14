@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" session-start",
+            "command": "node \"${PLUGIN_ROOT}/scripts/cairn-state.mjs\" session-start",
             "timeout": 10,
             "statusMessage": "Cairn: preparing repository memory and plan indexes"
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" user-prompt-submit",
+            "command": "node \"${PLUGIN_ROOT}/scripts/cairn-state.mjs\" user-prompt-submit",
             "timeout": 10,
             "statusMessage": "Cairn: loading compact work context"
           }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" post-tool-use",
+            "command": "node \"${PLUGIN_ROOT}/scripts/cairn-state.mjs\" post-tool-use",
             "timeout": 10,
             "statusMessage": "Cairn: checking memory and plan indexes"
           }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" stop",
+            "command": "node \"${PLUGIN_ROOT}/scripts/cairn-state.mjs\" stop",
             "timeout": 10,
             "statusMessage": "Cairn: checking two-gate evidence requirements"
           }
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" subagent-stop",
+            "command": "node \"${PLUGIN_ROOT}/scripts/cairn-state.mjs\" subagent-stop",
             "timeout": 10,
             "statusMessage": "Cairn: checking subagent handoff evidence"
           }

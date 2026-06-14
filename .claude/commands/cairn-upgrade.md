@@ -3,7 +3,7 @@
 Update the Cairn installation from the current source.
 
 ```sh
-scripts/cairn upgrade
+node scripts/cairn.mjs upgrade
 ```
 
 Published package:

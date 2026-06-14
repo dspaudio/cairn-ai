@@ -13,11 +13,11 @@ Plans must reduce execution tokens. Do not leave long plans only in chat. Store 
 
 ## Procedure
 
-1. Run `scripts/cairn-state.sh manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
+1. Run `node scripts/cairn-state.mjs manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
 2. Read only `MEMORY.md` and relevant `docs/memory/*.md` files.
 3. Based on the active or assigned model, read `docs/model-guidance/README.md` and only the relevant model guidance.
-4. Run `scripts/cairn toolcheck` when available, or `scripts/cairn-toolcheck.mjs` directly, to identify repository stacks and required tools.
-5. If LSP, typecheck, lint, dry-run, or verification tools are missing, run `scripts/cairn toolcheck --install` or the closest repository-native install command before treating the tool as unavailable.
+4. Run `node scripts/cairn.mjs toolcheck` when available, or `scripts/cairn-toolcheck.mjs` directly, to identify repository stacks and required tools.
+5. If LSP, typecheck, lint, dry-run, or verification tools are missing, run `node scripts/cairn.mjs toolcheck --install` or the closest repository-native install command before treating the tool as unavailable.
 6. Explore the repository with focused search and LSP/symbol tools after tool readiness is confirmed.
 7. Identify the closest available dry-run or check mode for every slice that can mutate external state.
 8. Run complexity triage before applying workflow guidance from agents, plugins, or delegated roles.

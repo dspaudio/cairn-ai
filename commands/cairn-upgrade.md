@@ -5,7 +5,7 @@ Goal: update the Cairn installation from the current source.
 Run:
 
 ```sh
-scripts/cairn upgrade
+node scripts/cairn.mjs upgrade
 ```
 
 With the published package:
