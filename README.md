@@ -22,7 +22,7 @@ The selected route and rationale are recorded in `docs/plan/<topic>.md`. Even on
 
 ## Tool Readiness
 
-`cairn toolcheck` inspects the current repository for JavaScript, TypeScript, Python, PHP, Java, Swift, Go, and Rust stacks, then checks the matching LSP and verification tools.
+`cairn toolcheck` inspects the current repository for JavaScript, TypeScript, Python, PHP, Java, Kotlin, Swift, Go, and Rust stacks, then checks the matching LSP and verification tools.
 
 ```sh
 cairn toolcheck

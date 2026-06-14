@@ -66,7 +66,8 @@ function detectStacks(paths) {
   if (paths.some((path) => path === "tsconfig.json" || path.endsWith(".ts") || path.endsWith(".tsx"))) stacks.add("typescript");
   if (paths.some((path) => path === "pyproject.toml" || path.endsWith(".py"))) stacks.add("python");
   if (paths.some((path) => path === "composer.json" || path.endsWith(".php"))) stacks.add("php");
-  if (paths.some((path) => path === "pom.xml" || path === "build.gradle" || path === "build.gradle.kts" || path.endsWith(".java"))) stacks.add("java");
+  if (paths.some((path) => path === "pom.xml" || path === "build.gradle" || path.endsWith(".java"))) stacks.add("java");
+  if (paths.some((path) => path.endsWith(".kt") || path.endsWith(".kts"))) stacks.add("kotlin");
   if (paths.some((path) => path === "Package.swift" || path.endsWith(".xcodeproj") || path.endsWith(".xcworkspace") || path.endsWith(".swift"))) stacks.add("swift");
   if (paths.some((path) => path === "go.mod" || path.endsWith(".go"))) stacks.add("go");
   if (paths.some((path) => path === "Cargo.toml" || path.endsWith(".rs"))) stacks.add("rust");
@@ -101,13 +102,15 @@ function buildRequirements(stacks) {
     requirements.push(req("php-cs-fixer", ["--version"], "PHP formatting verification", composerProject ? composerInstall(composerTools) : null));
   }
   if (stacks.includes("java")) {
-    requirements.push(req("java", ["--version"], "Java runtime for build and test commands"));
-    requirements.push(req("javac", ["--version"], "Java compiler verification"));
+    addJvmRequirements(requirements);
     requirements.push(req("jdtls", ["--version"], "Java LSP server", { command: "bash", args: ["-lc", "mkdir -p .cairn/tools && curl -L https://download.eclipse.org/jdtls/milestones/latest/jdt-language-server-latest.tar.gz | tar -xz -C .cairn/tools"] }));
-    if (entries.includes("gradlew")) requirements.push(req("./gradlew", ["--version"], "Gradle wrapper availability"));
-    else if (entries.includes("build.gradle") || entries.includes("build.gradle.kts")) requirements.push(req("gradle", ["--version"], "Gradle availability"));
-    if (entries.includes("mvnw")) requirements.push(req("./mvnw", ["--version"], "Maven wrapper availability"));
-    else if (entries.includes("pom.xml")) requirements.push(req("mvn", ["--version"], "Maven availability"));
+    addJvmBuildToolRequirements(requirements);
+  }
+  if (stacks.includes("kotlin")) {
+    addJvmRequirements(requirements);
+    requirements.push(req("kotlin-lsp.sh", ["--help"], "Kotlin LSP server"));
+    requirements.push(req("kotlinc", ["-version"], "Kotlin compiler verification"));
+    addJvmBuildToolRequirements(requirements);
   }
   if (stacks.includes("swift")) {
     requirements.push(req("swift", ["--version"], "Swift toolchain for build and test commands"));
@@ -125,6 +128,26 @@ function buildRequirements(stacks) {
     requirements.push(req("cargo", ["clippy", "--version"], "Rust clippy verification", { command: "rustup", args: ["component", "add", "clippy"] }));
   }
   return requirements;
+}
+
+function addJvmRequirements(requirements) {
+  if (!requirements.some((requirement) => requirement.name === "java")) {
+    requirements.push(req("java", ["--version"], "JVM runtime for build and test commands"));
+  }
+  if (!requirements.some((requirement) => requirement.name === "javac")) {
+    requirements.push(req("javac", ["--version"], "JVM compiler verification"));
+  }
+}
+
+function addJvmBuildToolRequirements(requirements) {
+  if (entries.includes("gradlew")) pushUnique(requirements, req("./gradlew", ["--version"], "Gradle wrapper availability"));
+  else if (entries.includes("build.gradle") || entries.includes("build.gradle.kts")) pushUnique(requirements, req("gradle", ["--version"], "Gradle availability"));
+  if (entries.includes("mvnw")) pushUnique(requirements, req("./mvnw", ["--version"], "Maven wrapper availability"));
+  else if (entries.includes("pom.xml")) pushUnique(requirements, req("mvn", ["--version"], "Maven availability"));
+}
+
+function pushUnique(requirements, requirement) {
+  if (!requirements.some((candidate) => candidate.name === requirement.name)) requirements.push(requirement);
 }
 
 function composerInstall(packages) {
