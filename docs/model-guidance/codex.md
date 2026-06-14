@@ -1,6 +1,6 @@
 # Codex Model Guidance
 
-Codex-family models are strong at small implementation slices, explicit tool use, and repeatable verification. In Cairn, prefer them for `builder`, `worker`, and structurally clear `planner` roles.
+Codex-family models are strong at small implementation slices, explicit tool use, and repeatable verification. In Cairn, prefer them for bounded `worker` tasks and structurally clear planning.
 
 ## Use Strengths
 
@@ -22,17 +22,17 @@ Codex-family models are strong at small implementation slices, explicit tool use
 - Do not continue an open-ended verification loop. Use at most two verification passes per slice unless the plan records a risk-based exception.
 - Write user-visible output in the OS locale unless the user asks for another language.
 
-## Role Guidance
+## Path Guidance
 
-### planner
+### Planning
 
-- On the fast route, write more explicit slice contracts.
+- On Light Path, write explicit slice contracts when a plan artifact exists.
 - Record detected stack, required tools, install commands, and tool blockers.
-- Specify file scope and verification commands so `builder` does not need to decide.
+- Specify file scope and verification commands so implementation does not need to rediscover them.
 - Specify the dry-run or check command for slices that can mutate external state, or record why none exists.
 - On failure, prefer slice re-splitting over a repeated loop.
 
-### builder
+### Implementation
 
 - Edit only within the file scope listed in the plan.
 - Confirm required tools are available. Install or bootstrap missing required tools before implementation.
@@ -41,7 +41,8 @@ Codex-family models are strong at small implementation slices, explicit tool use
 - If a gate fails, diagnose once, shrink or split the slice, and rerun both gates. Stop after the second failed pass and record the blocker.
 - Return evidence in a form that can be recorded in `docs/plan/<topic>.md`.
 
-### worker
+### Delegation
 
 - Handle search, file listing, command checks, and QA artifact capture.
-- Hand off long-form judgment or policy decisions to `architect` or `reviewer`.
+- Use `explorer` for independent read-only discovery or read-only verification when available.
+- When using `worker`, state clear file ownership and tell the worker not to revert others' edits.

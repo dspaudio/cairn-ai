@@ -15,10 +15,9 @@ The root `MEMORY.md` is an index, not detailed knowledge. Record details in `doc
 
 1. Run `scripts/cairn-state.sh manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
 2. Explore the repository before asking the user.
-3. Delegate to agents instead of asking the user.
-   - `architect`: domain boundaries, invariants, policies.
-   - `worker`: exact file paths, commands, schemas, references.
-   - `reviewer`: contradictions and stale facts.
+3. Delegate when it materially improves speed or quality instead of asking the user.
+   - `explorer`: read-only domain discovery, boundaries, invariants, policies, contradictions, and stale facts when available.
+   - `worker`: exact file paths, commands, schemas, references, and bounded evidence capture.
 4. Write detailed facts to `docs/memory/<domain>.md`.
 5. Keep only one-line links and summaries in `MEMORY.md`.
 6. Write user-visible output in the OS locale unless the user asks for another language.

@@ -16,18 +16,18 @@ Review is not another implementation loop. Confirm that the completed slice sati
 1. Read the completed slice in `docs/plan/<topic>.md`.
 2. Read `MEMORY.md` and relevant `docs/memory/*.md`.
 3. Check changed files, tool readiness evidence, and evidence paths.
-4. Delegate independent review.
-   - `reviewer`: plan compliance and domain policy.
-   - `worker`: tool readiness confirmation, dry-run or check confirmation, and verification command re-run.
-   - `architect`: boundary or architecture regression when needed.
-5. Report findings first. If there are no issues, say so clearly and record residual risk.
+4. Delegate independent review when it materially improves speed or quality and the current tool policy allows it.
+   - Use `explorer` for read-only impact analysis, pattern checks, and independent diff inspection.
+   - Use `worker` for scoped verification command re-runs or QA artifact capture.
+   - Keep blocking review work local when the next step depends immediately on the result.
+5. Report findings first, ordered by severity, with file and line references. If there are no issues, say so clearly and record remaining test gaps or residual risk.
 6. Write user-visible output in the OS locale unless the user asks for another language.
 
 ## Reviewer Prompt Format
 
 ```text
 TASK: Review correctness, scope, and evidence for slice <slice-id>.
-EXPECTED OUTCOME: Findings ordered by severity, or an explicit no-issue result.
+EXPECTED OUTCOME: Findings ordered by severity with file and line references, or an explicit no-issue result with residual risk.
 REQUIRED TOOLS: Read-only diff inspection, tool readiness checks, verification command execution, plan/memory reading.
 MUST DO: Check tool readiness and install-attempt evidence. Check dry-run or check evidence when external state could change. Check both module evidence and surface evidence. Preserve proper nouns exactly. Use the OS locale for user-visible text.
 MUST NOT DO: Edit files. Ask the user. Approve skipped LSP/typecheck/lint without install evidence. Approve missing evidence or open-ended verification loops.

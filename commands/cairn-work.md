@@ -12,10 +12,10 @@ Procedure:
 2. Read the Codex or Claude model guidance recorded in the plan.
 3. Select one small module slice.
 4. Confirm required tool readiness. If a required LSP/check tool is missing, run `scripts/cairn toolcheck --install` or a repository-native install command before accepting a fallback.
-5. Confirm the complexity triage and selected route recorded in the plan.
-6. For the fast route, proceed as `planner -> builder`.
-7. For the full route, keep `architect -> planner -> reviewer -> builder -> reviewer`.
-8. Delegate implementation to `builder` or `worker` according to model guidance.
+5. Confirm the complexity triage and selected Light/Heavy Path recorded in the plan.
+6. For Light Path, implement directly or use one bounded `worker`, then run focused verification.
+7. For Heavy Path, follow the plan's staged implementation and review gates without role-mapping shortcuts.
+8. When delegating implementation to `worker`, state the file ownership clearly and tell the worker not to revert others' edits.
 9. Re-run module acceptance verification.
 10. Re-run surface integration verification.
 11. Record tool readiness and verification evidence in `docs/plan/<topic>.md` and update `PLAN.md`.
