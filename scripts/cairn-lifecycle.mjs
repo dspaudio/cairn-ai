@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const codexHome = resolve(process.env.CODEX_HOME ?? join(process.env.HOME ?? ".", ".codex"));
@@ -16,11 +16,13 @@ const marketplaceRoot = join(codexHome, "plugins", "cache", marketplaceName);
 const installedPluginRoot = join(marketplaceRoot, "plugins", pluginName);
 const marketplaceJsonPath = join(marketplaceRoot, ".agents", "plugins", "marketplace.json");
 
-const command = process.argv[2] ?? "help";
-if (command === "install" || command === "upgrade") await install(command);
-else if (command === "doctor") await doctor();
-else if (command === "uninstall") await uninstall();
-else help();
+if (isCliEntry()) {
+  const command = process.argv[2] ?? "help";
+  if (command === "install" || command === "upgrade") await install(command);
+  else if (command === "doctor") await doctor();
+  else if (command === "uninstall") await uninstall();
+  else help();
+}
 
 async function install(mode) {
   await copyPlugin();
@@ -143,7 +145,7 @@ async function uninstallAntigravityFiles() {
   }
 }
 
-function updateConfig(config, hookStates) {
+export function updateConfig(config, hookStates) {
   let next = removeCairnConfig(config);
   next = ensureSetting(next, "features", "plugins", "true");
   next = ensureSetting(next, "features", "plugin_hooks", "true");
@@ -153,7 +155,7 @@ function updateConfig(config, hookStates) {
   return next;
 }
 
-function removeCairnConfig(config) {
+export function removeCairnConfig(config) {
   return splitSections(config).filter((section) => {
     if (section.header === null) return true;
     if (section.header === "marketplaces.cairn") return false;
@@ -162,7 +164,7 @@ function removeCairnConfig(config) {
   }).map((section) => section.text).join("").replace(/\n{3,}/g, "\n\n");
 }
 
-function ensureSetting(config, sectionName, key, value) {
+export function ensureSetting(config, sectionName, key, value) {
   const sections = splitSections(config);
   const index = sections.findIndex((section) => section.header === sectionName);
   if (index === -1) return append(config, `[${sectionName}]\n${key} = ${value}\n`);
@@ -174,12 +176,12 @@ function ensureSetting(config, sectionName, key, value) {
   return sections.map((section) => section.text).join("");
 }
 
-function hasSetting(config, sectionName, key, value) {
+export function hasSetting(config, sectionName, key, value) {
   const section = splitSections(config).find((candidate) => candidate.header === sectionName);
   return section?.text.split("\n").some((line) => line.trim() === `${key} = ${value}`) ?? false;
 }
 
-function splitSections(config) {
+export function splitSections(config) {
   const result = [];
   let current = { header: null, text: "" };
   for (const line of config.split(/(?<=\n)/)) {
@@ -211,7 +213,7 @@ async function trustedHookStates() {
   return states;
 }
 
-function hookHash(eventName, matcher, handler) {
+export function hookHash(eventName, matcher, handler) {
   const normalized = { type: "command", command: handler.command, timeout: Math.max(Number(handler.timeout ?? 600), 1), async: false };
   if (typeof handler.statusMessage === "string") normalized.statusMessage = handler.statusMessage;
   const identity = { event_name: eventName, hooks: [normalized] };
@@ -219,7 +221,7 @@ function hookHash(eventName, matcher, handler) {
   return `sha256:${createHash("sha256").update(JSON.stringify(canonical(identity))).digest("hex")}`;
 }
 
-function canonical(value) {
+export function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
   if (value === null || typeof value !== "object") return value;
   return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
@@ -254,11 +256,11 @@ function append(config, block) {
   return `${config.trimEnd()}${config.trimEnd().length === 0 ? "" : "\n\n"}${block.trimEnd()}\n`;
 }
 
-function commandNames() {
+export function commandNames() {
   return ["install", "upgrade", "doctor", "uninstall", "memory", "plan", "work", "review", "toolcheck"];
 }
 
-function skillNames() {
+export function skillNames() {
   return ["cairn-memory", "cairn-plan", "cairn-work", "cairn-review"];
 }
 
@@ -320,7 +322,7 @@ function t(key) {
   return messages[localeFamily()]?.[key] ?? messages.en[key];
 }
 
-function localeFamily() {
+export function localeFamily() {
   const locale = [process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG]
     .find((value) => typeof value === "string" && value.length > 0) ?? Intl.DateTimeFormat().resolvedOptions().locale;
   const normalized = locale.toLowerCase();
@@ -328,4 +330,8 @@ function localeFamily() {
     if (normalized.startsWith(family)) return family;
   }
   return "en";
+}
+
+function isCliEntry() {
+  return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 }
