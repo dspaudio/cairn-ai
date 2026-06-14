@@ -16,17 +16,19 @@ Plans must reduce execution tokens. Do not leave long plans only in chat. Store 
 1. Run `scripts/cairn-state.sh manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
 2. Read only `MEMORY.md` and relevant `docs/memory/*.md` files.
 3. Based on the active or assigned model, read `docs/model-guidance/README.md` and only the relevant model guidance.
-4. Explore the repository with focused search and LSP/symbol tools.
-5. Identify the closest available dry-run or check mode for every slice that can mutate external state.
-6. Run complexity triage and select the work route.
-7. Delegate according to the selected route and model guidance instead of asking the user.
+4. Run `scripts/cairn toolcheck` when available, or `scripts/cairn-toolcheck.mjs` directly, to identify repository stacks and required tools.
+5. If LSP, typecheck, lint, dry-run, or verification tools are missing, run `scripts/cairn toolcheck --install` or the closest repository-native install command before treating the tool as unavailable.
+6. Explore the repository with focused search and LSP/symbol tools after tool readiness is confirmed.
+7. Identify the closest available dry-run or check mode for every slice that can mutate external state.
+8. Run complexity triage and select the work route.
+9. Delegate according to the selected route and model guidance instead of asking the user.
    - `architect`: boundaries, domain policy, high-risk decisions.
    - `planner`: slice order, dependencies, acceptance criteria.
    - `worker`: concrete file paths, command availability, examples.
    - `reviewer`: plan gaps and unproven assumptions.
-8. Create `docs/plan/<topic>.md` from `templates/work-plan.md`.
-9. Add a short index entry to `PLAN.md`.
-10. Write user-visible output in the OS locale unless the user asks for another language.
+10. Create `docs/plan/<topic>.md` from `templates/work-plan.md`.
+11. Add a short index entry to `PLAN.md`.
+12. Write user-visible output in the OS locale unless the user asks for another language.
 
 ## Complexity Triage
 
@@ -66,6 +68,7 @@ Choose the full route when any signal is present.
 - Every plan must be decision-complete.
 - Every plan must include complexity triage and the selected route.
 - Every plan must include applied model guidance and rationale.
+- Every plan must include tool readiness results: detected stack, required LSP/check tools, installed tools, and blockers.
 - Every implementation slice must be small enough to verify with two checks.
 - The default checks are module acceptance verification and surface integration verification.
 - Every risky or external-state-changing slice must include the closest available dry-run or check command before the write/apply command.
@@ -73,6 +76,17 @@ Choose the full route when any signal is present.
 - The default loop budget is two verification passes per slice. If a gate fails, diagnose once, shrink or split the slice, and rerun both gates. After two failed passes, record the blocker in `docs/plan/<topic>.md` instead of continuing an open-ended loop.
 - Ask the user only when agents or repository evidence cannot answer the decision.
 - User-visible text must follow the OS locale unless the user asks for another language.
+
+## Tool Readiness Policy
+
+Do not skip LSP, typecheck, lint, dry-run, or verification because the tool is missing.
+
+- Detect the codebase stack from repository files before choosing tools.
+- Prefer repository-local installation through the existing package manager and lockfile.
+- Use ephemeral tool runners only when project-local installation is not appropriate.
+- Run the tool after installation and record the command result.
+- If installation is impossible, record the command tried, failure output summary, and blocker in `docs/plan/<topic>.md`.
+- Treat "LSP server not installed" as an unresolved blocker until installation or an equivalent symbol-aware fallback has been attempted.
 
 ## Dry-Run Policy
 
@@ -89,8 +103,8 @@ Prefer repository-native dry-run and check modes before mutating external state.
 ```text
 TASK: Produce <role> input needed for the <topic> plan.
 EXPECTED OUTCOME: Return concrete decisions, file paths, dependencies, risks, and evidence requirements.
-REQUIRED TOOLS: Read-only repository exploration, LSP/symbol tools, local command checks.
-MUST DO: Preserve proper nouns exactly. Prefer repository evidence. Identify assumptions. Use the OS locale for user-visible text.
+REQUIRED TOOLS: Read-only repository exploration, tool readiness checks, LSP/symbol tools, local command checks.
+MUST DO: Preserve proper nouns exactly. Prefer repository evidence. Install or bootstrap missing required tools before declaring them unavailable. Identify assumptions. Use the OS locale for user-visible text.
 MUST NOT DO: Edit production code. Ask the user. Expand scope.
 CONTEXT: User request, MEMORY.md, relevant docs/memory notes, applied model guidance, repository root.
 ```
@@ -98,5 +112,5 @@ CONTEXT: User request, MEMORY.md, relevant docs/memory notes, applied model guid
 ## Completion Criteria
 
 - `PLAN.md` references the plan topic.
-- `docs/plan/<topic>.md` includes goal, memory inputs, model guidance, complexity triage, selected route, agent assignments, module slices, and two checks per slice.
+- `docs/plan/<topic>.md` includes goal, memory inputs, model guidance, tool readiness, complexity triage, selected route, agent assignments, module slices, and two checks per slice.
 - The next `builder` task can run without making planning decisions.

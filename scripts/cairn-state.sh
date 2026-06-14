@@ -53,6 +53,8 @@ This file is a short index of active and completed work plans.
 
 - Plans must be decision-complete before implementation.
 - Split implementation into small module slices.
+- Detect repository stack and required LSP/check tools before implementation.
+- Install or bootstrap missing required tools before declaring them unavailable.
 - Each slice normally passes exactly two gates.
   - Module acceptance verification.
   - Surface integration verification.
@@ -73,9 +75,9 @@ is_ko() {
 case "$event" in
   session-start|user-prompt-submit)
     if is_ko; then
-      printf '%s\n' "Cairn 컨텍스트: 먼저 MEMORY.md와 PLAN.md를 읽고, 필요한 경우에만 docs/memory 또는 docs/plan 상세 파일을 여세요."
+      printf '%s\n' "Cairn 컨텍스트: 먼저 MEMORY.md와 PLAN.md를 읽고, 필요한 경우 toolcheck로 LSP/check 도구 준비 상태를 확인하세요."
     else
-      printf '%s\n' "Cairn context: read MEMORY.md and PLAN.md first, then open docs/memory or docs/plan details only when needed."
+      printf '%s\n' "Cairn context: read MEMORY.md and PLAN.md first, then run toolcheck when LSP/check tool readiness is needed."
     fi
     ;;
   post-tool-use)

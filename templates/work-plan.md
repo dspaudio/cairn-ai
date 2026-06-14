@@ -39,6 +39,16 @@ Describe the observable result.
 - `reviewer`: pre-implementation plan gap review and post-implementation evidence review. Required on the full route.
 - `worker`: focused execution work. Use when needed.
 
+## Tool Readiness
+
+- Detected stack:
+- Toolcheck command:
+- Required LSP/symbol tools:
+- Required typecheck/lint/verification tools:
+- Missing tools:
+- Install/bootstrap commands attempted:
+- Tool blockers:
+
 ## Execution Guardrails
 
 - Dry-run or check mode before external-state mutation:
@@ -53,6 +63,7 @@ Describe the observable result.
 - Contract:
 - Files:
 - Dependencies:
+- Tool readiness requirement:
 - Dry-run or check command:
 - Module acceptance verification:
 - Surface integration verification:
@@ -60,6 +71,7 @@ Describe the observable result.
 ## Evidence
 
 - Dry-run or check:
+- Tool readiness:
 - Module acceptance:
 - Surface integration:
 - Verification pass count:

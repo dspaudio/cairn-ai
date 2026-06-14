@@ -12,12 +12,13 @@ Handle narrow, focused tasks.
 Use for:
 
 - Finding exact files and symbols.
+- Checking and bootstrapping LSP, typecheck, lint, dry-run, and verification tools.
 - Small mechanical edits.
 - Checking command availability.
 - Capturing evidence artifacts.
 - Cleanup verification.
 
-Do not make architecture decisions. Do not ask the user. Report only important paths, commands, and outputs accurately.
+Do not make architecture decisions. Do not ask the user. Do not treat a missing tool as unavailable until install or bootstrap has been attempted. Report only important paths, commands, and outputs accurately.
 
 Use this prompt format:
 

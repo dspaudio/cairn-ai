@@ -13,6 +13,7 @@ Return or write:
 
 - Goal.
 - Memory inputs.
+- Tool readiness: detected stack, required LSP/check tools, install commands, and blockers.
 - Complexity triage result.
 - Selected route and rationale.
 - Module slices.
@@ -22,7 +23,7 @@ Return or write:
 - Surface integration verification.
 - Completion evidence fields.
 
-Do not implement production code. Do not ask the user before exhausting discoverable paths through agents and repository evidence.
+Do not implement production code. Do not ask the user before exhausting discoverable paths through agents and repository evidence. Do not mark LSP, typecheck, lint, dry-run, or verification tools unavailable until install or bootstrap has been attempted.
 
 Use this prompt format:
 

@@ -255,7 +255,7 @@ function append(config, block) {
 }
 
 function commandNames() {
-  return ["install", "upgrade", "doctor", "uninstall", "memory", "plan", "work", "review"];
+  return ["install", "upgrade", "doctor", "uninstall", "memory", "plan", "work", "review", "toolcheck"];
 }
 
 function skillNames() {
@@ -272,49 +272,49 @@ function t(key) {
       installComplete: "Cairn install complete",
       upgradeComplete: "Cairn upgrade complete",
       uninstallComplete: "Cairn uninstall complete",
-      usage: "Usage: cairn install|upgrade|doctor|uninstall",
+      usage: "Usage: cairn install|upgrade|doctor|uninstall|toolcheck",
     },
     ko: {
       installComplete: "Cairn 설치 완료",
       upgradeComplete: "Cairn 업그레이드 완료",
       uninstallComplete: "Cairn 언인스톨 완료",
-      usage: "사용법: cairn install|upgrade|doctor|uninstall",
+      usage: "사용법: cairn install|upgrade|doctor|uninstall|toolcheck",
     },
     ja: {
       installComplete: "Cairn のインストールが完了しました",
       upgradeComplete: "Cairn のアップグレードが完了しました",
       uninstallComplete: "Cairn のアンインストールが完了しました",
-      usage: "使い方: cairn install|upgrade|doctor|uninstall",
+      usage: "使い方: cairn install|upgrade|doctor|uninstall|toolcheck",
     },
     zh: {
       installComplete: "Cairn 安装完成",
       upgradeComplete: "Cairn 升级完成",
       uninstallComplete: "Cairn 卸载完成",
-      usage: "用法: cairn install|upgrade|doctor|uninstall",
+      usage: "用法: cairn install|upgrade|doctor|uninstall|toolcheck",
     },
     es: {
       installComplete: "Instalación de Cairn completada",
       upgradeComplete: "Actualización de Cairn completada",
       uninstallComplete: "Desinstalación de Cairn completada",
-      usage: "Uso: cairn install|upgrade|doctor|uninstall",
+      usage: "Uso: cairn install|upgrade|doctor|uninstall|toolcheck",
     },
     fr: {
       installComplete: "Installation de Cairn terminée",
       upgradeComplete: "Mise à niveau de Cairn terminée",
       uninstallComplete: "Désinstallation de Cairn terminée",
-      usage: "Utilisation: cairn install|upgrade|doctor|uninstall",
+      usage: "Utilisation: cairn install|upgrade|doctor|uninstall|toolcheck",
     },
     de: {
       installComplete: "Cairn-Installation abgeschlossen",
       upgradeComplete: "Cairn-Upgrade abgeschlossen",
       uninstallComplete: "Cairn-Deinstallation abgeschlossen",
-      usage: "Verwendung: cairn install|upgrade|doctor|uninstall",
+      usage: "Verwendung: cairn install|upgrade|doctor|uninstall|toolcheck",
     },
     pt: {
       installComplete: "Instalação do Cairn concluída",
       upgradeComplete: "Atualização do Cairn concluída",
       uninstallComplete: "Desinstalação do Cairn concluída",
-      usage: "Uso: cairn install|upgrade|doctor|uninstall",
+      usage: "Uso: cairn install|upgrade|doctor|uninstall|toolcheck",
     },
   };
   return messages[localeFamily()]?.[key] ?? messages.en[key];

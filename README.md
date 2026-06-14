@@ -9,6 +9,8 @@ The core idea is to keep the useful parts of LazyCodex: hooks, persistent state,
 
 Before a slice mutates external state, Cairn records and runs the closest available dry-run or check mode. Verification is bounded: each slice gets two verification passes by default, then the agent records a blocker or splits the slice instead of continuing an open-ended loop.
 
+Cairn also treats tool readiness as part of the work. LSP, typecheck, lint, dry-run, and verification tools are checked against the repository stack. If a required tool is missing, Cairn attempts project-local or repository-native installation before accepting a fallback.
+
 ## Complexity Triage
 
 Every user task passes complexity triage first. Triage is decided from repository exploration, expected change scope, and risk signals without asking the user.
@@ -17,6 +19,20 @@ Every user task passes complexity triage first. Triage is decided from repositor
 - Full route: multiple modules, data/permission/migration/external integration/architecture impact, or unclear domain policy use `architect -> planner -> reviewer -> builder -> reviewer`.
 
 The selected route and rationale are recorded in `docs/plan/<topic>.md`. Even on the fast route, the two verification gates remain after `builder` completion.
+
+## Tool Readiness
+
+`cairn toolcheck` inspects the current repository for common JavaScript, TypeScript, Python, Go, and Rust stacks, then checks the matching LSP and verification tools.
+
+```sh
+cairn toolcheck
+cairn toolcheck --install
+```
+
+- `toolcheck` reports detected stacks and missing tools.
+- `toolcheck --install` attempts the closest project-local or repository-native install path, such as package-manager dev dependencies, `uv`, `go install`, or `rustup component add`.
+- Cairn plans record detected stack, required tools, install commands, and blockers.
+- A missing LSP server is not a valid reason to skip precise codebase exploration until installation or an equivalent symbol-aware fallback has been attempted.
 
 ## Dry-Run And Loop Policy
 
@@ -56,6 +72,7 @@ bunx cairn-ai@latest install
 bunx cairn-ai@latest upgrade
 bunx cairn-ai@latest doctor
 bunx cairn-ai@latest uninstall
+bunx cairn-ai@latest toolcheck
 ```
 
 After global installation, short commands are also available.
@@ -66,12 +83,14 @@ cairn install
 cairn upgrade
 cairn doctor
 cairn uninstall
+cairn toolcheck
 ```
 
 - `cairn install`: installs the plugin into the Codex marketplace cache and configures hook trust state, Claude Code mirror files, and Antigravity skills/workflows.
 - `cairn upgrade`: updates the installation, hook trust state, Claude Code mirror files, and Antigravity skills/workflows from the current source.
 - `cairn doctor`: diagnoses Codex settings, installation, hook trust state, Claude Code mirror files, and Antigravity mirror files.
 - `cairn uninstall`: removes Cairn-added Codex settings, cache, Claude Code mirror files, and Antigravity mirror files.
+- `cairn toolcheck`: detects repository stacks and checks or installs required LSP and verification tools.
 - `cairn-memory`: explores domain knowledge and updates `MEMORY.md`.
 - `cairn-plan`: creates a decision-complete plan under `docs/plan/`.
 - `cairn-work`: executes the next module slice in the current `PLAN.md` with two verification gates.
