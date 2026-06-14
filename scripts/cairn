@@ -1,0 +1,39 @@
+#!/bin/sh
+set -eu
+
+cmd="${1:-help}"
+shift || true
+
+script_path="$0"
+link_target="$(readlink "$script_path" 2>/dev/null || true)"
+if [ -n "$link_target" ]; then
+  case "$link_target" in
+    /*) script_path="$link_target" ;;
+    *) script_path="$(dirname "$script_path")/$link_target" ;;
+  esac
+fi
+script_dir="$(cd "$(dirname "$script_path")" && pwd)"
+
+case "$cmd" in
+  install|upgrade|doctor|uninstall)
+    node "$script_dir/cairn-lifecycle.mjs" "$cmd" "$@"
+    ;;
+  init)
+    sh "$script_dir/cairn-state.sh" manual
+    ;;
+  memory)
+    printf '%s\n' "cairn-memory 스킬을 사용하세요. MEMORY.md는 짧은 색인으로, 상세 내용은 docs/memory/<domain>.md에 기록합니다."
+    ;;
+  plan)
+    printf '%s\n' "cairn-plan 스킬을 사용하세요. PLAN.md는 색인으로, 상세 계획은 docs/plan/<topic>.md에 기록합니다."
+    ;;
+  work)
+    printf '%s\n' "cairn-work 스킬을 사용하세요. 하나의 모듈 조각을 실행하고 모듈 증거와 표면 증거를 확보합니다."
+    ;;
+  review)
+    printf '%s\n' "cairn-review 스킬을 사용하세요. PLAN.md와 MEMORY.md 기준으로 증거를 비교합니다."
+    ;;
+  *)
+    printf '%s\n' "사용법: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review"
+    ;;
+esac

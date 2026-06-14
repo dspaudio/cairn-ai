@@ -1,0 +1,65 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" session-start",
+            "timeout": 10,
+            "statusMessage": "Cairn: 저장소 메모리와 계획 색인을 준비합니다"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" user-prompt-submit",
+            "timeout": 10,
+            "statusMessage": "Cairn: 압축된 작업 컨텍스트를 불러옵니다"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|write|Write|edit|Edit|multi_edit|multiedit|MultiEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" post-tool-use",
+            "timeout": 10,
+            "statusMessage": "Cairn: 메모리와 계획 색인을 확인합니다"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" stop",
+            "timeout": 10,
+            "statusMessage": "Cairn: 두 단계 증거 요건을 확인합니다"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" subagent-stop",
+            "timeout": 10,
+            "statusMessage": "Cairn: 서브에이전트 인계 증거를 확인합니다"
+          }
+        ]
+      }
+    ]
+  }
+}
