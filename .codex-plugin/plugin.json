@@ -1,7 +1,7 @@
 {
   "name": "cairn",
   "version": "0.1.0",
-  "description": "Codex와 Claude Code용 토큰 절약형 에이전트 하네스입니다.",
+  "description": "Codex, Claude Code, Antigravity용 토큰 절약형 에이전트 하네스입니다.",
   "author": {
     "name": "WkNam"
   },
@@ -9,7 +9,7 @@
   "interface": {
     "displayName": "Cairn",
     "shortDescription": "에이전트 팀을 위한 메모리, 계획, 두 단계 검증 하네스입니다.",
-    "longDescription": "Cairn은 LazyCodex에서 영감을 받은 흐름을 Codex와 Claude Code에 제공하되, 저장소 로컬 MEMORY.md, PLAN.md, 도메인 노트, 모듈 단위 실행, 두 단계 검증으로 토큰 소모를 줄입니다.",
+    "longDescription": "Cairn은 LazyCodex에서 영감을 받은 흐름을 Codex, Claude Code, Antigravity에 제공하되, 저장소 로컬 MEMORY.md, PLAN.md, 도메인 노트, 모듈 단위 실행, 두 단계 검증으로 토큰 소모를 줄입니다.",
     "developerName": "WkNam",
     "category": "Productivity",
     "capabilities": [

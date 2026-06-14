@@ -1,7 +1,7 @@
 {
   "name": "cairn-ai",
   "version": "0.1.0",
-  "description": "Codex와 Claude Code용 토큰 절약형 에이전트 하네스",
+  "description": "Codex, Claude Code, Antigravity용 토큰 절약형 에이전트 하네스",
   "license": "MIT",
   "author": {
     "name": "WkNam"
@@ -14,6 +14,7 @@
   "keywords": [
     "codex",
     "claude-code",
+    "antigravity",
     "agent",
     "harness",
     "plugin",
@@ -24,6 +25,7 @@
     "cairn-ai": "scripts/cairn"
   },
   "files": [
+    ".agents/",
     ".claude/",
     ".codex-plugin/",
     "agents/",

@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const codexHome = resolve(process.env.CODEX_HOME ?? join(process.env.HOME ?? ".", ".codex"));
 const claudeHome = resolve(process.env.CLAUDE_HOME ?? join(process.env.HOME ?? ".", ".claude"));
+const antigravityHome = resolve(process.env.ANTIGRAVITY_HOME ?? join(process.env.HOME ?? ".", ".agents"));
+const antigravityCliHome = resolve(process.env.ANTIGRAVITY_CLI_HOME ?? join(process.env.HOME ?? ".", ".gemini", "antigravity-cli"));
 const configPath = process.env.CODEX_CONFIG_PATH ?? join(codexHome, "config.toml");
 const marketplaceName = "cairn";
 const pluginName = "cairn";
@@ -24,6 +26,7 @@ async function install(mode) {
   await copyPlugin();
   await writeMarketplace();
   await installClaudeFiles();
+  await installAntigravityFiles();
   const hookStates = await trustedHookStates();
   const config = await readText(configPath);
   await backupConfig();
@@ -32,6 +35,7 @@ async function install(mode) {
   console.log(`Codex plugin: ${installedPluginRoot}`);
   console.log(`Marketplace: ${marketplaceJsonPath}`);
   console.log(`Hook trust states: ${hookStates.length}`);
+  console.log(`Antigravity skills: ${join(antigravityHome, "skills")}`);
 }
 
 async function doctor() {
@@ -52,6 +56,10 @@ async function doctor() {
   checks.push(["trusted hook states", expectedStates.length > 0 && missingStates.length === 0]);
   checks.push(["Claude commands", await exists(join(claudeHome, "commands", "cairn-plan.md"))]);
   checks.push(["Claude agents", await exists(join(claudeHome, "agents", "cairn-architect.md"))]);
+  checks.push(["Antigravity skills", await exists(join(antigravityHome, "skills", "cairn-plan", "SKILL.md"))]);
+  checks.push(["Antigravity workflows", await exists(join(antigravityHome, "workflows", "cairn-plan.md"))]);
+  checks.push(["Antigravity CLI skills", await exists(join(antigravityCliHome, "skills", "cairn-plan", "SKILL.md"))]);
+  checks.push(["Antigravity CLI workflows", await exists(join(antigravityCliHome, "workflows", "cairn-plan.md"))]);
   for (const [name, ok] of checks) console.log(`${ok ? "OK" : "FAIL"} ${name}`);
   if (checks.some(([, ok]) => !ok)) process.exitCode = 1;
 }
@@ -67,6 +75,7 @@ async function uninstall() {
   for (const name of ["architect", "planner", "builder", "reviewer", "worker"]) {
     await rm(join(claudeHome, "agents", `cairn-${name}.md`), { force: true });
   }
+  await uninstallAntigravityFiles();
   console.log("Cairn 언인스톨 완료");
 }
 
@@ -106,6 +115,31 @@ async function installClaudeFiles() {
   }
   for (const name of ["architect", "planner", "builder", "reviewer", "worker"]) {
     await cp(join(pluginRoot, ".claude", "agents", `${name}.md`), join(claudeHome, "agents", `cairn-${name}.md`));
+  }
+}
+
+async function installAntigravityFiles() {
+  for (const root of [antigravityHome, antigravityCliHome]) {
+    await mkdir(join(root, "skills"), { recursive: true });
+    await mkdir(join(root, "workflows"), { recursive: true });
+    for (const name of skillNames()) {
+      await rm(join(root, "skills", name), { recursive: true, force: true });
+      await cp(join(pluginRoot, "skills", name), join(root, "skills", name), { recursive: true });
+    }
+    for (const name of commandNames()) {
+      await cp(join(pluginRoot, ".agents", "workflows", `cairn-${name}.md`), join(root, "workflows", `cairn-${name}.md`));
+    }
+  }
+}
+
+async function uninstallAntigravityFiles() {
+  for (const root of [antigravityHome, antigravityCliHome]) {
+    for (const name of skillNames()) {
+      await rm(join(root, "skills", name), { recursive: true, force: true });
+    }
+    for (const name of commandNames()) {
+      await rm(join(root, "workflows", `cairn-${name}.md`), { force: true });
+    }
   }
 }
 
@@ -222,6 +256,10 @@ function append(config, block) {
 
 function commandNames() {
   return ["install", "upgrade", "doctor", "uninstall", "memory", "plan", "work", "review"];
+}
+
+function skillNames() {
+  return ["cairn-memory", "cairn-plan", "cairn-work", "cairn-review"];
 }
 
 function help() {

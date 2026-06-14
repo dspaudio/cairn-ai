@@ -13,7 +13,7 @@ description: 사용자 질문 대신 에이전트 위임으로 PLAN.md와 docs/p
 
 ## 절차
 
-1. `scripts/cairn-state.sh manual`로 상태 파일을 보장합니다.
+1. `scripts/cairn-state.sh manual`이 있으면 실행합니다. 없으면 `MEMORY.md`, `PLAN.md`, `docs/memory`, `docs/plan`을 직접 보장합니다.
 2. `MEMORY.md`와 관련 `docs/memory/*.md`만 읽습니다.
 3. 현재 실행 모델 또는 배정 모델을 기준으로 `docs/model-guidance/README.md`와 관련 모델 지침만 읽습니다.
 4. 집중 검색과 LSP/심볼 도구로 저장소를 탐색합니다.

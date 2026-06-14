@@ -1,6 +1,6 @@
 # Cairn
 
-Cairn은 Codex와 Claude Code에서 함께 쓰는 토큰 절약형 멀티에이전트 하네스 플러그인입니다.
+Cairn은 Codex, Claude Code, Antigravity에서 함께 쓰는 토큰 절약형 멀티에이전트 하네스 플러그인입니다.
 
 핵심 아이디어는 LazyCodex의 장점인 훅, 지속 상태, 명시적 계획, 에이전트 역할, 중단 시점 가드를 유지하되, 반복적인 TDD 검증 루프를 기본값으로 두지 않는 것입니다. 대신 작업을 작은 모듈 단위로 나누고 두 번의 검증으로 통과시키는 흐름을 사용합니다.
 
@@ -58,10 +58,10 @@ cairn doctor
 cairn uninstall
 ```
 
-- `cairn install`: Codex marketplace 캐시에 플러그인을 설치하고 훅 신뢰 상태와 Claude Code 미러 파일을 구성합니다.
-- `cairn upgrade`: 현재 소스 기준으로 설치본, 훅 신뢰 상태, Claude Code 미러 파일을 갱신합니다.
-- `cairn doctor`: Codex 설정, 설치본, 훅 신뢰 상태, Claude Code 미러 파일을 진단합니다.
-- `cairn uninstall`: Cairn이 추가한 Codex 설정, 캐시, Claude Code 미러 파일을 제거합니다.
+- `cairn install`: Codex marketplace 캐시에 플러그인을 설치하고 훅 신뢰 상태, Claude Code 미러 파일, Antigravity skills/workflows를 구성합니다.
+- `cairn upgrade`: 현재 소스 기준으로 설치본, 훅 신뢰 상태, Claude Code 미러 파일, Antigravity skills/workflows를 갱신합니다.
+- `cairn doctor`: Codex 설정, 설치본, 훅 신뢰 상태, Claude Code 미러 파일, Antigravity 미러 파일을 진단합니다.
+- `cairn uninstall`: Cairn이 추가한 Codex 설정, 캐시, Claude Code 미러 파일, Antigravity 미러 파일을 제거합니다.
 - `cairn-memory`: 도메인 지식을 탐색하고 `MEMORY.md`를 갱신합니다.
 - `cairn-plan`: `docs/plan/` 아래에 결정 완료 상태의 계획을 만듭니다.
 - `cairn-work`: 현재 `PLAN.md`의 다음 모듈 조각을 두 번의 검증으로 실행합니다.
@@ -69,7 +69,16 @@ cairn uninstall
 
 설치/업그레이드는 `~/.codex/config.toml`을 수정하기 전에 `*.cairn-backup-*` 백업을 만듭니다. 원본 플러그인 manifest는 검증 가능한 상태로 유지하고, 설치된 캐시 복사본에만 `hooks` 필드를 추가해 Codex hook을 활성화합니다.
 
-Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `.claude/` 아래의 미러링된 명령과 에이전트 정의를 사용할 수 있습니다.
+Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `.claude/` 아래의 미러링된 명령과 에이전트 정의를 사용할 수 있습니다. Antigravity는 `.agents/workflows`와 전역 skills 미러를 사용합니다.
+
+## Antigravity 호환성
+
+Antigravity는 `SKILL.md` 기반 Agent Skills와 `/workflow-name`으로 실행하는 Workflows를 지원합니다. Cairn은 이 표면에 맞춰 다음 경로를 설치합니다.
+
+- Antigravity IDE: `~/.agents/skills/cairn-*`, `~/.agents/workflows/cairn-*.md`.
+- Antigravity CLI: `~/.gemini/antigravity-cli/skills/cairn-*`, `~/.gemini/antigravity-cli/workflows/cairn-*.md`.
+
+Codex 전용 hook은 Antigravity에 이식하지 않습니다. 대신 동일한 계획, 메모리, 복잡도 트리아지, 두 단계 검증 절차를 Skills와 Workflows로 실행합니다. 경로를 바꿔야 하면 `ANTIGRAVITY_HOME` 또는 `ANTIGRAVITY_CLI_HOME` 환경 변수를 지정합니다.
 
 ## 에이전트 역할
 

@@ -1,6 +1,6 @@
 ---
 name: cairn-memory
-description: 토큰 효율적인 Codex와 Claude Code 에이전트 작업을 위해 저장소 MEMORY.md와 docs/memory 도메인 노트를 만들고 유지합니다.
+description: 토큰 효율적인 Codex, Claude Code, Antigravity 에이전트 작업을 위해 저장소 MEMORY.md와 docs/memory 도메인 노트를 만들고 유지합니다.
 ---
 
 # Cairn Memory
@@ -13,7 +13,7 @@ description: 토큰 효율적인 Codex와 Claude Code 에이전트 작업을 위
 
 ## 절차
 
-1. 플러그인 `scripts/cairn-state.sh manual`을 실행해 `MEMORY.md`, `PLAN.md`, `docs/memory`, `docs/plan`을 보장합니다.
+1. `scripts/cairn-state.sh manual`이 있으면 실행합니다. 없으면 `MEMORY.md`, `PLAN.md`, `docs/memory`, `docs/plan`을 직접 보장합니다.
 2. 사용자에게 묻기 전에 저장소를 탐색합니다.
 3. 사용자 질문 대신 에이전트에게 위임합니다.
    - `architect`: 도메인 경계, 불변식, 정책.

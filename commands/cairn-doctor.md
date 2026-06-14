@@ -24,3 +24,4 @@ bunx cairn-ai@latest doctor
 - `cairn@cairn` plugin 활성화.
 - hook trust state.
 - Claude Code commands와 agents 미러 파일.
+- Antigravity IDE/CLI skills와 workflows 미러 파일.
