@@ -35,7 +35,8 @@
     "scripts/",
     "skills/",
     "templates/",
-    "README.md"
+    "README.md",
+    "README.*.md"
   ],
   "scripts": {
     "check": "node --check scripts/cairn-lifecycle.mjs && node --check scripts/cairn-toolcheck.mjs && node -e \"JSON.parse(require('node:fs').readFileSync('package.json','utf8')); JSON.parse(require('node:fs').readFileSync('.codex-plugin/plugin.json','utf8')); JSON.parse(require('node:fs').readFileSync('hooks/hooks.json','utf8'))\"",
