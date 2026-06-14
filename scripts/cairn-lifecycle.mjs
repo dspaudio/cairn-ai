@@ -55,7 +55,7 @@ async function doctor() {
   const missingStates = expectedStates.filter((state) => !config.includes(`[hooks.state.${JSON.stringify(state.key)}]`));
   checks.push(["trusted hook states", expectedStates.length > 0 && missingStates.length === 0]);
   checks.push(["Claude commands", await exists(join(claudeHome, "commands", "cairn-plan.md"))]);
-  checks.push(["Claude agents", await exists(join(claudeHome, "agents", "cairn-architect.md"))]);
+  checks.push(["Claude agents", await exists(join(claudeHome, "agents", "cairn-explorer.md"))]);
   checks.push(["Antigravity skills", await exists(join(antigravityHome, "skills", "cairn-plan", "SKILL.md"))]);
   checks.push(["Antigravity workflows", await exists(join(antigravityHome, "workflows", "cairn-plan.md"))]);
   checks.push(["Antigravity CLI skills", await exists(join(antigravityCliHome, "skills", "cairn-plan", "SKILL.md"))]);
@@ -72,7 +72,7 @@ async function uninstall() {
   for (const name of commandNames()) {
     await rm(join(claudeHome, "commands", `cairn-${name}.md`), { force: true });
   }
-  for (const name of ["architect", "planner", "builder", "reviewer", "worker"]) {
+  for (const name of ["architect", "planner", "builder", "reviewer", "explorer", "worker"]) {
     await rm(join(claudeHome, "agents", `cairn-${name}.md`), { force: true });
   }
   await uninstallAntigravityFiles();
@@ -113,7 +113,7 @@ async function installClaudeFiles() {
   for (const name of commandNames()) {
     await cp(join(pluginRoot, ".claude", "commands", `cairn-${name}.md`), join(claudeHome, "commands", `cairn-${name}.md`));
   }
-  for (const name of ["architect", "planner", "builder", "reviewer", "worker"]) {
+  for (const name of ["explorer", "worker"]) {
     await cp(join(pluginRoot, ".claude", "agents", `${name}.md`), join(claudeHome, "agents", `cairn-${name}.md`));
   }
 }

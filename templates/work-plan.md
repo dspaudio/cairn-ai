@@ -21,23 +21,22 @@ Describe the observable result.
 
 ## Complexity Triage
 
-- Selected route: fast route or full route.
+- Selected path: Light Path or Heavy Path.
 - Selection rationale:
-- Omitted fast-route roles and rationale:
-- Full-route pre-review decisions:
+- Heavy Path trigger, if selected:
+- Omitted delegation in Light Path, if applicable:
+- Pre-implementation decisions:
 
-### Route Criteria
+### Path Criteria
 
-- Fast route: `planner -> builder`.
-- Full route: `architect -> planner -> reviewer -> builder -> reviewer`.
+- Light Path: narrow changes inside existing architecture layers. Direct edit or one bounded `worker`, then focused verification.
+- Heavy Path: new directory/module/layer, new domain model/service/abstraction, security/session/auth, external API/message queue/payment, DB schema/migration, concurrency/transaction/cache changes, cross-domain refactor, or explicit extra-care request.
 
 ## Agent Assignments
 
-- `architect`: system boundaries and risk. Required on the full route.
-- `planner`: decision-complete planning. Required on every route.
-- `builder`: module slice implementation. Required on every route.
-- `reviewer`: pre-implementation plan gap review and post-implementation evidence review. Required on the full route.
-- `worker`: focused execution work. Use when needed.
+- `explorer`: read-only discovery, impact analysis, pattern search, and read-only verification when available.
+- `worker`: bounded implementation slices with clear file ownership, or scoped verification work.
+- Local main session: urgent blocking work when the next step depends immediately on the result.
 
 ## Tool Readiness
 

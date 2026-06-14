@@ -1,6 +1,6 @@
 # Claude Model Guidance
 
-Claude-family models are strong at long-context retention, policy interpretation, and plan consistency review. In Cairn, prefer them for `architect`, `planner`, and `reviewer` roles.
+Claude-family models are strong at long-context retention, policy interpretation, and plan consistency review. In Cairn, use those strengths for planning, policy interpretation, and evidence review.
 
 ## Use Strengths
 
@@ -15,29 +15,29 @@ Claude-family models are strong at long-context retention, policy interpretation
 - Do not bloat plans with long explanations. Keep decisions, rationale, and evidence.
 - Preserve frequency words such as "all", "each", and "required". Do not handle only the first item and stop.
 - Do not accept "tool missing" as a reason to skip precise codebase exploration until install or bootstrap has been attempted.
-- Do not skip the two verification gates even on the fast route.
+- Do not skip the two verification gates even on Light Path.
 - Do not approve a plan that lacks dry-run or check evidence for external-state-changing work.
 - Do not allow open-ended verification loops. Require a blocker or slice split after two failed passes.
-- On the full route, `reviewer` must check plan gaps before implementation.
-- Before asking the user, delegate to the appropriate role among `architect`, `planner`, `worker`, and `reviewer`.
+- On Heavy Path, check plan gaps before implementation.
+- Before asking the user, use repository evidence and available `explorer`/`worker` delegation when it materially improves speed or quality.
 - Write user-visible output in the OS locale unless the user asks for another language.
 
-## Role Guidance
+## Path Guidance
 
-### architect
+### Policy And Risk
 
 - Summarize domain boundaries and risk from repository evidence.
 - If policy is unclear, propose candidates to record in `docs/memory/<domain>.md`.
-- Clearly name risk signals that require the full route.
+- Clearly name risk signals that require Heavy Path.
 
-### planner
+### Planning
 
 - Keep the plan short and executable.
-- Always record complexity triage and the selected route.
+- Always record complexity triage and the selected Light/Heavy Path.
 - Always record tool readiness and blockers.
 - Each module slice must include files, contract, dry-run or check command when applicable, module acceptance verification, and surface integration verification.
 
-### reviewer
+### Review
 
 - Lead with findings.
 - Do not approve without evidence.
