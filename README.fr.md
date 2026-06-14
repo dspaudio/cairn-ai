@@ -4,7 +4,7 @@ Cairn est un plugin de harness multi-agent économe en tokens pour Codex, Claude
 
 [English](README.md)
 
-L'idée centrale est de conserver les parties utiles de LazyCodex : hooks, état persistant, planification explicite, rôles d'agents et gardes au moment de l'arrêt. Cairn ne fait pas des boucles répétées de vérification TDD le comportement par défaut. Il découpe plutôt le travail en petits module slices et prouve chaque slice avec deux verification gates.
+L'idée centrale est de conserver des comportements utiles d'agent harness : hooks, état persistant, planification explicite, délégation ciblée et gardes au moment de l'arrêt. Cairn ne fait pas des boucles répétées de vérification TDD le comportement par défaut. Il découpe plutôt le travail en petits module slices et prouve chaque slice avec deux verification gates.
 
 1. Module acceptance verification : prouve le contrat du module modifié.
 2. Surface integration verification : prouve le comportement via une surface réelle, comme CLI, HTTP, navigateur ou artefacts de fichiers.
@@ -13,14 +13,20 @@ Avant qu'un slice ne modifie un état externe, Cairn enregistre et exécute le d
 
 Cairn traite aussi la préparation des outils comme une partie du travail. LSP, typecheck, lint, dry-run et verification tools sont vérifiés par rapport au stack du repository. Si un outil requis manque, Cairn tente une installation project-local ou repository-native avant d'accepter un fallback.
 
+## LazyCodex Attribution
+
+Cairn est influencé par LazyCodex (`https://github.com/code-yeongyu/lazycodex`). Les idées reprises sont la forme d'agent harness installable, la gestion Codex hook trust/setup, project memory, planning skills, executable workflow commands, diagnostics et le skill/agent packaging entre local agent surfaces.
+
+Cairn diverge volontairement de LazyCodex dans l'execution policy. Il n'adopte pas le role-chain execution model ni les open-ended completion loops de LazyCodex. Cairn utilise Light/Heavy Path triage, une délégation bornée `explorer`/`worker`, deux verification gates et des explicit stop conditions.
+
 ## Complexity Triage
 
-Chaque user task passe d'abord par complexity triage. Le triage est décidé à partir de l'exploration du repository, de la portée attendue du changement et des signaux de risque, sans demander à l'utilisateur les faits découvrables.
+Chaque implementation task passe d'abord par complexity triage, avant d'appliquer agent, plugin ou delegated workflow guidance. Le triage est décidé à partir de l'exploration du repository, de la portée attendue du changement et des signaux de risque, sans demander à l'utilisateur les faits découvrables.
 
-- Fast route : un seul module, faible risque, portée de fichiers claire et pattern existant évident utilisent `planner -> builder`.
-- Full route : plusieurs modules, impact data/permission/migration/external integration/architecture, ou domain policy peu claire utilisent `architect -> planner -> reviewer -> builder -> reviewer`.
+- Light Path : changements étroits dans les existing architecture layers. C'est le comportement par défaut. Implémentez directement ou utilisez un `worker` borné, puis conservez le verification gate.
+- Heavy Path : new directory/module/layer, new domain model/service/abstraction, security/session/auth, external API/message queue/payment, DB schema/migration, concurrency/transaction/cache changes, cross-domain refactor ou explicit extra-care request.
 
-La route choisie et sa justification sont enregistrées dans `docs/plan/<topic>.md`. Même en fast route, les deux verification gates restent après la fin de `builder`.
+Le path choisi et sa justification sont enregistrés dans `docs/plan/<topic>.md` quand un plan artifact existe. Même en Light Path, les deux verification gates restent.
 
 ## Tool Readiness
 
@@ -48,8 +54,8 @@ cairn toolcheck --install
 
 Cairn applique des ajustements spécifiques uniquement aux modèles Claude-family et Codex-family.
 
-- Claude-family : préféré pour `architect`, `planner` et `reviewer`. À utiliser pour long context, policy interpretation et plan/evidence review.
-- Codex-family : préféré pour `builder`, `worker` et les `planner` structurellement clairs. À utiliser pour small implementation slices, explicit file edits et command-based verification.
+- Claude-family : utile pour long context, policy interpretation et plan/evidence review.
+- Codex-family : utile pour small implementation slices, explicit file edits, command-based verification et bounded `worker` tasks.
 
 Les détails se trouvent dans `docs/model-guidance/README.md`, `docs/model-guidance/claude.md` et `docs/model-guidance/codex.md`.
 
@@ -67,7 +73,7 @@ Les fichiers racine restent courts et les détails vont sous `docs/`, afin que l
 
 ## Commands
 
-Le package publié peut être exécuté dans le même style que LazyCodex.
+Le package publié peut être exécuté avec `bunx` ou avec des commandes `cairn` installées globalement.
 
 ```sh
 bunx cairn-ai@latest install
@@ -115,12 +121,10 @@ Les hooks propres à Codex ne sont pas portés vers Antigravity. À la place, le
 
 Les instructions réutilisables de Cairn sont écrites en anglais pour un usage global. La sortie visible par l'utilisateur doit suivre l'OS locale configurée, sauf si l'utilisateur demande explicitement une autre langue. La CLI localise les messages communs pour `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de` et `pt`, puis revient à English pour les locales non prises en charge. Le texte `statusMessage` des Codex hooks reste en anglais statique, tandis que hook command output est English ou Korean.
 
-## Agent Roles
+## Delegation
 
-- `architect` : résume system boundaries, risk et domain policy.
-- `planner` : convertit explored facts en decision-complete plan.
-- `builder` : implémente un small module slice.
-- `reviewer` : vérifie behavior, policy et evidence.
-- `worker` : gère focused work comme search, small edits et QA.
+- `explorer` : gère read-only codebase discovery, impact analysis, pattern searches et read-only verification quand disponible.
+- `worker` : gère des bounded implementation ou verification tasks avec file ownership clair.
+- Main session : garde local l'urgent blocking work quand l'étape suivante dépend immédiatement du résultat.
 
 Chaque delegation prompt utilise six sections : TASK, EXPECTED OUTCOME, REQUIRED TOOLS, MUST DO, MUST NOT DO, CONTEXT.

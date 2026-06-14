@@ -4,7 +4,7 @@ Cairn ist ein token-effizientes Multi-Agent-Harness-Plugin für Codex, Claude Co
 
 [English](README.md)
 
-Die Grundidee ist, die nützlichen Teile von LazyCodex beizubehalten: hooks, persistent state, explicit planning, agent roles und stop-time guards. Cairn macht wiederholte TDD verification loops nicht zum Standard. Stattdessen teilt es Arbeit in kleine module slices und belegt jeden slice mit zwei verification gates.
+Die Grundidee ist, nützliches agent-harness-Verhalten beizubehalten: hooks, persistent state, explicit planning, focused delegation und stop-time guards. Cairn macht wiederholte TDD verification loops nicht zum Standard. Stattdessen teilt es Arbeit in kleine module slices und belegt jeden slice mit zwei verification gates.
 
 1. Module acceptance verification: belegt den geänderten module contract.
 2. Surface integration verification: belegt Verhalten über die echte surface, etwa CLI, HTTP, browser oder file artifacts.
@@ -13,14 +13,20 @@ Bevor ein slice externen Zustand verändert, zeichnet Cairn den nächstliegenden
 
 Cairn behandelt tool readiness ebenfalls als Teil der Arbeit. LSP, typecheck, lint, dry-run und verification tools werden gegen den repository stack geprüft. Fehlt ein erforderliches tool, versucht Cairn eine project-local oder repository-native installation, bevor ein fallback akzeptiert wird.
 
+## LazyCodex Attribution
+
+Cairn ist von LazyCodex (`https://github.com/code-yeongyu/lazycodex`) beeinflusst. Übernommene Ideen sind die installierbare agent-harness-Form, Codex hook trust/setup handling, project memory, planning skills, executable workflow commands, diagnostics und skill/agent packaging über local agent surfaces hinweg.
+
+Cairn weicht in der execution policy bewusst von LazyCodex ab. Es übernimmt nicht das role-chain execution model oder die open-ended completion loops von LazyCodex. Cairn verwendet Light/Heavy Path triage, begrenzte `explorer`/`worker` delegation, zwei verification gates und explicit stop conditions.
+
 ## Complexity Triage
 
-Jede user task durchläuft zuerst complexity triage. Triage wird aus repository exploration, erwartetem Änderungsumfang und risk signals entschieden, ohne den user nach auffindbaren Fakten zu fragen.
+Jede implementation task durchläuft zuerst complexity triage, bevor agent, plugin oder delegated workflow guidance angewendet werden. Triage wird aus repository exploration, erwartetem Änderungsumfang und risk signals entschieden, ohne den user nach auffindbaren Fakten zu fragen.
 
-- Fast route: single module, low risk, clear file scope und klares existing pattern verwenden `planner -> builder`.
-- Full route: multiple modules, data/permission/migration/external integration/architecture impact oder unklare domain policy verwenden `architect -> planner -> reviewer -> builder -> reviewer`.
+- Light Path: schmale Änderungen innerhalb existing architecture layers. Das ist der Standard. Direkt implementieren oder einen begrenzten `worker` verwenden, danach bleibt das verification gate bestehen.
+- Heavy Path: new directory/module/layer, new domain model/service/abstraction, security/session/auth, external API/message queue/payment, DB schema/migration, concurrency/transaction/cache changes, cross-domain refactor oder explicit extra-care request.
 
-Die gewählte route und Begründung werden in `docs/plan/<topic>.md` festgehalten. Auch auf der fast route bleiben nach Abschluss von `builder` die zwei verification gates bestehen.
+Der gewählte path und die Begründung werden in `docs/plan/<topic>.md` festgehalten, wenn ein plan artifact existiert. Auch auf Light Path bleiben die zwei verification gates bestehen.
 
 ## Tool Readiness
 
@@ -48,8 +54,8 @@ cairn toolcheck --install
 
 Cairn wendet model-specific adjustment nur auf Claude-family und Codex-family models an.
 
-- Claude-family: bevorzugt für `architect`, `planner` und `reviewer`. Geeignet für long context, policy interpretation und plan/evidence review.
-- Codex-family: bevorzugt für `builder`, `worker` und strukturell klare `planner`. Geeignet für small implementation slices, explicit file edits und command-based verification.
+- Claude-family: geeignet für long context, policy interpretation und plan/evidence review.
+- Codex-family: geeignet für small implementation slices, explicit file edits, command-based verification und bounded `worker` tasks.
 
 Details stehen in `docs/model-guidance/README.md`, `docs/model-guidance/claude.md` und `docs/model-guidance/codex.md`.
 
@@ -67,7 +73,7 @@ Root files bleiben kurz, Details wandern unter `docs/`, damit agents nur den ben
 
 ## Commands
 
-Das veröffentlichte package kann im Stil von LazyCodex ausgeführt werden.
+Das veröffentlichte package kann mit `bunx` oder global installierten `cairn` commands ausgeführt werden.
 
 ```sh
 bunx cairn-ai@latest install
@@ -115,12 +121,10 @@ Codex-only hooks werden nicht nach Antigravity portiert. Stattdessen laufen dies
 
 Cairns reusable instructions sind für global use auf Englisch geschrieben. User-visible output folgt der konfigurierten OS locale, sofern der user nicht ausdrücklich eine andere Sprache verlangt. Die CLI lokalisiert common messages für `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de` und `pt` und fällt bei unsupported locales auf English zurück. Codex hook `statusMessage` text bleibt static English, während hook command output English oder Korean ist.
 
-## Agent Roles
+## Delegation
 
-- `architect`: fasst system boundaries, risk und domain policy zusammen.
-- `planner`: wandelt explored facts in einen decision-complete plan um.
-- `builder`: implementiert einen small module slice.
-- `reviewer`: prüft behavior, policy und evidence.
-- `worker`: erledigt focused work wie search, small edits und QA.
+- `explorer`: erledigt read-only codebase discovery, impact analysis, pattern searches und read-only verification, wenn verfügbar.
+- `worker`: erledigt bounded implementation oder verification tasks mit klarem file ownership.
+- Main session: hält urgent blocking work lokal, wenn der nächste Schritt sofort vom Ergebnis abhängt.
 
 Jeder delegation prompt verwendet sechs sections: TASK, EXPECTED OUTCOME, REQUIRED TOOLS, MUST DO, MUST NOT DO, CONTEXT.

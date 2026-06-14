@@ -12,7 +12,7 @@ Cairn is a token-efficient multi-agent harness plugin for Codex, Claude Code, an
 - [Deutsch](README.de.md)
 - [Português](README.pt.md)
 
-The core idea is to keep the useful parts of LazyCodex: hooks, persistent state, explicit planning, agent roles, and stop-time guards. Cairn does not make repeated TDD verification loops the default. Instead, it splits work into small module slices and proves each slice with two verification gates.
+The core idea is to keep useful agent-harness behavior: hooks, persistent state, explicit planning, focused delegation, and stop-time guards. Cairn does not make repeated TDD verification loops the default. Instead, it splits work into small module slices and proves each slice with two verification gates.
 
 1. Module acceptance verification: proves the changed module contract.
 2. Surface integration verification: proves behavior through the real surface, such as CLI, HTTP, browser, or file artifacts.
@@ -21,14 +21,20 @@ Before a slice mutates external state, Cairn records and runs the closest availa
 
 Cairn also treats tool readiness as part of the work. LSP, typecheck, lint, dry-run, and verification tools are checked against the repository stack. If a required tool is missing, Cairn attempts project-local or repository-native installation before accepting a fallback.
 
+## LazyCodex Attribution
+
+Cairn is influenced by LazyCodex (`https://github.com/code-yeongyu/lazycodex`). The borrowed ideas are the installable agent-harness shape, Codex hook trust/setup handling, project memory, planning skills, executable workflow commands, diagnostics, and skill/agent packaging across local agent surfaces.
+
+Cairn intentionally diverges from LazyCodex in the execution policy. It does not adopt LazyCodex's role-chain execution model or open-ended completion loops. Cairn uses Light/Heavy Path triage, bounded `explorer`/`worker` delegation, two verification gates, and explicit stop conditions instead.
+
 ## Complexity Triage
 
-Every user task passes complexity triage first. Triage is decided from repository exploration, expected change scope, and risk signals without asking the user.
+Every implementation task passes complexity triage first, before agent, plugin, or delegated workflow guidance. Triage is decided from repository exploration, expected change scope, and risk signals without asking the user.
 
-- Fast route: single module, low risk, clear file scope, and obvious existing pattern use `planner -> builder`.
-- Full route: multiple modules, data/permission/migration/external integration/architecture impact, or unclear domain policy use `architect -> planner -> reviewer -> builder -> reviewer`.
+- Light Path: narrow changes inside existing architecture layers. This is the default. Implement directly or use one bounded `worker`, then keep the verification gate.
+- Heavy Path: new directory/module/layer, new domain model/service/abstraction, security/session/auth, external API/message queue/payment, DB schema/migration, concurrency/transaction/cache changes, cross-domain refactor, or explicit extra-care request.
 
-The selected route and rationale are recorded in `docs/plan/<topic>.md`. Even on the fast route, the two verification gates remain after `builder` completion.
+The selected path and rationale are recorded in `docs/plan/<topic>.md` when a plan artifact exists. Even on Light Path, the two verification gates remain.
 
 ## Tool Readiness
 
@@ -56,8 +62,8 @@ cairn toolcheck --install
 
 Cairn only applies model-specific adjustment to Claude-family and Codex-family models.
 
-- Claude-family: preferred for `architect`, `planner`, and `reviewer`. Use for long context, policy interpretation, and plan/evidence review.
-- Codex-family: preferred for `builder`, `worker`, and structurally clear `planner`. Use for small implementation slices, explicit file edits, and command-based verification.
+- Claude-family: useful for long context, policy interpretation, and plan/evidence review.
+- Codex-family: useful for small implementation slices, explicit file edits, command-based verification, and bounded `worker` tasks.
 
 Detailed guidance lives in `docs/model-guidance/README.md`, `docs/model-guidance/claude.md`, and `docs/model-guidance/codex.md`.
 
@@ -75,7 +81,7 @@ Root files stay short and details move under `docs/`, so agents only read the co
 
 ## Commands
 
-The published package can be executed in the same style as LazyCodex.
+The published package can be executed with `bunx` or globally installed `cairn` commands.
 
 ```sh
 bunx cairn-ai@latest install
@@ -123,12 +129,10 @@ Codex-only hooks are not ported to Antigravity. Instead, the same planning, memo
 
 Cairn's reusable instructions are written in English for global use. User-visible output should follow the configured OS locale unless the user explicitly asks for another language. The CLI localizes common messages for `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de`, and `pt`, and falls back to English for unsupported locales. Codex hook `statusMessage` text remains static English, while hook command output is English or Korean.
 
-## Agent Roles
+## Delegation
 
-- `architect`: summarizes system boundaries, risk, and domain policy.
-- `planner`: converts explored facts into a decision-complete plan.
-- `builder`: implements one small module slice.
-- `reviewer`: verifies behavior, policy, and evidence.
-- `worker`: handles focused work such as search, small edits, and QA.
+- `explorer`: handles read-only codebase discovery, impact analysis, pattern searches, and read-only verification when available.
+- `worker`: handles bounded implementation or verification tasks with clear file ownership.
+- Main session: keeps urgent blocking work local when the next step depends immediately on the result.
 
 Every delegation prompt uses six sections: TASK, EXPECTED OUTCOME, REQUIRED TOOLS, MUST DO, MUST NOT DO, CONTEXT.
