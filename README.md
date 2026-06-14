@@ -82,7 +82,7 @@ Codex-only hooks are not ported to Antigravity. Instead, the same planning, memo
 
 ## Locale Policy
 
-Cairn's reusable instructions are written in English for global use. User-visible output should follow the configured OS locale unless the user explicitly asks for another language. The CLI currently localizes lifecycle messages for Korean locales and uses English otherwise.
+Cairn's reusable instructions are written in English for global use. User-visible output should follow the configured OS locale unless the user explicitly asks for another language. The CLI localizes common messages for `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de`, and `pt`, and falls back to English for unsupported locales. Codex hook `statusMessage` text remains static English, while hook command output is English or Korean.
 
 ## Agent Roles
 
@@ -93,7 +93,3 @@ Cairn's reusable instructions are written in English for global use. User-visibl
 - `worker`: handles focused work such as search, small edits, and QA.
 
 Every delegation prompt uses six sections: TASK, EXPECTED OUTCOME, REQUIRED TOOLS, MUST DO, MUST NOT DO, CONTEXT.
-
-## LazyCodex Analysis
-
-The summary is in `docs/lazycodex-analysis/summary.md`.

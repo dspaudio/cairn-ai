@@ -280,6 +280,42 @@ function t(key) {
       uninstallComplete: "Cairn 언인스톨 완료",
       usage: "사용법: cairn install|upgrade|doctor|uninstall",
     },
+    ja: {
+      installComplete: "Cairn のインストールが完了しました",
+      upgradeComplete: "Cairn のアップグレードが完了しました",
+      uninstallComplete: "Cairn のアンインストールが完了しました",
+      usage: "使い方: cairn install|upgrade|doctor|uninstall",
+    },
+    zh: {
+      installComplete: "Cairn 安装完成",
+      upgradeComplete: "Cairn 升级完成",
+      uninstallComplete: "Cairn 卸载完成",
+      usage: "用法: cairn install|upgrade|doctor|uninstall",
+    },
+    es: {
+      installComplete: "Instalación de Cairn completada",
+      upgradeComplete: "Actualización de Cairn completada",
+      uninstallComplete: "Desinstalación de Cairn completada",
+      usage: "Uso: cairn install|upgrade|doctor|uninstall",
+    },
+    fr: {
+      installComplete: "Installation de Cairn terminée",
+      upgradeComplete: "Mise à niveau de Cairn terminée",
+      uninstallComplete: "Désinstallation de Cairn terminée",
+      usage: "Utilisation: cairn install|upgrade|doctor|uninstall",
+    },
+    de: {
+      installComplete: "Cairn-Installation abgeschlossen",
+      upgradeComplete: "Cairn-Upgrade abgeschlossen",
+      uninstallComplete: "Cairn-Deinstallation abgeschlossen",
+      usage: "Verwendung: cairn install|upgrade|doctor|uninstall",
+    },
+    pt: {
+      installComplete: "Instalação do Cairn concluída",
+      upgradeComplete: "Atualização do Cairn concluída",
+      uninstallComplete: "Desinstalação do Cairn concluída",
+      usage: "Uso: cairn install|upgrade|doctor|uninstall",
+    },
   };
   return messages[localeFamily()]?.[key] ?? messages.en[key];
 }
@@ -287,5 +323,9 @@ function t(key) {
 function localeFamily() {
   const locale = [process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG]
     .find((value) => typeof value === "string" && value.length > 0) ?? Intl.DateTimeFormat().resolvedOptions().locale;
-  return locale.toLowerCase().startsWith("ko") ? "ko" : "en";
+  const normalized = locale.toLowerCase();
+  for (const family of ["ko", "ja", "zh", "es", "fr", "de", "pt"]) {
+    if (normalized.startsWith(family)) return family;
+  }
+  return "en";
 }
