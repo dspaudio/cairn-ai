@@ -17,15 +17,16 @@ Plans must reduce execution tokens. Do not leave long plans only in chat. Store 
 2. Read only `MEMORY.md` and relevant `docs/memory/*.md` files.
 3. Based on the active or assigned model, read `docs/model-guidance/README.md` and only the relevant model guidance.
 4. Explore the repository with focused search and LSP/symbol tools.
-5. Run complexity triage and select the work route.
-6. Delegate according to the selected route and model guidance instead of asking the user.
+5. Identify the closest available dry-run or check mode for every slice that can mutate external state.
+6. Run complexity triage and select the work route.
+7. Delegate according to the selected route and model guidance instead of asking the user.
    - `architect`: boundaries, domain policy, high-risk decisions.
    - `planner`: slice order, dependencies, acceptance criteria.
    - `worker`: concrete file paths, command availability, examples.
    - `reviewer`: plan gaps and unproven assumptions.
-7. Create `docs/plan/<topic>.md` from `templates/work-plan.md`.
-8. Add a short index entry to `PLAN.md`.
-9. Write user-visible output in the OS locale unless the user asks for another language.
+8. Create `docs/plan/<topic>.md` from `templates/work-plan.md`.
+9. Add a short index entry to `PLAN.md`.
+10. Write user-visible output in the OS locale unless the user asks for another language.
 
 ## Complexity Triage
 
@@ -67,9 +68,21 @@ Choose the full route when any signal is present.
 - Every plan must include applied model guidance and rationale.
 - Every implementation slice must be small enough to verify with two checks.
 - The default checks are module acceptance verification and surface integration verification.
+- Every risky or external-state-changing slice must include the closest available dry-run or check command before the write/apply command.
 - Verification can expand for risk, but the reason must be recorded.
+- The default loop budget is two verification passes per slice. If a gate fails, diagnose once, shrink or split the slice, and rerun both gates. After two failed passes, record the blocker in `docs/plan/<topic>.md` instead of continuing an open-ended loop.
 - Ask the user only when agents or repository evidence cannot answer the decision.
 - User-visible text must follow the OS locale unless the user asks for another language.
+
+## Dry-Run Policy
+
+Prefer repository-native dry-run and check modes before mutating external state.
+
+- Migrations and database changes: `--pretend`, dry-run, schema diff, rollback feasibility check, or equivalent.
+- Package and release work: `npm pack --dry-run`, publish dry-run, build check, or equivalent.
+- Infrastructure and deployment: plan, diff, validate, check, or equivalent.
+- Code generation and formatting: check mode before write mode when available.
+- If no dry-run mode exists, record that fact and select the smallest reversible command or test artifact available.
 
 ## Delegation Prompt Format
 

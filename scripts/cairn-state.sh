@@ -56,7 +56,10 @@ This file is a short index of active and completed work plans.
 - Each slice normally passes exactly two gates.
   - Module acceptance verification.
   - Surface integration verification.
-- Repeat verification only when a gate fails or risk requires it.
+- Run dry-run or check mode before external-state mutation when available.
+- Use at most two verification passes per slice by default.
+- If a gate fails, diagnose once, shrink or split the slice, and rerun both gates.
+- After two failed passes, record the blocker in `docs/plan/<topic>.md`.
 EOF
 fi
 
@@ -77,16 +80,16 @@ case "$event" in
     ;;
   post-tool-use)
     if is_ko; then
-      printf '%s\n' "Cairn 점검: 동작이 바뀌었다면 완료 주장 전에 docs/memory 또는 docs/plan 증거를 갱신하세요."
+      printf '%s\n' "Cairn 점검: 외부 상태 변경에는 dry-run/check 증거가 필요하고, 동작이 바뀌었다면 docs/plan 증거를 갱신하세요."
     else
-      printf '%s\n' "Cairn check: if behavior changed, update docs/memory or docs/plan evidence before claiming completion."
+      printf '%s\n' "Cairn check: external-state changes need dry-run/check evidence; if behavior changed, update docs/plan evidence."
     fi
     ;;
   stop|subagent-stop)
     if is_ko; then
-      printf '%s\n' "Cairn 종료 게이트: 완료에는 관련 docs/plan 파일에 기록된 모듈 수용 증거와 표면 통합 증거가 필요합니다."
+      printf '%s\n' "Cairn 종료 게이트: 완료에는 docs/plan의 dry-run/check, 모듈 수용, 표면 통합 증거가 필요합니다."
     else
-      printf '%s\n' "Cairn stop gate: completion requires module acceptance and surface integration evidence in the related docs/plan file."
+      printf '%s\n' "Cairn stop gate: completion requires dry-run/check, module acceptance, and surface integration evidence in docs/plan."
     fi
     ;;
   *)

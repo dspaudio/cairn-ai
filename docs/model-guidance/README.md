@@ -18,6 +18,8 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - Preserve proper nouns, file names, variable names, service names, alert names, MCP tool names, and agent names exactly as written.
 - Select either the fast route or full route before implementation.
 - Every implementation slice must pass module acceptance verification and surface integration verification.
+- Before mutating external state, run the closest available dry-run, check, plan, diff, validate, or equivalent command.
+- Limit each slice to two verification passes by default. After two failed passes, record the blocker or split the slice instead of continuing a repeated loop.
 - User-visible output must follow the OS locale unless the user asks for another language.
 
 ## Role Defaults

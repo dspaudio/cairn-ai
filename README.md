@@ -7,6 +7,8 @@ The core idea is to keep the useful parts of LazyCodex: hooks, persistent state,
 1. Module acceptance verification: proves the changed module contract.
 2. Surface integration verification: proves behavior through the real surface, such as CLI, HTTP, browser, or file artifacts.
 
+Before a slice mutates external state, Cairn records and runs the closest available dry-run or check mode. Verification is bounded: each slice gets two verification passes by default, then the agent records a blocker or splits the slice instead of continuing an open-ended loop.
+
 ## Complexity Triage
 
 Every user task passes complexity triage first. Triage is decided from repository exploration, expected change scope, and risk signals without asking the user.
@@ -15,6 +17,14 @@ Every user task passes complexity triage first. Triage is decided from repositor
 - Full route: multiple modules, data/permission/migration/external integration/architecture impact, or unclear domain policy use `architect -> planner -> reviewer -> builder -> reviewer`.
 
 The selected route and rationale are recorded in `docs/plan/<topic>.md`. Even on the fast route, the two verification gates remain after `builder` completion.
+
+## Dry-Run And Loop Policy
+
+- Migrations and database changes use `--pretend`, dry-run, schema diff, rollback feasibility checks, or the closest repository-native equivalent before write/apply commands.
+- Package, release, infrastructure, deployment, code generation, and formatting work use check, plan, diff, validate, or dry-run modes before mutating state when available.
+- If no dry-run exists, the plan records that fact and selects the smallest reversible command or test artifact available.
+- If a verification gate fails, Cairn diagnoses once, shrinks or splits the slice, and reruns both gates.
+- After two failed verification passes for the same slice, Cairn records the blocker in `docs/plan/<topic>.md` instead of continuing a repeated loop.
 
 ## Model Guidance
 
