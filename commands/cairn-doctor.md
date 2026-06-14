@@ -1,27 +1,27 @@
 # cairn-doctor
 
-목표: Cairn 설치 상태를 진단합니다.
+Goal: diagnose Cairn installation status.
 
-실행:
+Run:
 
 ```sh
 scripts/cairn doctor
 ```
 
-패키지 배포본에서는 다음처럼 실행합니다.
+With the published package:
 
 ```sh
 bunx cairn-ai@latest doctor
 ```
 
-확인 항목:
+Checks:
 
-- 원본 플러그인 manifest.
-- Codex 캐시 설치본.
-- marketplace 파일.
-- 설치본의 hook manifest 연결.
+- Source plugin manifest.
+- Codex cached installation.
+- Marketplace file.
+- Hook manifest link in the installed copy.
 - `features.plugins`, `features.plugin_hooks`.
-- `cairn@cairn` plugin 활성화.
+- `cairn@cairn` plugin enabled.
 - hook trust state.
-- Claude Code commands와 agents 미러 파일.
-- Antigravity IDE/CLI skills와 workflows 미러 파일.
+- Claude Code commands and agents mirror files.
+- Antigravity IDE/CLI skills and workflows mirror files.

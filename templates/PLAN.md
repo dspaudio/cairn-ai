@@ -1,11 +1,11 @@
 # PLAN
 
-작업 계획의 짧은 색인입니다. 상세 계획은 `docs/plan/`에 링크합니다.
+Short index of work plans. Link detailed plans under `docs/plan/`.
 
-## 활성 계획
+## Active Plans
 
-- `docs/plan/<topic>.md`: 짧은 상태.
+- `docs/plan/<topic>.md`: short status.
 
-## 완료 계획
+## Completed Plans
 
-- `docs/plan/<topic>.md`: 증거 요약.
+- `docs/plan/<topic>.md`: evidence summary.

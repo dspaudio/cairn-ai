@@ -1,45 +1,45 @@
 # Cairn
 
-Cairn은 Codex, Claude Code, Antigravity에서 함께 쓰는 토큰 절약형 멀티에이전트 하네스 플러그인입니다.
+Cairn is a token-efficient multi-agent harness plugin for Codex, Claude Code, and Antigravity.
 
-핵심 아이디어는 LazyCodex의 장점인 훅, 지속 상태, 명시적 계획, 에이전트 역할, 중단 시점 가드를 유지하되, 반복적인 TDD 검증 루프를 기본값으로 두지 않는 것입니다. 대신 작업을 작은 모듈 단위로 나누고 두 번의 검증으로 통과시키는 흐름을 사용합니다.
+The core idea is to keep the useful parts of LazyCodex: hooks, persistent state, explicit planning, agent roles, and stop-time guards. Cairn does not make repeated TDD verification loops the default. Instead, it splits work into small module slices and proves each slice with two verification gates.
 
-1. 모듈 수용 검증: 변경된 모듈의 계약을 증명합니다.
-2. 표면 통합 검증: 실제 CLI, HTTP, 브라우저, 파일 산출물 같은 사용 표면에서 동작을 증명합니다.
+1. Module acceptance verification: proves the changed module contract.
+2. Surface integration verification: proves behavior through the real surface, such as CLI, HTTP, browser, or file artifacts.
 
-## 복잡도 트리아지
+## Complexity Triage
 
-모든 사용자 작업은 먼저 복잡도 트리아지를 통과합니다. 트리아지는 사용자에게 묻지 않고 저장소 탐색, 변경 예상 범위, 위험 신호로 결정합니다.
+Every user task passes complexity triage first. Triage is decided from repository exploration, expected change scope, and risk signals without asking the user.
 
-- 빠른 경로: 단일 모듈, 낮은 위험, 명확한 파일 범위, 기존 패턴이 분명한 작업은 `planner → builder` 순서로 처리합니다.
-- 전체 경로: 여러 모듈, 데이터/권한/마이그레이션/외부 연동/아키텍처 영향/불명확한 도메인 정책이 있는 작업은 `architect → planner → reviewer → builder → reviewer` 순서로 처리합니다.
+- Fast route: single module, low risk, clear file scope, and obvious existing pattern use `planner -> builder`.
+- Full route: multiple modules, data/permission/migration/external integration/architecture impact, or unclear domain policy use `architect -> planner -> reviewer -> builder -> reviewer`.
 
-선택한 경로와 이유는 `docs/plan/<topic>.md`에 남깁니다. 빠른 경로라도 `builder` 완료 후 두 단계 검증은 유지합니다.
+The selected route and rationale are recorded in `docs/plan/<topic>.md`. Even on the fast route, the two verification gates remain after `builder` completion.
 
-## 모델 지침
+## Model Guidance
 
-Cairn은 Claude 계열과 Codex 계열만 모델별 보정 대상으로 둡니다.
+Cairn only applies model-specific adjustment to Claude-family and Codex-family models.
 
-- Claude 계열: `architect`, `planner`, `reviewer` 역할에 우선 적용합니다. 긴 컨텍스트, 정책 해석, 계획/증거 검토에 사용합니다.
-- Codex 계열: `builder`, `worker`, 구조가 명확한 `planner` 역할에 우선 적용합니다. 작은 구현 조각, 명확한 파일 편집, 명령 기반 검증에 사용합니다.
+- Claude-family: preferred for `architect`, `planner`, and `reviewer`. Use for long context, policy interpretation, and plan/evidence review.
+- Codex-family: preferred for `builder`, `worker`, and structurally clear `planner`. Use for small implementation slices, explicit file edits, and command-based verification.
 
-자세한 지침은 `docs/model-guidance/README.md`, `docs/model-guidance/claude.md`, `docs/model-guidance/codex.md`에 있습니다.
+Detailed guidance lives in `docs/model-guidance/README.md`, `docs/model-guidance/claude.md`, and `docs/model-guidance/codex.md`.
 
-## 저장소 산출물
+## Repository Artifacts
 
-하네스는 대상 저장소 루트에 다음 파일을 만들고 유지합니다.
+The harness creates and maintains these files at the target repository root.
 
-- `MEMORY.md`: 지속 도메인 지식의 짧은 색인.
-- `docs/memory/*.md`: 도메인별 상세 지식.
-- `docs/model-guidance/*.md`: Claude와 Codex 모델별 보정 지침.
-- `PLAN.md`: 활성/완료 작업 주제의 짧은 색인.
-- `docs/plan/*.md`: 상세 실행 계획.
+- `MEMORY.md`: short index of persistent domain knowledge.
+- `docs/memory/*.md`: detailed knowledge by domain.
+- `docs/model-guidance/*.md`: Claude and Codex model adjustment guidance.
+- `PLAN.md`: short index of active and completed work topics.
+- `docs/plan/*.md`: detailed execution plans.
 
-루트 파일은 짧게 유지하고 상세 내용은 `docs/` 아래로 분리해, 에이전트가 필요한 컨텍스트만 읽도록 합니다.
+Root files stay short and details move under `docs/`, so agents only read the context they need.
 
-## 명령
+## Commands
 
-패키지로 배포된 Cairn은 LazyCodex와 같은 형태로 실행할 수 있습니다.
+The published package can be executed in the same style as LazyCodex.
 
 ```sh
 bunx cairn-ai@latest install
@@ -48,7 +48,7 @@ bunx cairn-ai@latest doctor
 bunx cairn-ai@latest uninstall
 ```
 
-전역 설치 후에는 짧은 명령도 사용할 수 있습니다.
+After global installation, short commands are also available.
 
 ```sh
 bun add -g cairn-ai
@@ -58,38 +58,42 @@ cairn doctor
 cairn uninstall
 ```
 
-- `cairn install`: Codex marketplace 캐시에 플러그인을 설치하고 훅 신뢰 상태, Claude Code 미러 파일, Antigravity skills/workflows를 구성합니다.
-- `cairn upgrade`: 현재 소스 기준으로 설치본, 훅 신뢰 상태, Claude Code 미러 파일, Antigravity skills/workflows를 갱신합니다.
-- `cairn doctor`: Codex 설정, 설치본, 훅 신뢰 상태, Claude Code 미러 파일, Antigravity 미러 파일을 진단합니다.
-- `cairn uninstall`: Cairn이 추가한 Codex 설정, 캐시, Claude Code 미러 파일, Antigravity 미러 파일을 제거합니다.
-- `cairn-memory`: 도메인 지식을 탐색하고 `MEMORY.md`를 갱신합니다.
-- `cairn-plan`: `docs/plan/` 아래에 결정 완료 상태의 계획을 만듭니다.
-- `cairn-work`: 현재 `PLAN.md`의 다음 모듈 조각을 두 번의 검증으로 실행합니다.
-- `cairn-review`: 계획, 메모리, 증거를 기준으로 완료 조각을 검토합니다.
+- `cairn install`: installs the plugin into the Codex marketplace cache and configures hook trust state, Claude Code mirror files, and Antigravity skills/workflows.
+- `cairn upgrade`: updates the installation, hook trust state, Claude Code mirror files, and Antigravity skills/workflows from the current source.
+- `cairn doctor`: diagnoses Codex settings, installation, hook trust state, Claude Code mirror files, and Antigravity mirror files.
+- `cairn uninstall`: removes Cairn-added Codex settings, cache, Claude Code mirror files, and Antigravity mirror files.
+- `cairn-memory`: explores domain knowledge and updates `MEMORY.md`.
+- `cairn-plan`: creates a decision-complete plan under `docs/plan/`.
+- `cairn-work`: executes the next module slice in the current `PLAN.md` with two verification gates.
+- `cairn-review`: reviews completed slices against plan, memory, and evidence.
 
-설치/업그레이드는 `~/.codex/config.toml`을 수정하기 전에 `*.cairn-backup-*` 백업을 만듭니다. 원본 플러그인 manifest는 검증 가능한 상태로 유지하고, 설치된 캐시 복사본에만 `hooks` 필드를 추가해 Codex hook을 활성화합니다.
+Install and upgrade create `*.cairn-backup-*` backups before modifying `~/.codex/config.toml`. The source plugin manifest stays validator-friendly; only the installed cache copy gets a `hooks` field to activate Codex hooks.
 
-Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `.claude/` 아래의 미러링된 명령과 에이전트 정의를 사용할 수 있습니다. Antigravity는 `.agents/workflows`와 전역 skills 미러를 사용합니다.
+Codex uses `skills/` and `commands/`. Claude Code uses mirrored commands and agent definitions under `.claude/`. Antigravity uses `.agents/workflows` and global skills mirrors.
 
-## Antigravity 호환성
+## Antigravity Compatibility
 
-Antigravity는 `SKILL.md` 기반 Agent Skills와 `/workflow-name`으로 실행하는 Workflows를 지원합니다. Cairn은 이 표면에 맞춰 다음 경로를 설치합니다.
+Antigravity supports `SKILL.md`-based Agent Skills and Workflows invoked as `/workflow-name`. Cairn installs these paths for that surface.
 
 - Antigravity IDE: `~/.agents/skills/cairn-*`, `~/.agents/workflows/cairn-*.md`.
 - Antigravity CLI: `~/.gemini/antigravity-cli/skills/cairn-*`, `~/.gemini/antigravity-cli/workflows/cairn-*.md`.
 
-Codex 전용 hook은 Antigravity에 이식하지 않습니다. 대신 동일한 계획, 메모리, 복잡도 트리아지, 두 단계 검증 절차를 Skills와 Workflows로 실행합니다. 경로를 바꿔야 하면 `ANTIGRAVITY_HOME` 또는 `ANTIGRAVITY_CLI_HOME` 환경 변수를 지정합니다.
+Codex-only hooks are not ported to Antigravity. Instead, the same planning, memory, complexity triage, and two-gate verification procedures run through Skills and Workflows. Set `ANTIGRAVITY_HOME` or `ANTIGRAVITY_CLI_HOME` to override paths.
 
-## 에이전트 역할
+## Locale Policy
 
-- `architect`: 시스템 경계, 위험, 도메인 정책을 정리합니다.
-- `planner`: 탐색된 사실을 결정 완료 상태의 계획으로 변환합니다.
-- `builder`: 하나의 작은 모듈 조각을 구현합니다.
-- `reviewer`: 동작, 정책, 증거를 검증합니다.
-- `worker`: 검색, 작은 편집, QA 같은 집중 작업을 수행합니다.
+Cairn's reusable instructions are written in English for global use. User-visible output should follow the configured OS locale unless the user explicitly asks for another language. The CLI currently localizes lifecycle messages for Korean locales and uses English otherwise.
 
-모든 위임 프롬프트는 TASK, EXPECTED OUTCOME, REQUIRED TOOLS, MUST DO, MUST NOT DO, CONTEXT 여섯 섹션을 사용합니다.
+## Agent Roles
 
-## LazyCodex 분석
+- `architect`: summarizes system boundaries, risk, and domain policy.
+- `planner`: converts explored facts into a decision-complete plan.
+- `builder`: implements one small module slice.
+- `reviewer`: verifies behavior, policy, and evidence.
+- `worker`: handles focused work such as search, small edits, and QA.
 
-요약은 `docs/lazycodex-analysis/summary.md`에 있습니다.
+Every delegation prompt uses six sections: TASK, EXPECTED OUTCOME, REQUIRED TOOLS, MUST DO, MUST NOT DO, CONTEXT.
+
+## LazyCodex Analysis
+
+The summary is in `docs/lazycodex-analysis/summary.md`.

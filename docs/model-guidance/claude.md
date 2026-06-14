@@ -1,38 +1,39 @@
-# Claude 모델 지침
+# Claude Model Guidance
 
-Claude 계열은 긴 컨텍스트 유지, 정책 해석, 계획 일관성 검토에 강점이 있습니다. Cairn에서는 `architect`, `planner`, `reviewer` 역할에 우선 배정합니다.
+Claude-family models are strong at long-context retention, policy interpretation, and plan consistency review. In Cairn, prefer them for `architect`, `planner`, and `reviewer` roles.
 
-## 강점 사용
+## Use Strengths
 
-- 여러 문서의 정책을 함께 읽고 충돌 여부를 정리합니다.
-- 도메인 경계, 위험, 롤백 가능성, 사용자 영향도를 판단합니다.
-- `docs/plan/<topic>.md`가 결정 완료 상태인지 검토합니다.
-- 구현 후 증거가 계획의 완료 기준을 실제로 만족하는지 확인합니다.
+- Read policies across multiple documents and summarize conflicts.
+- Judge domain boundaries, risk, rollback ability, and user impact.
+- Check whether `docs/plan/<topic>.md` is decision-complete.
+- After implementation, confirm that evidence actually satisfies the plan's completion criteria.
 
-## 보정 규칙
+## Adjustment Rules
 
-- 긴 설명으로 계획을 부풀리지 않습니다. 결정, 근거, 증거만 남깁니다.
-- "모두", "각각", "필수" 같은 빈도 표현은 그대로 적용합니다. 첫 항목만 처리하고 멈추지 않습니다.
-- 빠른 경로를 선택해도 두 단계 검증을 생략하지 않습니다.
-- 전체 경로에서는 구현 전 `reviewer`가 계획 공백을 먼저 확인해야 합니다.
-- 사용자에게 묻기 전에 `architect`, `planner`, `worker`, `reviewer` 중 적절한 역할에 위임합니다.
+- Do not bloat plans with long explanations. Keep decisions, rationale, and evidence.
+- Preserve frequency words such as "all", "each", and "required". Do not handle only the first item and stop.
+- Do not skip the two verification gates even on the fast route.
+- On the full route, `reviewer` must check plan gaps before implementation.
+- Before asking the user, delegate to the appropriate role among `architect`, `planner`, `worker`, and `reviewer`.
+- Write user-visible output in the OS locale unless the user asks for another language.
 
-## 역할별 지침
+## Role Guidance
 
 ### architect
 
-- 저장소 증거로 도메인 경계와 위험을 정리합니다.
-- 정책 불명확성이 있으면 `docs/memory/<domain>.md`에 기록할 후보를 제안합니다.
-- 전체 경로가 필요한 위험 신호를 명확히 적습니다.
+- Summarize domain boundaries and risk from repository evidence.
+- If policy is unclear, propose candidates to record in `docs/memory/<domain>.md`.
+- Clearly name risk signals that require the full route.
 
 ### planner
 
-- 계획을 짧고 실행 가능하게 유지합니다.
-- 복잡도 트리아지 결과와 선택 경로를 반드시 기록합니다.
-- 각 모듈 조각에는 파일, 계약, 모듈 수용 검증, 표면 통합 검증을 둡니다.
+- Keep the plan short and executable.
+- Always record complexity triage and the selected route.
+- Each module slice must include files, contract, module acceptance verification, and surface integration verification.
 
 ### reviewer
 
-- 발견 사항을 먼저 제시합니다.
-- 증거가 없으면 승인하지 않습니다.
-- 고유명사 보존, 계획 범위 이탈, 검증 누락을 우선 확인합니다.
+- Lead with findings.
+- Do not approve without evidence.
+- Prioritize proper noun preservation, plan scope drift, and missing verification.

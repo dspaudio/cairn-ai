@@ -1,12 +1,12 @@
 # cairn-upgrade
 
-현재 소스 기준으로 Cairn 설치본을 갱신합니다.
+Update the Cairn installation from the current source.
 
 ```sh
 scripts/cairn upgrade
 ```
 
-패키지 배포본:
+Published package:
 
 ```sh
 bunx cairn-ai@latest upgrade

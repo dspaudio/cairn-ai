@@ -1,12 +1,12 @@
 # cairn-uninstall
 
-Cairn이 설치한 Codex와 Claude Code 항목을 제거합니다.
+Remove the Codex, Claude Code, and Antigravity entries installed by Cairn.
 
 ```sh
 scripts/cairn uninstall
 ```
 
-패키지 배포본:
+Published package:
 
 ```sh
 bunx cairn-ai@latest uninstall

@@ -1,37 +1,38 @@
-# Codex 모델 지침
+# Codex Model Guidance
 
-Codex 계열은 작은 구현 조각, 명확한 도구 사용, 반복 가능한 검증에 강점이 있습니다. Cairn에서는 `builder`, `worker`, 그리고 구조가 명확한 `planner` 역할에 우선 배정합니다.
+Codex-family models are strong at small implementation slices, explicit tool use, and repeatable verification. In Cairn, prefer them for `builder`, `worker`, and structurally clear `planner` roles.
 
-## 강점 사용
+## Use Strengths
 
-- 파일 범위가 명확한 구현 조각을 빠르게 처리합니다.
-- 기존 패턴을 읽고 같은 방식으로 최소 변경합니다.
-- 명령 실행 결과로 모듈 수용 검증과 표면 통합 검증을 확보합니다.
-- 독립 작업은 병렬로 탐색하고, 의존성이 있는 작업만 순차화합니다.
+- Quickly handle implementation slices with clear file scope.
+- Read existing patterns and make minimal changes in the same style.
+- Capture module acceptance verification and surface integration verification from command results.
+- Explore independent work in parallel and sequence only dependent work.
 
-## 보정 규칙
+## Adjustment Rules
 
-- 계획 없이 구현을 시작하지 않습니다.
-- 작업 단위를 작게 유지합니다. 큰 변경은 계획 조각을 다시 나눕니다.
-- `apply_patch`가 불안정한 환경에서는 편집 도구 또는 명확한 파일 갱신 경로를 사용합니다.
-- 같은 탐색을 중복하지 않습니다. 이미 위임한 검색은 결과를 기다립니다.
-- 성공처럼 보이는 출력만 믿지 않고, 실제 파일/명령/표면 증거를 확인합니다.
+- Do not start implementation without a plan.
+- Keep work units small. Split large changes into smaller plan slices.
+- If `apply_patch` is unstable in the environment, use an editing tool or a clear file update path.
+- Do not duplicate the same exploration. Wait for already delegated searches.
+- Do not trust success-looking output alone. Confirm real files, commands, and surface evidence.
+- Write user-visible output in the OS locale unless the user asks for another language.
 
-## 역할별 지침
+## Role Guidance
 
 ### planner
 
-- 빠른 경로일수록 더 명시적인 조각 계약을 작성합니다.
-- `builder`가 판단하지 않도록 파일 범위와 검증 명령을 구체화합니다.
-- 실패 시 반복 루프가 아니라 조각 재분할을 우선합니다.
+- On the fast route, write more explicit slice contracts.
+- Specify file scope and verification commands so `builder` does not need to decide.
+- On failure, prefer slice re-splitting over a repeated loop.
 
 ### builder
 
-- 계획에 적힌 파일 범위 안에서만 수정합니다.
-- 변경 후 모듈 수용 검증과 표면 통합 검증을 모두 실행합니다.
-- 증거를 `docs/plan/<topic>.md`에 기록할 수 있는 형태로 반환합니다.
+- Edit only within the file scope listed in the plan.
+- After changes, run both module acceptance verification and surface integration verification.
+- Return evidence in a form that can be recorded in `docs/plan/<topic>.md`.
 
 ### worker
 
-- 검색, 파일 목록화, 명령 확인, QA 산출물 확보를 담당합니다.
-- 장문 판단이나 정책 결정은 `architect` 또는 `reviewer`에게 넘깁니다.
+- Handle search, file listing, command checks, and QA artifact capture.
+- Hand off long-form judgment or policy decisions to `architect` or `reviewer`.

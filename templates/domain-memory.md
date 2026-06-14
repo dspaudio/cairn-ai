@@ -1,20 +1,20 @@
 # Domain: <name>
 
-## 범위
+## Scope
 
-이 노트가 다루는 도메인 경계를 설명합니다.
+Describe the domain boundary covered by this note.
 
-## 사실
+## Facts
 
-- 출처:
-- 증거:
-- 영향:
+- Source:
+- Evidence:
+- Impact:
 
-## 정책
+## Policy
 
-- 규칙:
-- 이유:
+- Rule:
+- Rationale:
 
-## 참조
+## References
 
-- 경로 또는 명령:
+- Path or command:

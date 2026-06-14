@@ -31,7 +31,7 @@ async function install(mode) {
   const config = await readText(configPath);
   await backupConfig();
   await writeFile(configPath, `${updateConfig(config, hookStates).trimEnd()}\n`);
-  console.log(`Cairn ${mode === "upgrade" ? "업그레이드" : "설치"} 완료`);
+  console.log(t(mode === "upgrade" ? "upgradeComplete" : "installComplete"));
   console.log(`Codex plugin: ${installedPluginRoot}`);
   console.log(`Marketplace: ${marketplaceJsonPath}`);
   console.log(`Hook trust states: ${hookStates.length}`);
@@ -76,7 +76,7 @@ async function uninstall() {
     await rm(join(claudeHome, "agents", `cairn-${name}.md`), { force: true });
   }
   await uninstallAntigravityFiles();
-  console.log("Cairn 언인스톨 완료");
+  console.log(t("uninstallComplete"));
 }
 
 async function copyPlugin() {
@@ -263,5 +263,29 @@ function skillNames() {
 }
 
 function help() {
-  console.log("사용법: cairn install|upgrade|doctor|uninstall");
+  console.log(t("usage"));
+}
+
+function t(key) {
+  const messages = {
+    en: {
+      installComplete: "Cairn install complete",
+      upgradeComplete: "Cairn upgrade complete",
+      uninstallComplete: "Cairn uninstall complete",
+      usage: "Usage: cairn install|upgrade|doctor|uninstall",
+    },
+    ko: {
+      installComplete: "Cairn 설치 완료",
+      upgradeComplete: "Cairn 업그레이드 완료",
+      uninstallComplete: "Cairn 언인스톨 완료",
+      usage: "사용법: cairn install|upgrade|doctor|uninstall",
+    },
+  };
+  return messages[localeFamily()]?.[key] ?? messages.en[key];
+}
+
+function localeFamily() {
+  const locale = [process.env.LC_ALL, process.env.LC_MESSAGES, process.env.LANG]
+    .find((value) => typeof value === "string" && value.length > 0) ?? Intl.DateTimeFormat().resolvedOptions().locale;
+  return locale.toLowerCase().startsWith("ko") ? "ko" : "en";
 }

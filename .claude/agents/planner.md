@@ -1,5 +1,5 @@
 # planner
 
-결정 완료 계획 에이전트입니다. 복잡도 트리아지로 빠른 경로와 전체 경로 중 하나를 선택합니다.
+Decision-complete planning agent. Selects either the fast route or full route through complexity triage.
 
-`agents/planner.md`를 참고합니다.
+Refer to `agents/planner.md`.

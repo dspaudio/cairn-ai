@@ -1,62 +1,63 @@
 # Plan: <topic>
 
-## 목표
+## Goal
 
-관찰 가능한 결과를 설명합니다.
+Describe the observable result.
 
-## 메모리 입력
+## Memory Inputs
 
 - `MEMORY.md`
 - `docs/memory/<domain>.md`
 
-## 모델 지침
+## Model Guidance
 
-- 적용 모델 계열: Codex 또는 Claude.
-- 참조 지침:
+- Applied model family: Codex or Claude.
+- Referenced guidance:
   - `docs/model-guidance/README.md`
   - `docs/model-guidance/<claude-or-codex>.md`
-- 적용 이유:
-- 역할별 보정:
+- Rationale:
+- Role-specific adjustment:
+- User-visible output locale: OS locale unless the user asks for another language.
 
-## 복잡도 트리아지
+## Complexity Triage
 
-- 선택 경로: 빠른 경로 또는 전체 경로.
-- 선택 이유:
-- 빠른 경로 생략 역할과 이유:
-- 전체 경로 선행 검토 결정:
+- Selected route: fast route or full route.
+- Selection rationale:
+- Omitted fast-route roles and rationale:
+- Full-route pre-review decisions:
 
-### 경로 기준
+### Route Criteria
 
-- 빠른 경로: `planner → builder`.
-- 전체 경로: `architect → planner → reviewer → builder → reviewer`.
+- Fast route: `planner -> builder`.
+- Full route: `architect -> planner -> reviewer -> builder -> reviewer`.
 
-## 에이전트 배정
+## Agent Assignments
 
-- `architect`: 시스템 경계와 위험. 전체 경로에서 필수.
-- `planner`: 결정 완료 단계. 모든 경로에서 필수.
-- `builder`: 모듈 조각 구현. 모든 경로에서 필수.
-- `reviewer`: 구현 전 계획 공백 검토와 구현 후 증거 리뷰. 전체 경로에서 필수.
-- `worker`: 집중 실행 작업. 필요 시 사용.
+- `architect`: system boundaries and risk. Required on the full route.
+- `planner`: decision-complete planning. Required on every route.
+- `builder`: module slice implementation. Required on every route.
+- `reviewer`: pre-implementation plan gap review and post-implementation evidence review. Required on the full route.
+- `worker`: focused execution work. Use when needed.
 
-## 모듈 조각
+## Module Slices
 
 ### Slice 1: <module>
 
-- 계약:
-- 파일:
-- 의존성:
-- 모듈 수용 검증:
-- 표면 통합 검증:
+- Contract:
+- Files:
+- Dependencies:
+- Module acceptance verification:
+- Surface integration verification:
 
-## 증거
+## Evidence
 
-- 모듈 수용:
-- 표면 통합:
+- Module acceptance:
+- Surface integration:
 
-## 상태
+## Status
 
-- [ ] 계획됨
-- [ ] 구현됨
-- [ ] 모듈 수용 통과
-- [ ] 표면 통합 통과
-- [ ] 리뷰됨
+- [ ] Planned
+- [ ] Implemented
+- [ ] Module acceptance passed
+- [ ] Surface integration passed
+- [ ] Reviewed

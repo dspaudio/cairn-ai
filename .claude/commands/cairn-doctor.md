@@ -1,12 +1,12 @@
 # cairn-doctor
 
-Cairn 설치 상태를 진단합니다.
+Diagnose Cairn installation status.
 
 ```sh
 scripts/cairn doctor
 ```
 
-패키지 배포본:
+Published package:
 
 ```sh
 bunx cairn-ai@latest doctor

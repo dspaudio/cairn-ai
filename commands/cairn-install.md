@@ -1,24 +1,24 @@
 # cairn-install
 
-목표: Cairn을 Codex, Claude Code, Antigravity에 설치합니다.
+Goal: install Cairn into Codex, Claude Code, and Antigravity.
 
-실행:
+Run:
 
 ```sh
 scripts/cairn install
 ```
 
-패키지 배포본에서는 다음처럼 실행합니다.
+With the published package:
 
 ```sh
 bunx cairn-ai@latest install
 ```
 
-수행 내용:
+Actions:
 
-- Codex marketplace 캐시에 Cairn 설치본을 복사합니다.
-- 설치본 manifest에 `hooks/hooks.json` 연결을 추가합니다.
-- `~/.codex/config.toml`에 marketplace, plugin, hook trust state를 등록합니다.
-- Claude Code용 `cairn-*` commands와 agents 미러 파일을 설치합니다.
-- Antigravity IDE/CLI용 `cairn-*` skills와 workflows 미러 파일을 설치합니다.
-- 설정 변경 전 `*.cairn-backup-*` 백업을 만듭니다.
+- Copy the Cairn installation into the Codex marketplace cache.
+- Add the `hooks/hooks.json` link to the installed manifest.
+- Register marketplace, plugin, and hook trust state in `~/.codex/config.toml`.
+- Install `cairn-*` commands and agents mirror files for Claude Code.
+- Install `cairn-*` skills and workflows mirror files for Antigravity IDE/CLI.
+- Create `*.cairn-backup-*` backups before changing settings.

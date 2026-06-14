@@ -1,13 +1,14 @@
 # MEMORY
 
-지속 저장소 지식의 짧은 색인입니다. 상세 노트는 `docs/memory/`에 링크합니다.
+Short index of persistent repository knowledge. Link detailed notes under `docs/memory/`.
 
-## 도메인 지식
+## Domain Knowledge
 
-- `docs/memory/<domain>.md`: 짧은 설명.
+- `docs/memory/<domain>.md`: short description.
 
-## 정책
+## Policy
 
-- 고유명사를 그대로 보존합니다.
-- 가정보다 저장소 증거를 우선합니다.
-- 필요한 상세 메모리만 읽습니다.
+- Preserve proper nouns exactly as written.
+- Prefer repository evidence over assumptions.
+- Read only the detailed memory needed for the current task.
+- Write user-visible output in the OS locale unless the user asks for another language.

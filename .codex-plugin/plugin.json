@@ -1,15 +1,15 @@
 {
   "name": "cairn",
   "version": "0.1.0",
-  "description": "Codex, Claude Code, Antigravity용 토큰 절약형 에이전트 하네스입니다.",
+  "description": "Token-efficient agent harness for Codex, Claude Code, and Antigravity.",
   "author": {
     "name": "WkNam"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Cairn",
-    "shortDescription": "에이전트 팀을 위한 메모리, 계획, 두 단계 검증 하네스입니다.",
-    "longDescription": "Cairn은 LazyCodex에서 영감을 받은 흐름을 Codex, Claude Code, Antigravity에 제공하되, 저장소 로컬 MEMORY.md, PLAN.md, 도메인 노트, 모듈 단위 실행, 두 단계 검증으로 토큰 소모를 줄입니다.",
+    "shortDescription": "Memory, planning, and two-gate verification harness for agent teams.",
+    "longDescription": "Cairn brings a LazyCodex-inspired flow to Codex, Claude Code, and Antigravity while reducing token use through repository-local MEMORY.md, PLAN.md, domain notes, module-slice execution, and two-gate verification.",
     "developerName": "WkNam",
     "category": "Productivity",
     "capabilities": [
@@ -20,9 +20,9 @@
       "Planning"
     ],
     "defaultPrompt": [
-      "Cairn으로 이 저장소의 MEMORY.md와 PLAN.md를 만들어줘.",
-      "이 작업에 대해 사용자에게 묻지 말고 cairn-plan을 실행해줘.",
-      "현재 PLAN.md 기준으로 cairn-work를 실행하고 두 단계 검증을 통과시켜줘."
+      "Use Cairn to create MEMORY.md and PLAN.md for this repository.",
+      "Run cairn-plan for this task without asking me for discoverable facts.",
+      "Run cairn-work from the current PLAN.md and pass both verification gates."
     ]
   }
 }

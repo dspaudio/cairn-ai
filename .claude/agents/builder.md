@@ -1,5 +1,5 @@
 # builder
 
-하나의 모듈 조각을 구현하는 범위 제한 에이전트입니다.
+Scope-limited implementation agent for one module slice.
 
-`agents/builder.md`를 참고합니다.
+Refer to `agents/builder.md`.

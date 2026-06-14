@@ -1,87 +1,89 @@
 ---
 name: cairn-plan
-description: 사용자 질문 대신 에이전트 위임으로 PLAN.md와 docs/plan 결정 완료 계획을 만듭니다.
+description: Create decision-complete PLAN.md and docs/plan plans through agent delegation instead of user questions.
 ---
 
 # Cairn Plan
 
-구현, 리팩터링, 마이그레이션, 디버깅, 저장소 자동화 계획을 만들 때 사용합니다.
+Use this when planning implementation, refactoring, migrations, debugging, or repository automation.
 
-## 목적
+## Purpose
 
-계획은 실행 토큰을 줄여야 합니다. 대화에만 긴 계획을 남기지 말고, 주제는 `PLAN.md`에, 세부 계획은 `docs/plan/<topic>.md`에 저장합니다.
+Plans must reduce execution tokens. Do not leave long plans only in chat. Store the topic in `PLAN.md` and details in `docs/plan/<topic>.md`.
 
-## 절차
+## Procedure
 
-1. `scripts/cairn-state.sh manual`이 있으면 실행합니다. 없으면 `MEMORY.md`, `PLAN.md`, `docs/memory`, `docs/plan`을 직접 보장합니다.
-2. `MEMORY.md`와 관련 `docs/memory/*.md`만 읽습니다.
-3. 현재 실행 모델 또는 배정 모델을 기준으로 `docs/model-guidance/README.md`와 관련 모델 지침만 읽습니다.
-4. 집중 검색과 LSP/심볼 도구로 저장소를 탐색합니다.
-5. 복잡도 트리아지를 수행해 작업 경로를 선택합니다.
-6. 사용자 질문 대신 선택된 경로와 모델 지침에 맞춰 위임합니다.
-   - `architect`: 경계, 도메인 정책, 고위험 결정.
-   - `planner`: 조각 순서, 의존성, 수용 기준.
-   - `worker`: 구체 파일 경로, 명령 존재 여부, 예시.
-   - `reviewer`: 계획 공백과 증명되지 않은 가정.
-7. `templates/work-plan.md`를 기준으로 `docs/plan/<topic>.md`를 만듭니다.
-8. `PLAN.md`에 짧은 색인 항목을 추가합니다.
+1. Run `scripts/cairn-state.sh manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
+2. Read only `MEMORY.md` and relevant `docs/memory/*.md` files.
+3. Based on the active or assigned model, read `docs/model-guidance/README.md` and only the relevant model guidance.
+4. Explore the repository with focused search and LSP/symbol tools.
+5. Run complexity triage and select the work route.
+6. Delegate according to the selected route and model guidance instead of asking the user.
+   - `architect`: boundaries, domain policy, high-risk decisions.
+   - `planner`: slice order, dependencies, acceptance criteria.
+   - `worker`: concrete file paths, command availability, examples.
+   - `reviewer`: plan gaps and unproven assumptions.
+7. Create `docs/plan/<topic>.md` from `templates/work-plan.md`.
+8. Add a short index entry to `PLAN.md`.
+9. Write user-visible output in the OS locale unless the user asks for another language.
 
-## 복잡도 트리아지
+## Complexity Triage
 
-트리아지는 사용자에게 묻지 않고 저장소 증거로 판단합니다.
+Decide triage from repository evidence without asking the user.
 
-### 빠른 경로: `planner → builder`
+### Fast Route: `planner -> builder`
 
-다음 조건을 모두 만족하면 빠른 경로를 선택합니다.
+Choose the fast route only when all conditions are true.
 
-- 변경 예상 범위가 단일 모듈 또는 1-2개 파일입니다.
-- 데이터 손실, 권한, 결제, 보안, 마이그레이션, 외부 API 영향이 없습니다.
-- 기존 패턴이 명확하고 같은 방식의 선례가 있습니다.
-- 모듈 수용 검증과 표면 통합 검증을 바로 지정할 수 있습니다.
-- 도메인 정책이 `MEMORY.md` 또는 관련 `docs/memory/*.md`에서 충분히 확인됩니다.
+- Expected change scope is one module or 1-2 files.
+- There is no data loss, permission, billing, security, migration, or external API impact.
+- Existing patterns are clear and there is precedent.
+- Module acceptance verification and surface integration verification can be named immediately.
+- Domain policy is sufficiently confirmed in `MEMORY.md` or relevant `docs/memory/*.md`.
 
-### 전체 경로: `architect → planner → reviewer → builder → reviewer`
+### Full Route: `architect -> planner -> reviewer -> builder -> reviewer`
 
-다음 신호가 하나라도 있으면 전체 경로를 선택합니다.
+Choose the full route when any signal is present.
 
-- 3개 이상 파일 또는 2개 이상 모듈에 영향이 있습니다.
-- 데이터 모델, 마이그레이션, 권한, 인증, 결제, 알림, 외부 연동, 배포 설정이 관련됩니다.
-- 기존 패턴이 불명확하거나 충돌합니다.
-- 도메인 정책 또는 성공 기준이 저장소 증거만으로 부족합니다.
-- 실패 시 되돌리기 어렵거나 사용자 영향이 큽니다.
+- 3+ files or 2+ modules are affected.
+- Data models, migrations, permissions, authentication, billing, alerts, external integrations, or deployment settings are involved.
+- Existing patterns are unclear or conflicting.
+- Domain policy or success criteria are insufficient from repository evidence alone.
+- Failure is hard to roll back or has significant user impact.
 
-### 경로 기록
+### Route Record
 
-`docs/plan/<topic>.md`에는 다음을 반드시 기록합니다.
+`docs/plan/<topic>.md` must record:
 
-- 선택 경로.
-- 선택 이유.
-- 빠른 경로에서 생략한 역할과 생략 이유.
-- 전체 경로에서 `architect`와 1차 `reviewer`가 해결해야 할 결정.
+- Selected route.
+- Selection rationale.
+- Roles omitted in the fast route and why.
+- Decisions that `architect` and the first `reviewer` must resolve in the full route.
 
-## 계획 규칙
+## Planning Rules
 
-- 모든 계획은 결정 완료 상태여야 합니다.
-- 모든 계획은 복잡도 트리아지 결과와 선택 경로를 포함해야 합니다.
-- 모든 계획은 적용한 모델 지침과 그 이유를 포함해야 합니다.
-- 모든 구현 조각은 두 검증으로 확인할 수 있을 만큼 작아야 합니다.
-- 기본 검증은 모듈 수용 검증과 표면 통합 검증입니다.
-- 위험 때문에 검증을 늘릴 수는 있지만 이유를 기록해야 합니다.
-- 에이전트나 저장소 증거로 답할 수 없는 결정일 때만 사용자에게 묻습니다.
+- Every plan must be decision-complete.
+- Every plan must include complexity triage and the selected route.
+- Every plan must include applied model guidance and rationale.
+- Every implementation slice must be small enough to verify with two checks.
+- The default checks are module acceptance verification and surface integration verification.
+- Verification can expand for risk, but the reason must be recorded.
+- Ask the user only when agents or repository evidence cannot answer the decision.
+- User-visible text must follow the OS locale unless the user asks for another language.
 
-## 위임 프롬프트 형식
+## Delegation Prompt Format
 
 ```text
-TASK: <topic> 계획에 필요한 <role> 입력을 만든다.
-EXPECTED OUTCOME: 결정, 파일 경로, 의존성, 위험, 증거 요구사항을 구체적으로 반환한다.
-REQUIRED TOOLS: 읽기 전용 저장소 탐색, LSP/심볼 도구, 로컬 명령 확인.
-MUST DO: 고유명사를 그대로 보존한다. 저장소 증거를 우선한다. 가정을 식별한다.
-MUST NOT DO: 운영 코드를 편집하지 않는다. 사용자에게 묻지 않는다. 범위를 늘리지 않는다.
-CONTEXT: 사용자 요청, MEMORY.md, 관련 docs/memory 노트, 적용 모델 지침, 저장소 루트.
+TASK: Produce <role> input needed for the <topic> plan.
+EXPECTED OUTCOME: Return concrete decisions, file paths, dependencies, risks, and evidence requirements.
+REQUIRED TOOLS: Read-only repository exploration, LSP/symbol tools, local command checks.
+MUST DO: Preserve proper nouns exactly. Prefer repository evidence. Identify assumptions. Use the OS locale for user-visible text.
+MUST NOT DO: Edit production code. Ask the user. Expand scope.
+CONTEXT: User request, MEMORY.md, relevant docs/memory notes, applied model guidance, repository root.
 ```
 
-## 완료 기준
+## Completion Criteria
 
-- `PLAN.md`가 계획 주제를 참조합니다.
-- `docs/plan/<topic>.md`에 목표, 메모리 입력, 모델 지침, 복잡도 트리아지, 선택 경로, 에이전트 배정, 모듈 조각, 조각별 두 검증이 있습니다.
-- 다음 `builder` 작업이 판단 없이 실행될 수 있습니다.
+- `PLAN.md` references the plan topic.
+- `docs/plan/<topic>.md` includes goal, memory inputs, model guidance, complexity triage, selected route, agent assignments, module slices, and two checks per slice.
+- The next `builder` task can run without making planning decisions.

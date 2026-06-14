@@ -1,18 +1,19 @@
 # cairn-work
 
-`cairn-work` 스킬을 사용합니다.
+Use the `cairn-work` skill.
 
-목표: `PLAN.md`의 다음 미완료 모듈 조각을 실행합니다.
+Goal: execute the next incomplete module slice in `PLAN.md`.
 
-절차:
+Procedure:
 
-1. `PLAN.md`, 상세 계획, `MEMORY.md`, 관련 메모리 노트를 읽습니다.
-2. 계획에 기록된 Codex 또는 Claude 모델 지침을 읽습니다.
-3. 하나의 작은 모듈 조각을 선택합니다.
-4. 계획에 기록된 복잡도 트리아지와 선택 경로를 확인합니다.
-5. 빠른 경로이면 `planner -> builder` 순서로 진행합니다.
-6. 전체 경로이면 `architect -> planner -> reviewer -> builder -> reviewer` 순서를 지킵니다.
-7. 모델 지침에 맞춰 구현을 `builder` 또는 `worker` 역할로 위임합니다.
-8. 모듈 수용 검증을 다시 실행합니다.
-9. 표면 통합 검증을 다시 실행합니다.
-10. `docs/plan/<topic>.md`에 증거를 기록하고 `PLAN.md`를 갱신합니다.
+1. Read `PLAN.md`, the detailed plan, `MEMORY.md`, and relevant memory notes.
+2. Read the Codex or Claude model guidance recorded in the plan.
+3. Select one small module slice.
+4. Confirm the complexity triage and selected route recorded in the plan.
+5. For the fast route, proceed as `planner -> builder`.
+6. For the full route, keep `architect -> planner -> reviewer -> builder -> reviewer`.
+7. Delegate implementation to `builder` or `worker` according to model guidance.
+8. Re-run module acceptance verification.
+9. Re-run surface integration verification.
+10. Record evidence in `docs/plan/<topic>.md` and update `PLAN.md`.
+11. Use the OS locale for user-visible output unless the user asks for another language.

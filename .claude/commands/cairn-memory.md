@@ -1,5 +1,5 @@
 # cairn-memory
 
-`MEMORY.md`와 `docs/memory/<domain>.md`를 만들거나 갱신합니다.
+Create or update `MEMORY.md` and `docs/memory/<domain>.md`.
 
-플러그인 명령 `commands/cairn-memory.md`를 따릅니다.
+Follow plugin command `commands/cairn-memory.md`.
