@@ -2,6 +2,16 @@
 
 Cairn is a token-efficient multi-agent harness plugin for Codex, Claude Code, and Antigravity.
 
+## Translations
+
+- [한국어](README.ko.md)
+- [日本語](README.ja.md)
+- [中文](README.zh.md)
+- [Español](README.es.md)
+- [Français](README.fr.md)
+- [Deutsch](README.de.md)
+- [Português](README.pt.md)
+
 The core idea is to keep the useful parts of LazyCodex: hooks, persistent state, explicit planning, agent roles, and stop-time guards. Cairn does not make repeated TDD verification loops the default. Instead, it splits work into small module slices and proves each slice with two verification gates.
 
 1. Module acceptance verification: proves the changed module contract.
