@@ -9,6 +9,8 @@ tools: Read, Grep, Glob, Bash
 
 Handle read-only discovery and verification tasks.
 
+Before doing any assigned task, read the project-root `MEMORY.md`. Treat it as the domain knowledge and repository policy index, then read only the relevant `docs/memory/*.md` notes needed for the task.
+
 Use for:
 
 - Codebase questions.

@@ -53,15 +53,15 @@ function isCliEntry() {
 const messages = {
   en: {
     memory: "Use the cairn-memory skill. Keep MEMORY.md as a short index and write details to docs/memory/<domain>.md.",
-    plan: "Use the cairn-plan skill. Keep PLAN.md as an index and write detailed plans to docs/plan/<topic>.md.",
-    work: "Use the cairn-work skill. Execute one module slice and capture module and surface evidence.",
+    plan: "Use the cairn-plan skill before non-trivial implementation. Every agent must first read the project-root MEMORY.md for domain knowledge and repository policy. Keep PLAN.md as an index, write detailed plans to docs/plan/<topic>.md, and record Light/Heavy Path triage before any mutation.",
+    work: "Use the cairn-work skill only after a plan exists. Every agent must first read the project-root MEMORY.md for domain knowledge and repository policy. Execute one module slice using the recorded Light/Heavy Path route, and capture dry-run/check, module, and surface evidence.",
     review: "Use the cairn-review skill. Compare evidence against PLAN.md and MEMORY.md.",
     usage: "Usage: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck",
   },
   ko: {
     memory: "cairn-memory 스킬을 사용하세요. MEMORY.md는 짧은 색인으로, 상세 내용은 docs/memory/<domain>.md에 기록합니다.",
-    plan: "cairn-plan 스킬을 사용하세요. PLAN.md는 색인으로, 상세 계획은 docs/plan/<topic>.md에 기록합니다.",
-    work: "cairn-work 스킬을 사용하세요. 하나의 모듈 조각을 실행하고 모듈 증거와 표면 증거를 확보합니다.",
+    plan: "중요 구현 전에는 cairn-plan 스킬을 사용하세요. 모든 에이전트는 도메인 지식과 저장소 정책을 위해 프로젝트 루트 MEMORY.md를 먼저 읽어야 합니다. PLAN.md는 색인으로, 상세 계획은 docs/plan/<topic>.md에 기록하며 파일 변경 전 Light/Heavy Path 트리아지를 남깁니다.",
+    work: "계획이 있을 때만 cairn-work 스킬을 사용하세요. 모든 에이전트는 도메인 지식과 저장소 정책을 위해 프로젝트 루트 MEMORY.md를 먼저 읽어야 합니다. 기록된 Light/Heavy Path 경로로 하나의 모듈 조각을 실행하며 dry-run/check, 모듈, 표면 증거를 확보합니다.",
     review: "cairn-review 스킬을 사용하세요. PLAN.md와 MEMORY.md 기준으로 증거를 비교합니다.",
     usage: "사용법: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck",
   },

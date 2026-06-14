@@ -96,11 +96,19 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
   try {
     assert.match(message("usage", "en-US"), /cairn install\|upgrade/);
     assert.match(message("memory", "ko-KR"), /cairn-memory/);
+    assert.match(message("plan", "en-US"), /Every agent.*project-root MEMORY\.md/);
+    assert.match(message("plan", "en-US"), /Light\/Heavy Path triage/);
+    assert.match(message("work", "ko-KR"), /모든 에이전트.*MEMORY\.md/);
+    assert.match(message("work", "ko-KR"), /Light\/Heavy Path/);
 
     const output = await runState("manual", { root: temp, locale: "en-US" });
     assert.equal(output, "Cairn initialized MEMORY.md, PLAN.md, docs/memory, and docs/plan.");
     await stat(join(temp, "MEMORY.md"));
     await stat(join(temp, "PLAN.md"));
+    const plan = await readFile(join(temp, "PLAN.md"), "utf8");
+    assert.match(plan, /Every agent.*project-root `MEMORY\.md`/);
+    assert.match(plan, /Run complexity triage/);
+    assert.match(plan, /checked Heavy Path signals/);
 
     const cli = spawnSync(process.execPath, [cliScript, "memory"], {
       cwd: root,
@@ -151,6 +159,11 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", ".codex-plugin", "plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(manifest.hooks, "./hooks/hooks.json");
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /every agent must read the project-root MEMORY\.md/i);
+    const explorer = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "explorer.md"), "utf8");
+    const worker = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "worker.md"), "utf8");
+    assert.match(explorer, /Before doing any assigned task, read the project-root `MEMORY\.md`/);
+    assert.match(worker, /Before doing any assigned task, read the project-root `MEMORY\.md`/);
     await stat(join(env.CLAUDE_HOME, "commands", "cairn-plan.md"));
     await stat(join(env.ANTIGRAVITY_HOME, "skills", "cairn-plan", "SKILL.md"));
 

@@ -11,6 +11,8 @@ Use this after meaningful implementation with Cairn.
 
 Review is not another implementation loop. Confirm that the completed slice satisfies the plan and that memory and plan artifacts are useful to the next agent.
 
+Every review run and every delegated review agent must read the project-root `MEMORY.md` before doing assigned work.
+
 ## Procedure
 
 1. Read the completed slice in `docs/plan/<topic>.md`.
@@ -29,7 +31,7 @@ Review is not another implementation loop. Confirm that the completed slice sati
 TASK: Review correctness, scope, and evidence for slice <slice-id>.
 EXPECTED OUTCOME: Findings ordered by severity with file and line references, or an explicit no-issue result with residual risk.
 REQUIRED TOOLS: Read-only diff inspection, tool readiness checks, verification command execution, plan/memory reading.
-MUST DO: Check tool readiness and install-attempt evidence. Check dry-run or check evidence when external state could change. Check both module evidence and surface evidence. Preserve proper nouns exactly. Use the OS locale for user-visible text.
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Check tool readiness and install-attempt evidence. Check dry-run or check evidence when external state could change. Check both module evidence and surface evidence. Preserve proper nouns exactly. Use the OS locale for user-visible text.
 MUST NOT DO: Edit files. Ask the user. Approve skipped LSP/typecheck/lint without install evidence. Approve missing evidence or open-ended verification loops.
 CONTEXT: docs/plan/<topic>.md, MEMORY.md, relevant docs/memory notes, changed files.
 ```
