@@ -3,7 +3,7 @@
 Diagnose Cairn installation status.
 
 ```sh
-scripts/cairn doctor
+node scripts/cairn.mjs doctor
 ```
 
 Published package:

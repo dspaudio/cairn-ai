@@ -2,7 +2,7 @@
 
 Use the `cairn-memory` skill.
 
-Prerequisite: if `scripts/cairn doctor` fails, restore installation with `scripts/cairn install` or `scripts/cairn upgrade`.
+Prerequisite: if `node scripts/cairn.mjs doctor` fails, restore installation with `node scripts/cairn.mjs install` or `node scripts/cairn.mjs upgrade`.
 
 Goal: create or update repository memory without asking the user for discoverable facts.
 

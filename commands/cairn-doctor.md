@@ -5,7 +5,7 @@ Goal: diagnose Cairn installation status.
 Run:
 
 ```sh
-scripts/cairn doctor
+node scripts/cairn.mjs doctor
 ```
 
 With the published package:

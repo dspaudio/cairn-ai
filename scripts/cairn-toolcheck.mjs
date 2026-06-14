@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
@@ -60,7 +60,7 @@ export async function collectEntries(base) {
     for (const entry of await readdir(dir)) {
       if ([".git", ".cairn", "node_modules", "vendor", "target", ".venv", "__pycache__"].includes(entry)) continue;
       const path = join(dir, entry);
-      const relativePath = path.slice(base.length + 1);
+      const relativePath = normalizePath(relative(base, path));
       if (relativePath === "test/fixtures" || relativePath.startsWith("test/fixtures/")) continue;
       const info = await stat(path);
       if (info.isDirectory()) await walk(path);
@@ -85,7 +85,7 @@ export function detectStacks(paths) {
   return [...stacks];
 }
 
-export function buildRequirements(stacks, entries = [], commandAvailable = commandOk) {
+export function buildRequirements(stacks, entries = [], commandAvailable = commandOk, platform = process.platform) {
   const requirements = [];
   if (stacks.includes("javascript")) {
     requirements.push(req("node", ["--version"], "JavaScript runtime for package scripts and CLI checks"));
@@ -98,8 +98,8 @@ export function buildRequirements(stacks, entries = [], commandAvailable = comma
   if (stacks.includes("python")) {
     const uv = commandAvailable("uv", ["--version"]);
     const project = entries.includes("pyproject.toml");
-    const basedpyrightInstall = pythonInstall(uv, project, "basedpyright");
-    const ruffInstall = pythonInstall(uv, project, "ruff");
+    const basedpyrightInstall = pythonInstall(uv, project, "basedpyright", platform);
+    const ruffInstall = pythonInstall(uv, project, "ruff", platform);
     requirements.push(req("basedpyright", ["--version"], "Python LSP/type checker", basedpyrightInstall));
     requirements.push(req("ruff", ["--version"], "Python lint and format checker", ruffInstall));
   }
@@ -114,7 +114,7 @@ export function buildRequirements(stacks, entries = [], commandAvailable = comma
   }
   if (stacks.includes("java")) {
     addJvmRequirements(requirements);
-    requirements.push(req("jdtls", ["--version"], "Java LSP server", { command: "bash", args: ["-lc", "mkdir -p .cairn/tools && curl -L https://download.eclipse.org/jdtls/milestones/latest/jdt-language-server-latest.tar.gz | tar -xz -C .cairn/tools"] }));
+    requirements.push(req("jdtls", ["--version"], "Java LSP server", jdtlsInstall(platform)));
     addJvmBuildToolRequirements(requirements, entries);
   }
   if (stacks.includes("kotlin")) {
@@ -151,9 +151,12 @@ export function addJvmRequirements(requirements) {
 }
 
 export function addJvmBuildToolRequirements(requirements, entries = []) {
-  if (entries.includes("gradlew")) pushUnique(requirements, req("./gradlew", ["--version"], "Gradle wrapper availability"));
+  if (entries.includes("gradlew.bat")) pushUnique(requirements, req("gradlew.bat", ["--version"], "Gradle wrapper availability"));
+  else if (entries.includes("gradlew")) pushUnique(requirements, req("./gradlew", ["--version"], "Gradle wrapper availability"));
   else if (entries.includes("build.gradle") || entries.includes("build.gradle.kts")) pushUnique(requirements, req("gradle", ["--version"], "Gradle availability"));
-  if (entries.includes("mvnw")) pushUnique(requirements, req("./mvnw", ["--version"], "Maven wrapper availability"));
+  if (entries.includes("mvnw.cmd")) pushUnique(requirements, req("mvnw.cmd", ["--version"], "Maven wrapper availability"));
+  else if (entries.includes("mvnw.bat")) pushUnique(requirements, req("mvnw.bat", ["--version"], "Maven wrapper availability"));
+  else if (entries.includes("mvnw")) pushUnique(requirements, req("./mvnw", ["--version"], "Maven wrapper availability"));
   else if (entries.includes("pom.xml")) pushUnique(requirements, req("mvn", ["--version"], "Maven availability"));
 }
 
@@ -165,10 +168,22 @@ export function composerInstall(packages) {
   return { command: "composer", args: ["require", "--dev", ...packages] };
 }
 
-export function pythonInstall(uv, project, tool) {
+export function pythonInstall(uv, project, tool, platform = process.platform) {
   if (uv && project) return { command: "uv", args: ["add", "--dev", tool] };
   if (uv) return { command: "uv", args: ["tool", "install", tool] };
+  if (platform === "win32") return { command: "py", args: ["-3", "-m", "pip", "install", "--user", tool] };
   return { command: "python3", args: ["-m", "pip", "install", "--user", tool] };
+}
+
+export function jdtlsInstall(platform = process.platform) {
+  const url = "https://download.eclipse.org/jdtls/milestones/latest/jdt-language-server-latest.tar.gz";
+  if (platform === "win32") {
+    return {
+      command: "powershell",
+      args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", `New-Item -ItemType Directory -Force .cairn/tools | Out-Null; Invoke-WebRequest -Uri ${url} -OutFile .cairn/tools/jdtls.tar.gz; tar -xzf .cairn/tools/jdtls.tar.gz -C .cairn/tools`],
+    };
+  }
+  return { command: "bash", args: ["-lc", `mkdir -p .cairn/tools && curl -L ${url} | tar -xz -C .cairn/tools`] };
 }
 
 export function req(command, args, reason, installCommand = null) {
@@ -190,16 +205,41 @@ export function installDev(pm, packages) {
 }
 
 export function commandOk(command, args, root = process.cwd(), runner = run) {
-  if (runner(command, args).status === 0) return true;
-  if (runner(join(root, "node_modules", ".bin", command), args).status === 0) return true;
-  if (runner(join(root, "vendor", "bin", command), args).status === 0) return true;
-  return runner(join(root, ".cairn", "tools", "bin", command), args).status === 0;
+  return commandCandidates(command, root).some((candidate) => runner(candidate, args).status === 0);
+}
+
+export function commandCandidates(command, root = process.cwd(), platform = process.platform) {
+  const candidates = [
+    command,
+    join(root, "node_modules", ".bin", command),
+    join(root, "vendor", "bin", command),
+    join(root, ".cairn", "tools", "bin", command),
+  ];
+  if (platform !== "win32") return candidates;
+  const extensions = [".cmd", ".bat", ".exe"];
+  return candidates.flatMap((candidate) => hasWindowsExecutableExtension(candidate) ? [candidate] : [candidate, ...extensions.map((extension) => `${candidate}${extension}`)]);
 }
 
 export function run(command, args) {
-  return spawnSync(command, args, { stdio: "ignore", encoding: "utf8" });
+  return spawnSync(command, args, {
+    stdio: "ignore",
+    encoding: "utf8",
+    shell: shouldUseShell(command),
+  });
+}
+
+export function shouldUseShell(command, platform = process.platform) {
+  return platform === "win32" && /\.(cmd|bat)$/i.test(command);
 }
 
 function isCliEntry() {
   return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
+function normalizePath(path) {
+  return path.split(sep).join("/");
+}
+
+function hasWindowsExecutableExtension(command) {
+  return /\.(cmd|bat|exe)$/i.test(command);
 }

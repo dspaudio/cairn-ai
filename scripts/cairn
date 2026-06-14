@@ -1,10 +1,6 @@
 #!/bin/sh
 set -eu
 
-cmd="${1:-help}"
-shift || true
-locale="${LC_ALL:-${LC_MESSAGES:-${LANG:-en}}}"
-
 script_path="$0"
 link_target="$(readlink "$script_path" 2>/dev/null || true)"
 if [ -n "$link_target" ]; then
@@ -15,101 +11,4 @@ if [ -n "$link_target" ]; then
 fi
 script_dir="$(cd "$(dirname "$script_path")" && pwd)"
 
-locale_family() {
-  case "$locale" in
-    ko*|KO*) printf '%s\n' ko ;;
-    ja*|JA*) printf '%s\n' ja ;;
-    zh*|ZH*) printf '%s\n' zh ;;
-    es*|ES*) printf '%s\n' es ;;
-    fr*|FR*) printf '%s\n' fr ;;
-    de*|DE*) printf '%s\n' de ;;
-    pt*|PT*) printf '%s\n' pt ;;
-    *) printf '%s\n' en ;;
-  esac
-}
-
-say() {
-  key="$1"
-  family="$(locale_family)"
-  case "$family:$key" in
-    ko:memory) printf '%s\n' "cairn-memory 스킬을 사용하세요. MEMORY.md는 짧은 색인으로, 상세 내용은 docs/memory/<domain>.md에 기록합니다." ;;
-    ko:plan) printf '%s\n' "cairn-plan 스킬을 사용하세요. PLAN.md는 색인으로, 상세 계획은 docs/plan/<topic>.md에 기록합니다." ;;
-    ko:work) printf '%s\n' "cairn-work 스킬을 사용하세요. 하나의 모듈 조각을 실행하고 모듈 증거와 표면 증거를 확보합니다." ;;
-    ko:review) printf '%s\n' "cairn-review 스킬을 사용하세요. PLAN.md와 MEMORY.md 기준으로 증거를 비교합니다." ;;
-    ko:toolcheck) printf '%s\n' "저장소 도구를 점검하려면 cairn toolcheck 를 실행하세요. 누락 도구 설치까지 시도하려면 cairn toolcheck --install 을 사용합니다." ;;
-    ko:usage) printf '%s\n' "사용법: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck" ;;
-    ja:memory) printf '%s\n' "cairn-memory スキルを使用してください。MEMORY.md は短い索引にし、詳細は docs/memory/<domain>.md に記録します。" ;;
-    ja:plan) printf '%s\n' "cairn-plan スキルを使用してください。PLAN.md は索引にし、詳細計画は docs/plan/<topic>.md に記録します。" ;;
-    ja:work) printf '%s\n' "cairn-work スキルを使用してください。1つのモジュールスライスを実行し、モジュール証拠と表面証拠を取得します。" ;;
-    ja:review) printf '%s\n' "cairn-review スキルを使用してください。PLAN.md と MEMORY.md に照らして証拠を比較します。" ;;
-    ja:toolcheck) printf '%s\n' "リポジトリツールを確認するには cairn toolcheck を実行してください。不足ツールのインストールも試すには cairn toolcheck --install を使用します。" ;;
-    ja:usage) printf '%s\n' "使い方: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck" ;;
-    zh:memory) printf '%s\n' "使用 cairn-memory skill。将 MEMORY.md 保持为简短索引，并将详细内容写入 docs/memory/<domain>.md。" ;;
-    zh:plan) printf '%s\n' "使用 cairn-plan skill。将 PLAN.md 保持为索引，并将详细计划写入 docs/plan/<topic>.md。" ;;
-    zh:work) printf '%s\n' "使用 cairn-work skill。执行一个模块切片，并收集模块证据和表面证据。" ;;
-    zh:review) printf '%s\n' "使用 cairn-review skill。根据 PLAN.md 和 MEMORY.md 对比证据。" ;;
-    zh:toolcheck) printf '%s\n' "运行 cairn toolcheck 检查仓库工具。使用 cairn toolcheck --install 尝试安装缺失工具。" ;;
-    zh:usage) printf '%s\n' "用法: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck" ;;
-    es:memory) printf '%s\n' "Usa la skill cairn-memory. Mantén MEMORY.md como un índice breve y escribe los detalles en docs/memory/<domain>.md." ;;
-    es:plan) printf '%s\n' "Usa la skill cairn-plan. Mantén PLAN.md como índice y escribe los planes detallados en docs/plan/<topic>.md." ;;
-    es:work) printf '%s\n' "Usa la skill cairn-work. Ejecuta un solo segmento de módulo y captura evidencia de módulo y de superficie." ;;
-    es:review) printf '%s\n' "Usa la skill cairn-review. Compara la evidencia con PLAN.md y MEMORY.md." ;;
-    es:toolcheck) printf '%s\n' "Ejecuta cairn toolcheck para revisar herramientas del repositorio. Usa cairn toolcheck --install para intentar instalar herramientas faltantes." ;;
-    es:usage) printf '%s\n' "Uso: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck" ;;
-    fr:memory) printf '%s\n' "Utilisez la skill cairn-memory. Gardez MEMORY.md comme index court et écrivez les détails dans docs/memory/<domain>.md." ;;
-    fr:plan) printf '%s\n' "Utilisez la skill cairn-plan. Gardez PLAN.md comme index et écrivez les plans détaillés dans docs/plan/<topic>.md." ;;
-    fr:work) printf '%s\n' "Utilisez la skill cairn-work. Exécutez une tranche de module et capturez les preuves de module et de surface." ;;
-    fr:review) printf '%s\n' "Utilisez la skill cairn-review. Comparez les preuves avec PLAN.md et MEMORY.md." ;;
-    fr:toolcheck) printf '%s\n' "Exécutez cairn toolcheck pour vérifier les outils du dépôt. Utilisez cairn toolcheck --install pour tenter d'installer les outils manquants." ;;
-    fr:usage) printf '%s\n' "Utilisation: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck" ;;
-    de:memory) printf '%s\n' "Verwenden Sie die Skill cairn-memory. Halten Sie MEMORY.md als kurzen Index und schreiben Sie Details nach docs/memory/<domain>.md." ;;
-    de:plan) printf '%s\n' "Verwenden Sie die Skill cairn-plan. Halten Sie PLAN.md als Index und schreiben Sie Detailpläne nach docs/plan/<topic>.md." ;;
-    de:work) printf '%s\n' "Verwenden Sie die Skill cairn-work. Führen Sie einen Modulabschnitt aus und erfassen Sie Modul- und Oberflächenbelege." ;;
-    de:review) printf '%s\n' "Verwenden Sie die Skill cairn-review. Vergleichen Sie Belege mit PLAN.md und MEMORY.md." ;;
-    de:toolcheck) printf '%s\n' "Führen Sie cairn toolcheck aus, um Repository-Tools zu prüfen. Verwenden Sie cairn toolcheck --install, um fehlende Tools zu installieren." ;;
-    de:usage) printf '%s\n' "Verwendung: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck" ;;
-    pt:memory) printf '%s\n' "Use a skill cairn-memory. Mantenha MEMORY.md como um índice curto e escreva detalhes em docs/memory/<domain>.md." ;;
-    pt:plan) printf '%s\n' "Use a skill cairn-plan. Mantenha PLAN.md como índice e escreva planos detalhados em docs/plan/<topic>.md." ;;
-    pt:work) printf '%s\n' "Use a skill cairn-work. Execute uma fatia de módulo e capture evidências de módulo e de superfície." ;;
-    pt:review) printf '%s\n' "Use a skill cairn-review. Compare evidências com PLAN.md e MEMORY.md." ;;
-    pt:toolcheck) printf '%s\n' "Execute cairn toolcheck para verificar ferramentas do repositório. Use cairn toolcheck --install para tentar instalar ferramentas ausentes." ;;
-    pt:usage) printf '%s\n' "Uso: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck" ;;
-    *)
-      case "$key" in
-        memory) printf '%s\n' "Use the cairn-memory skill. Keep MEMORY.md as a short index and write details to docs/memory/<domain>.md." ;;
-        plan) printf '%s\n' "Use the cairn-plan skill. Keep PLAN.md as an index and write detailed plans to docs/plan/<topic>.md." ;;
-        work) printf '%s\n' "Use the cairn-work skill. Execute one module slice and capture module and surface evidence." ;;
-        review) printf '%s\n' "Use the cairn-review skill. Compare evidence against PLAN.md and MEMORY.md." ;;
-        toolcheck) printf '%s\n' "Run cairn toolcheck to inspect repository tools. Use cairn toolcheck --install to attempt missing tool installation." ;;
-        usage) printf '%s\n' "Usage: cairn install|upgrade|doctor|uninstall|init|memory|plan|work|review|toolcheck" ;;
-      esac
-      ;;
-  esac
-}
-
-case "$cmd" in
-  install|upgrade|doctor|uninstall)
-    node "$script_dir/cairn-lifecycle.mjs" "$cmd" "$@"
-    ;;
-  init)
-    sh "$script_dir/cairn-state.sh" manual
-    ;;
-  memory)
-    say memory
-    ;;
-  plan)
-    say plan
-    ;;
-  work)
-    say work
-    ;;
-  review)
-    say review
-    ;;
-  toolcheck)
-    node "$script_dir/cairn-toolcheck.mjs" "$@"
-    ;;
-  *)
-    say usage
-    ;;
-esac
+exec node "$script_dir/cairn.mjs" "$@"

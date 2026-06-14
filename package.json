@@ -1,6 +1,6 @@
 {
   "name": "cairn-ai",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity",
   "license": "MIT",
   "author": {
@@ -21,8 +21,8 @@
     "workflow"
   ],
   "bin": {
-    "cairn": "scripts/cairn",
-    "cairn-ai": "scripts/cairn"
+    "cairn": "scripts/cairn.mjs",
+    "cairn-ai": "scripts/cairn.mjs"
   },
   "files": [
     ".agents/",
@@ -39,7 +39,7 @@
     "README.*.md"
   ],
   "scripts": {
-    "check": "node --check scripts/cairn-lifecycle.mjs && node --check scripts/cairn-toolcheck.mjs && node -e \"JSON.parse(require('node:fs').readFileSync('package.json','utf8')); JSON.parse(require('node:fs').readFileSync('.codex-plugin/plugin.json','utf8')); JSON.parse(require('node:fs').readFileSync('hooks/hooks.json','utf8'))\" && npm test",
+    "check": "node --check scripts/cairn.mjs && node --check scripts/cairn-state.mjs && node --check scripts/cairn-lifecycle.mjs && node --check scripts/cairn-toolcheck.mjs && node -e \"JSON.parse(require('node:fs').readFileSync('package.json','utf8')); JSON.parse(require('node:fs').readFileSync('.codex-plugin/plugin.json','utf8')); JSON.parse(require('node:fs').readFileSync('hooks/hooks.json','utf8'))\" && npm test",
     "test": "node --test",
     "prepack": "npm run check"
   },

@@ -12,8 +12,8 @@ bunx cairn-ai@latest toolcheck --install
 From this repository:
 
 ```sh
-scripts/cairn toolcheck
-scripts/cairn toolcheck --install
+node scripts/cairn.mjs toolcheck
+node scripts/cairn.mjs toolcheck --install
 ```
 
 Use `--install` when a required tool is missing. Record detected stacks, missing tools, install attempts, and blockers in the related `docs/plan/<topic>.md`.
