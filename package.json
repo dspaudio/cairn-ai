@@ -9,7 +9,7 @@
   "homepage": "https://github.com/dspaudio/cairn-ai",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dspaudio/cairn-ai.git"
+    "url": "git+https://github.com/dspaudio/cairn-ai.git"
   },
   "keywords": [
     "codex",
