@@ -1,0 +1,65 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" session-start",
+            "timeout": 10,
+            "statusMessage": "Cairn: preparing repository memory and plan indexes"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" user-prompt-submit",
+            "timeout": 10,
+            "statusMessage": "Cairn: loading compact work context"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|write|Write|edit|Edit|multi_edit|multiedit|MultiEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" post-tool-use",
+            "timeout": 10,
+            "statusMessage": "Cairn: checking memory and plan indexes"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" stop",
+            "timeout": 10,
+            "statusMessage": "Cairn: checking two-gate evidence requirements"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/scripts/cairn-state.sh\" subagent-stop",
+            "timeout": 10,
+            "statusMessage": "Cairn: checking subagent handoff evidence"
+          }
+        ]
+      }
+    ]
+  }
+}

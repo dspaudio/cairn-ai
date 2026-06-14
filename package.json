@@ -1,0 +1,47 @@
+{
+  "name": "cairn-ai",
+  "version": "0.1.0",
+  "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity",
+  "license": "MIT",
+  "author": {
+    "name": "WkNam"
+  },
+  "homepage": "https://github.com/dspaudio/cairn-ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dspaudio/cairn-ai.git"
+  },
+  "keywords": [
+    "codex",
+    "claude-code",
+    "antigravity",
+    "agent",
+    "harness",
+    "plugin",
+    "workflow"
+  ],
+  "bin": {
+    "cairn": "scripts/cairn",
+    "cairn-ai": "scripts/cairn"
+  },
+  "files": [
+    ".agents/",
+    ".claude/",
+    ".codex-plugin/",
+    "agents/",
+    "commands/",
+    "docs/",
+    "hooks/",
+    "scripts/",
+    "skills/",
+    "templates/",
+    "README.md"
+  ],
+  "scripts": {
+    "check": "node --check scripts/cairn-lifecycle.mjs && node --check scripts/cairn-toolcheck.mjs && node -e \"JSON.parse(require('node:fs').readFileSync('package.json','utf8')); JSON.parse(require('node:fs').readFileSync('.codex-plugin/plugin.json','utf8')); JSON.parse(require('node:fs').readFileSync('hooks/hooks.json','utf8'))\"",
+    "prepack": "npm run check"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "cairn",
+  "version": "0.1.0",
+  "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity.",
+  "author": {
+    "name": "WkNam"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Cairn",
+    "shortDescription": "Memory, planning, tool readiness, and two-gate verification harness for agent teams.",
+    "longDescription": "Cairn brings a LazyCodex-inspired flow to Codex, Claude Code, and Antigravity while reducing token use through repository-local MEMORY.md, PLAN.md, domain notes, tool readiness checks, module-slice execution, and two-gate verification.",
+    "developerName": "WkNam",
+    "category": "Productivity",
+    "capabilities": [
+      "Hooks",
+      "Skills",
+      "Agent Workflow",
+      "Context Management",
+      "Planning",
+      "Tool Readiness"
+    ],
+    "defaultPrompt": [
+      "Use Cairn to create MEMORY.md and PLAN.md for this repository.",
+      "Run cairn-toolcheck before planning implementation work.",
+      "Run cairn-plan for this task without asking me for discoverable facts.",
+      "Run cairn-work from the current PLAN.md and pass both verification gates."
+    ]
+  }
+}
