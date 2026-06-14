@@ -2,65 +2,76 @@
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
-const root = process.cwd();
-const install = process.argv.includes("--install");
-const json = process.argv.includes("--json");
-const entries = await collectEntries(root);
-const detected = detectStacks(entries);
-const requirements = buildRequirements(detected);
-const results = [];
+if (isCliEntry()) {
+  const root = process.cwd();
+  const install = process.argv.includes("--install");
+  const json = process.argv.includes("--json");
+  const report = await createReport({ root, install });
 
-for (const requirement of requirements) {
-  let ok = commandOk(requirement.command, requirement.args);
-  let installed = false;
-  let installResult = null;
-  if (!ok && install && requirement.install) {
-    installResult = run(requirement.install.command, requirement.install.args);
-    installed = installResult.status === 0;
-    ok = commandOk(requirement.command, requirement.args);
+  if (json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    console.log(`Cairn toolcheck: ${report.root}`);
+    console.log(`Detected stacks: ${report.detected.length > 0 ? report.detected.join(", ") : "none"}`);
+    for (const result of report.results) {
+      const prefix = result.ok ? "OK" : "MISSING";
+      const installedText = result.installed ? " installed" : "";
+      console.log(`${prefix}${installedText} ${result.name} - ${result.reason}`);
+      if (!result.ok && result.installCommand) console.log(`  install: ${result.installCommand}`);
+    }
   }
-  results.push({
-    name: requirement.name,
-    reason: requirement.reason,
-    ok,
-    installed,
-    installCommand: requirement.install ? [requirement.install.command, ...requirement.install.args].join(" ") : null,
-    installStatus: installResult?.status ?? null,
-  });
+
+  if (report.results.some((result) => !result.ok)) process.exitCode = 1;
 }
 
-if (json) {
-  console.log(JSON.stringify({ root, detected, results }, null, 2));
-} else {
-  console.log(`Cairn toolcheck: ${root}`);
-  console.log(`Detected stacks: ${detected.length > 0 ? detected.join(", ") : "none"}`);
-  for (const result of results) {
-    const prefix = result.ok ? "OK" : "MISSING";
-    const installedText = result.installed ? " installed" : "";
-    console.log(`${prefix}${installedText} ${result.name} - ${result.reason}`);
-    if (!result.ok && result.installCommand) console.log(`  install: ${result.installCommand}`);
+export async function createReport({ root = process.cwd(), install = false, runner = run } = {}) {
+  const entries = await collectEntries(root);
+  const detected = detectStacks(entries);
+  const requirements = buildRequirements(detected, entries, (command, args) => commandOk(command, args, root, runner));
+  const results = [];
+
+  for (const requirement of requirements) {
+    let ok = commandOk(requirement.command, requirement.args, root, runner);
+    let installed = false;
+    let installResult = null;
+    if (!ok && install && requirement.install) {
+      installResult = runner(requirement.install.command, requirement.install.args);
+      installed = installResult.status === 0;
+      ok = commandOk(requirement.command, requirement.args, root, runner);
+    }
+    results.push({
+      name: requirement.name,
+      reason: requirement.reason,
+      ok,
+      installed,
+      installCommand: requirement.install ? [requirement.install.command, ...requirement.install.args].join(" ") : null,
+      installStatus: installResult?.status ?? null,
+    });
   }
+
+  return { root, detected, results };
 }
 
-if (results.some((result) => !result.ok)) process.exitCode = 1;
-
-async function collectEntries(base) {
+export async function collectEntries(base) {
   const output = [];
   async function walk(dir) {
     for (const entry of await readdir(dir)) {
       if ([".git", ".cairn", "node_modules", "vendor", "target", ".venv", "__pycache__"].includes(entry)) continue;
       const path = join(dir, entry);
+      const relativePath = path.slice(base.length + 1);
+      if (relativePath === "test/fixtures" || relativePath.startsWith("test/fixtures/")) continue;
       const info = await stat(path);
       if (info.isDirectory()) await walk(path);
-      else output.push(path.slice(base.length + 1));
+      else output.push(relativePath);
     }
   }
   await walk(base);
   return output;
 }
 
-function detectStacks(paths) {
+export function detectStacks(paths) {
   const stacks = new Set();
   if (paths.some((path) => path === "package.json")) stacks.add("javascript");
   if (paths.some((path) => path === "tsconfig.json" || path.endsWith(".ts") || path.endsWith(".tsx"))) stacks.add("typescript");
@@ -74,18 +85,18 @@ function detectStacks(paths) {
   return [...stacks];
 }
 
-function buildRequirements(stacks) {
+export function buildRequirements(stacks, entries = [], commandAvailable = commandOk) {
   const requirements = [];
   if (stacks.includes("javascript")) {
     requirements.push(req("node", ["--version"], "JavaScript runtime for package scripts and CLI checks"));
   }
   if (stacks.includes("typescript")) {
-    const pm = packageManager();
+    const pm = packageManager(entries);
     requirements.push(req("typescript-language-server", ["--version"], "TypeScript LSP server", installDev(pm, ["typescript", "typescript-language-server"])));
     requirements.push(req("tsc", ["--version"], "TypeScript compiler verification", installDev(pm, ["typescript"])));
   }
   if (stacks.includes("python")) {
-    const uv = commandOk("uv", ["--version"]);
+    const uv = commandAvailable("uv", ["--version"]);
     const project = entries.includes("pyproject.toml");
     const basedpyrightInstall = pythonInstall(uv, project, "basedpyright");
     const ruffInstall = pythonInstall(uv, project, "ruff");
@@ -104,13 +115,13 @@ function buildRequirements(stacks) {
   if (stacks.includes("java")) {
     addJvmRequirements(requirements);
     requirements.push(req("jdtls", ["--version"], "Java LSP server", { command: "bash", args: ["-lc", "mkdir -p .cairn/tools && curl -L https://download.eclipse.org/jdtls/milestones/latest/jdt-language-server-latest.tar.gz | tar -xz -C .cairn/tools"] }));
-    addJvmBuildToolRequirements(requirements);
+    addJvmBuildToolRequirements(requirements, entries);
   }
   if (stacks.includes("kotlin")) {
     addJvmRequirements(requirements);
     requirements.push(req("kotlin-lsp.sh", ["--help"], "Kotlin LSP server"));
     requirements.push(req("kotlinc", ["-version"], "Kotlin compiler verification"));
-    addJvmBuildToolRequirements(requirements);
+    addJvmBuildToolRequirements(requirements, entries);
   }
   if (stacks.includes("swift")) {
     requirements.push(req("swift", ["--version"], "Swift toolchain for build and test commands"));
@@ -130,7 +141,7 @@ function buildRequirements(stacks) {
   return requirements;
 }
 
-function addJvmRequirements(requirements) {
+export function addJvmRequirements(requirements) {
   if (!requirements.some((requirement) => requirement.name === "java")) {
     requirements.push(req("java", ["--version"], "JVM runtime for build and test commands"));
   }
@@ -139,52 +150,56 @@ function addJvmRequirements(requirements) {
   }
 }
 
-function addJvmBuildToolRequirements(requirements) {
+export function addJvmBuildToolRequirements(requirements, entries = []) {
   if (entries.includes("gradlew")) pushUnique(requirements, req("./gradlew", ["--version"], "Gradle wrapper availability"));
   else if (entries.includes("build.gradle") || entries.includes("build.gradle.kts")) pushUnique(requirements, req("gradle", ["--version"], "Gradle availability"));
   if (entries.includes("mvnw")) pushUnique(requirements, req("./mvnw", ["--version"], "Maven wrapper availability"));
   else if (entries.includes("pom.xml")) pushUnique(requirements, req("mvn", ["--version"], "Maven availability"));
 }
 
-function pushUnique(requirements, requirement) {
+export function pushUnique(requirements, requirement) {
   if (!requirements.some((candidate) => candidate.name === requirement.name)) requirements.push(requirement);
 }
 
-function composerInstall(packages) {
+export function composerInstall(packages) {
   return { command: "composer", args: ["require", "--dev", ...packages] };
 }
 
-function pythonInstall(uv, project, tool) {
+export function pythonInstall(uv, project, tool) {
   if (uv && project) return { command: "uv", args: ["add", "--dev", tool] };
   if (uv) return { command: "uv", args: ["tool", "install", tool] };
   return { command: "python3", args: ["-m", "pip", "install", "--user", tool] };
 }
 
-function req(command, args, reason, installCommand = null) {
+export function req(command, args, reason, installCommand = null) {
   return { name: command, command, args, reason, install: installCommand };
 }
 
-function packageManager() {
+export function packageManager(entries = []) {
   if (entries.includes("bun.lockb") || entries.includes("bun.lock")) return "bun";
   if (entries.includes("pnpm-lock.yaml")) return "pnpm";
   if (entries.includes("yarn.lock")) return "yarn";
   return "npm";
 }
 
-function installDev(pm, packages) {
+export function installDev(pm, packages) {
   if (pm === "bun") return { command: "bun", args: ["add", "-d", ...packages] };
   if (pm === "pnpm") return { command: "pnpm", args: ["add", "-D", ...packages] };
   if (pm === "yarn") return { command: "yarn", args: ["add", "-D", ...packages] };
   return { command: "npm", args: ["install", "--save-dev", ...packages] };
 }
 
-function commandOk(command, args) {
-  if (run(command, args).status === 0) return true;
-  if (run(join(root, "node_modules", ".bin", command), args).status === 0) return true;
-  if (run(join(root, "vendor", "bin", command), args).status === 0) return true;
-  return run(join(root, ".cairn", "tools", "bin", command), args).status === 0;
+export function commandOk(command, args, root = process.cwd(), runner = run) {
+  if (runner(command, args).status === 0) return true;
+  if (runner(join(root, "node_modules", ".bin", command), args).status === 0) return true;
+  if (runner(join(root, "vendor", "bin", command), args).status === 0) return true;
+  return runner(join(root, ".cairn", "tools", "bin", command), args).status === 0;
 }
 
-function run(command, args) {
+export function run(command, args) {
   return spawnSync(command, args, { stdio: "ignore", encoding: "utf8" });
+}
+
+function isCliEntry() {
+  return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 }
