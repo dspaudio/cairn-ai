@@ -65,6 +65,7 @@ function detectStacks(paths) {
   if (paths.some((path) => path === "package.json")) stacks.add("javascript");
   if (paths.some((path) => path === "tsconfig.json" || path.endsWith(".ts") || path.endsWith(".tsx"))) stacks.add("typescript");
   if (paths.some((path) => path === "pyproject.toml" || path.endsWith(".py"))) stacks.add("python");
+  if (paths.some((path) => path === "composer.json" || path.endsWith(".php"))) stacks.add("php");
   if (paths.some((path) => path === "go.mod" || path.endsWith(".go"))) stacks.add("go");
   if (paths.some((path) => path === "Cargo.toml" || path.endsWith(".rs"))) stacks.add("rust");
   return [...stacks];
@@ -88,6 +89,15 @@ function buildRequirements(stacks) {
     requirements.push(req("basedpyright", ["--version"], "Python LSP/type checker", basedpyrightInstall));
     requirements.push(req("ruff", ["--version"], "Python lint and format checker", ruffInstall));
   }
+  if (stacks.includes("php")) {
+    const composerProject = entries.includes("composer.json");
+    const composerTools = ["phpactor/phpactor", "phpstan/phpstan", "friendsofphp/php-cs-fixer"];
+    requirements.push(req("php", ["--version"], "PHP runtime for Composer scripts and CLI checks"));
+    if (composerProject) requirements.push(req("composer", ["--version"], "PHP package manager for project-local tool installation"));
+    requirements.push(req("phpactor", ["--version"], "PHP LSP server", composerProject ? composerInstall(composerTools) : null));
+    requirements.push(req("phpstan", ["--version"], "PHP static analysis verification", composerProject ? composerInstall(composerTools) : null));
+    requirements.push(req("php-cs-fixer", ["--version"], "PHP formatting verification", composerProject ? composerInstall(composerTools) : null));
+  }
   if (stacks.includes("go")) {
     requirements.push(req("gopls", ["version"], "Go LSP server", { command: "go", args: ["install", "golang.org/x/tools/gopls@latest"] }));
     requirements.push(req("golangci-lint", ["--version"], "Go lint verification", { command: "go", args: ["install", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"] }));
@@ -97,6 +107,10 @@ function buildRequirements(stacks) {
     requirements.push(req("cargo", ["clippy", "--version"], "Rust clippy verification", { command: "rustup", args: ["component", "add", "clippy"] }));
   }
   return requirements;
+}
+
+function composerInstall(packages) {
+  return { command: "composer", args: ["require", "--dev", ...packages] };
 }
 
 function pythonInstall(uv, project, tool) {
@@ -125,7 +139,8 @@ function installDev(pm, packages) {
 
 function commandOk(command, args) {
   if (run(command, args).status === 0) return true;
-  return run(join(root, "node_modules", ".bin", command), args).status === 0;
+  if (run(join(root, "node_modules", ".bin", command), args).status === 0) return true;
+  return run(join(root, "vendor", "bin", command), args).status === 0;
 }
 
 function run(command, args) {
