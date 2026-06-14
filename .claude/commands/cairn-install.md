@@ -3,7 +3,7 @@
 Install Cairn into Codex, Claude Code, and Antigravity.
 
 ```sh
-scripts/cairn install
+node scripts/cairn.mjs install
 ```
 
 Published package:

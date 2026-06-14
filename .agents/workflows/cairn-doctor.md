@@ -11,7 +11,7 @@ bunx cairn-ai@latest doctor
 When running from local source:
 
 ```sh
-scripts/cairn doctor
+node scripts/cairn.mjs doctor
 ```
 
 Checks:

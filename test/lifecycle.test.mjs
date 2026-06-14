@@ -4,15 +4,19 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { message } from "../scripts/cairn.mjs";
 import {
   hookHash,
+  pathHasSegment,
   removeCairnConfig,
   splitSections,
   updateConfig,
 } from "../scripts/cairn-lifecycle.mjs";
+import { runState } from "../scripts/cairn-state.mjs";
 
 const root = resolve(".");
 const lifecycleScript = join(root, "scripts", "cairn-lifecycle.mjs");
+const cliScript = join(root, "scripts", "cairn.mjs");
 
 test("updateConfig replaces Cairn sections and preserves unrelated TOML", () => {
   const input = [
@@ -73,7 +77,7 @@ test("removeCairnConfig removes only Cairn-owned sections", () => {
 test("hookHash is stable and sensitive to hook identity", () => {
   const handler = {
     type: "command",
-    command: 'sh "${PLUGIN_ROOT}/scripts/cairn-state.sh" stop',
+    command: 'node "${PLUGIN_ROOT}/scripts/cairn-state.mjs" stop',
     timeout: 10,
     statusMessage: "Cairn: checking two-gate evidence requirements",
   };
@@ -85,6 +89,35 @@ test("hookHash is stable and sensitive to hook identity", () => {
   assert.equal(first, second);
   assert.match(first, /^sha256:[a-f0-9]{64}$/);
   assert.notEqual(first, changed);
+});
+
+test("CLI messages and state initialization run without a POSIX shell", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn-state-"));
+  try {
+    assert.match(message("usage", "en-US"), /cairn install\|upgrade/);
+    assert.match(message("memory", "ko-KR"), /cairn-memory/);
+
+    const output = await runState("manual", { root: temp, locale: "en-US" });
+    assert.equal(output, "Cairn initialized MEMORY.md, PLAN.md, docs/memory, and docs/plan.");
+    await stat(join(temp, "MEMORY.md"));
+    await stat(join(temp, "PLAN.md"));
+
+    const cli = spawnSync(process.execPath, [cliScript, "memory"], {
+      cwd: root,
+      env: { ...process.env, LC_ALL: "en-US" },
+      encoding: "utf8",
+    });
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.match(cli.stdout, /cairn-memory/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("path segment filtering handles platform separators", () => {
+  assert.equal(pathHasSegment(["nested", ".git", "config"].join("\\"), ".git"), true);
+  assert.equal(pathHasSegment(["nested", "node_modules", "pkg"].join("/"), "node_modules"), true);
+  assert.equal(pathHasSegment(["nested", "modules", "pkg"].join("/"), "node_modules"), false);
 });
 
 test("install doctor uninstall lifecycle uses isolated homes", async () => {

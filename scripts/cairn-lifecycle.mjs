@@ -2,14 +2,16 @@
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const codexHome = resolve(process.env.CODEX_HOME ?? join(process.env.HOME ?? ".", ".codex"));
-const claudeHome = resolve(process.env.CLAUDE_HOME ?? join(process.env.HOME ?? ".", ".claude"));
-const antigravityHome = resolve(process.env.ANTIGRAVITY_HOME ?? join(process.env.HOME ?? ".", ".agents"));
-const antigravityCliHome = resolve(process.env.ANTIGRAVITY_CLI_HOME ?? join(process.env.HOME ?? ".", ".gemini", "antigravity-cli"));
+const homeRoot = process.env.HOME ?? process.env.USERPROFILE ?? homedir() ?? ".";
+const codexHome = resolve(process.env.CODEX_HOME ?? join(homeRoot, ".codex"));
+const claudeHome = resolve(process.env.CLAUDE_HOME ?? join(homeRoot, ".claude"));
+const antigravityHome = resolve(process.env.ANTIGRAVITY_HOME ?? join(homeRoot, ".agents"));
+const antigravityCliHome = resolve(process.env.ANTIGRAVITY_CLI_HOME ?? join(homeRoot, ".gemini", "antigravity-cli"));
 const configPath = process.env.CODEX_CONFIG_PATH ?? join(codexHome, "config.toml");
 const marketplaceName = "cairn";
 const pluginName = "cairn";
@@ -87,7 +89,7 @@ async function copyPlugin() {
   await mkdir(dirname(installedPluginRoot), { recursive: true });
   await cp(pluginRoot, installedPluginRoot, {
     recursive: true,
-    filter: (source) => !source.includes(`${pluginRoot}/.git`) && !source.includes(`${pluginRoot}/node_modules`),
+    filter: (source) => !pathHasSegment(relative(pluginRoot, source), ".git") && !pathHasSegment(relative(pluginRoot, source), "node_modules"),
   });
   const manifestPath = join(installedPluginRoot, ".codex-plugin", "plugin.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -255,6 +257,10 @@ async function exists(path) {
 
 function append(config, block) {
   return `${config.trimEnd()}${config.trimEnd().length === 0 ? "" : "\n\n"}${block.trimEnd()}\n`;
+}
+
+export function pathHasSegment(path, segment) {
+  return path.split(/[\\/]+/).includes(segment);
 }
 
 export function commandNames() {

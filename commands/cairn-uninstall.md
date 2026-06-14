@@ -5,7 +5,7 @@ Goal: remove the Codex, Claude Code, and Antigravity entries installed by Cairn.
 Run:
 
 ```sh
-scripts/cairn uninstall
+node scripts/cairn.mjs uninstall
 ```
 
 With the published package:
