@@ -39,7 +39,10 @@ This file is a short index of active and completed work plans.
 
 ## Planning Rules
 
+- Every agent must start assigned work by reading the project-root \`MEMORY.md\` for domain knowledge and repository policy.
 - Plans must be decision-complete before implementation.
+- Run complexity triage before applying agent, plugin, or delegated workflow guidance.
+- Record the selected Light Path or Heavy Path and the checked Heavy Path signals in \`docs/plan/<topic>.md\`.
 - Split implementation into small module slices.
 - Detect repository stack and required LSP/check tools before implementation.
 - Install or bootstrap missing required tools before declaring them unavailable.
@@ -67,8 +70,8 @@ export async function runState(event = "manual", { root = process.env.HARNESS_RE
   const ko = locale.toLowerCase().startsWith("ko");
   if (event === "session-start" || event === "user-prompt-submit") {
     return ko
-      ? "Cairn 컨텍스트: 먼저 MEMORY.md와 PLAN.md를 읽고, 필요한 경우 toolcheck로 LSP/check 도구 준비 상태를 확인하세요."
-      : "Cairn context: read MEMORY.md and PLAN.md first, then run toolcheck when LSP/check tool readiness is needed.";
+      ? "Cairn 컨텍스트: 모든 에이전트는 작업 시작 시 도메인 지식과 정책 색인인 프로젝트 루트 MEMORY.md를 먼저 읽어야 합니다."
+      : "Cairn context: every agent must start by reading the project-root MEMORY.md for domain knowledge and repository policy.";
   }
   if (event === "post-tool-use") {
     return ko

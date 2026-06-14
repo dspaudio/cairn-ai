@@ -11,6 +11,8 @@ Use this when domain knowledge, repository policy, or pre-plan context compressi
 
 The root `MEMORY.md` is an index, not detailed knowledge. Record details in `docs/memory/<domain>.md`.
 
+Every delegated agent must read the project-root `MEMORY.md` before doing its assigned discovery, evidence, or update task.
+
 ## Procedure
 
 1. Run `node scripts/cairn-state.mjs manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
@@ -28,7 +30,7 @@ The root `MEMORY.md` is an index, not detailed knowledge. Record details in `doc
 TASK: Explore persistent domain knowledge for <domain>.
 EXPECTED OUTCOME: Return facts, source paths, and proof commands concisely.
 REQUIRED TOOLS: Read-only file search, LSP/symbol tools, command checks.
-MUST DO: Preserve proper nouns exactly. Cite local paths. Separate facts from inference. Use the OS locale for user-visible text.
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Cite local paths. Separate facts from inference. Use the OS locale for user-visible text.
 MUST NOT DO: Edit files. Ask the user. Guess missing names.
 CONTEXT: Current task, repository root, existing MEMORY.md entries.
 ```

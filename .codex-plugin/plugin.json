@@ -1,6 +1,6 @@
 {
   "name": "cairn",
-  "version": "0.1.1",
+  "version": "0.1.5",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity.",
   "author": {
     "name": "WkNam"
@@ -22,9 +22,11 @@
     ],
     "defaultPrompt": [
       "Use Cairn to create MEMORY.md and PLAN.md for this repository.",
+      "At the start of each task, every agent must read the project-root MEMORY.md for domain knowledge and repository policy before planning, implementation, review, or delegation.",
       "Run cairn-toolcheck before planning implementation work.",
-      "Run cairn-plan for this task without asking me for discoverable facts.",
-      "Run cairn-work from the current PLAN.md and pass both verification gates."
+      "Before non-trivial implementation, run cairn-plan for this task without asking me for discoverable facts.",
+      "Record Light Path or Heavy Path complexity triage in docs/plan/<topic>.md before mutating files.",
+      "Run cairn-work from the current PLAN.md and pass dry-run/check, module acceptance, and surface integration gates."
     ]
   }
 }

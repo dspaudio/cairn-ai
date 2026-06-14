@@ -23,6 +23,15 @@ Describe the observable result.
 
 - Selected path: Light Path or Heavy Path.
 - Selection rationale:
+- Heavy Path signals checked:
+  - New directory/module/layer:
+  - New domain model/service/abstraction:
+  - Security/auth/session:
+  - External API/message queue/payment:
+  - DB schema/migration:
+  - Concurrency/transaction/cache invalidation:
+  - Cross-domain refactor:
+  - Explicit extra-care signal:
 - Heavy Path trigger, if selected:
 - Omitted delegation in Light Path, if applicable:
 - Pre-implementation decisions:
