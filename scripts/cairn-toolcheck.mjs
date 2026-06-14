@@ -49,7 +49,7 @@ async function collectEntries(base) {
   const output = [];
   async function walk(dir) {
     for (const entry of await readdir(dir)) {
-      if ([".git", "node_modules", "vendor", "target", ".venv", "__pycache__"].includes(entry)) continue;
+      if ([".git", ".cairn", "node_modules", "vendor", "target", ".venv", "__pycache__"].includes(entry)) continue;
       const path = join(dir, entry);
       const info = await stat(path);
       if (info.isDirectory()) await walk(path);
@@ -66,6 +66,8 @@ function detectStacks(paths) {
   if (paths.some((path) => path === "tsconfig.json" || path.endsWith(".ts") || path.endsWith(".tsx"))) stacks.add("typescript");
   if (paths.some((path) => path === "pyproject.toml" || path.endsWith(".py"))) stacks.add("python");
   if (paths.some((path) => path === "composer.json" || path.endsWith(".php"))) stacks.add("php");
+  if (paths.some((path) => path === "pom.xml" || path === "build.gradle" || path === "build.gradle.kts" || path.endsWith(".java"))) stacks.add("java");
+  if (paths.some((path) => path === "Package.swift" || path.endsWith(".xcodeproj") || path.endsWith(".xcworkspace") || path.endsWith(".swift"))) stacks.add("swift");
   if (paths.some((path) => path === "go.mod" || path.endsWith(".go"))) stacks.add("go");
   if (paths.some((path) => path === "Cargo.toml" || path.endsWith(".rs"))) stacks.add("rust");
   return [...stacks];
@@ -97,6 +99,22 @@ function buildRequirements(stacks) {
     requirements.push(req("phpactor", ["--version"], "PHP LSP server", composerProject ? composerInstall(composerTools) : null));
     requirements.push(req("phpstan", ["--version"], "PHP static analysis verification", composerProject ? composerInstall(composerTools) : null));
     requirements.push(req("php-cs-fixer", ["--version"], "PHP formatting verification", composerProject ? composerInstall(composerTools) : null));
+  }
+  if (stacks.includes("java")) {
+    requirements.push(req("java", ["--version"], "Java runtime for build and test commands"));
+    requirements.push(req("javac", ["--version"], "Java compiler verification"));
+    requirements.push(req("jdtls", ["--version"], "Java LSP server", { command: "bash", args: ["-lc", "mkdir -p .cairn/tools && curl -L https://download.eclipse.org/jdtls/milestones/latest/jdt-language-server-latest.tar.gz | tar -xz -C .cairn/tools"] }));
+    if (entries.includes("gradlew")) requirements.push(req("./gradlew", ["--version"], "Gradle wrapper availability"));
+    else if (entries.includes("build.gradle") || entries.includes("build.gradle.kts")) requirements.push(req("gradle", ["--version"], "Gradle availability"));
+    if (entries.includes("mvnw")) requirements.push(req("./mvnw", ["--version"], "Maven wrapper availability"));
+    else if (entries.includes("pom.xml")) requirements.push(req("mvn", ["--version"], "Maven availability"));
+  }
+  if (stacks.includes("swift")) {
+    requirements.push(req("swift", ["--version"], "Swift toolchain for build and test commands"));
+    requirements.push(req("sourcekit-lsp", ["--version"], "Swift LSP server"));
+    if (entries.some((path) => path.endsWith(".xcodeproj") || path.endsWith(".xcworkspace"))) {
+      requirements.push(req("xcodebuild", ["-version"], "Xcode build verification"));
+    }
   }
   if (stacks.includes("go")) {
     requirements.push(req("gopls", ["version"], "Go LSP server", { command: "go", args: ["install", "golang.org/x/tools/gopls@latest"] }));
@@ -140,7 +158,8 @@ function installDev(pm, packages) {
 function commandOk(command, args) {
   if (run(command, args).status === 0) return true;
   if (run(join(root, "node_modules", ".bin", command), args).status === 0) return true;
-  return run(join(root, "vendor", "bin", command), args).status === 0;
+  if (run(join(root, "vendor", "bin", command), args).status === 0) return true;
+  return run(join(root, ".cairn", "tools", "bin", command), args).status === 0;
 }
 
 function run(command, args) {

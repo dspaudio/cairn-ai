@@ -22,7 +22,7 @@ The selected route and rationale are recorded in `docs/plan/<topic>.md`. Even on
 
 ## Tool Readiness
 
-`cairn toolcheck` inspects the current repository for common JavaScript, TypeScript, Python, PHP, Go, and Rust stacks, then checks the matching LSP and verification tools.
+`cairn toolcheck` inspects the current repository for JavaScript, TypeScript, Python, PHP, Java, Swift, Go, and Rust stacks, then checks the matching LSP and verification tools.
 
 ```sh
 cairn toolcheck
@@ -30,7 +30,7 @@ cairn toolcheck --install
 ```
 
 - `toolcheck` reports detected stacks and missing tools.
-- `toolcheck --install` attempts the closest project-local or repository-native install path, such as package-manager dev dependencies, Composer dev dependencies, `uv`, `go install`, or `rustup component add`.
+- `toolcheck --install` attempts the closest project-local or repository-native install path, such as package-manager dev dependencies, Composer dev dependencies, `uv`, Java LSP bootstrap, `go install`, or `rustup component add`.
 - Cairn plans record detected stack, required tools, install commands, and blockers.
 - A missing LSP server is not a valid reason to skip precise codebase exploration until installation or an equivalent symbol-aware fallback has been attempted.
 
