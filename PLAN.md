@@ -5,6 +5,7 @@ This file is a short index of active and completed work plans.
 ## Active Plans
 
 - Link detailed plans under `docs/plan/`.
+- [Release 0.1.7 stop gate](docs/plan/release-0.1.7-stop-gate.md): publish stop-gate completion guard through dev/main PR flow, npm, and local installation.
 
 ## Completed Plans
 
