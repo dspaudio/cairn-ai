@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const memoryTemplate = `# MEMORY
@@ -127,7 +127,8 @@ async function pendingActivePlanItems(root) {
 
   for (const relativePath of activePlans) {
     const path = resolve(root, relativePath);
-    if (!path.startsWith(`${root}/`) && path !== root) continue;
+    const pathFromRoot = relative(root, path);
+    if (pathFromRoot.startsWith("..") || isAbsolute(pathFromRoot)) continue;
     const text = await readPlanFile(path);
     if (text === null) {
       pending.push({ path: relativePath, unchecked: ["active plan file is missing"], emptyEvidence: [] });
