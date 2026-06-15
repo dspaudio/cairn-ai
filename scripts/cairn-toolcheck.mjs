@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { spawnSync } from "node:child_process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 if (isCliEntry()) {
   const root = process.cwd();
@@ -233,7 +234,12 @@ export function shouldUseShell(command, platform = process.platform) {
 }
 
 function isCliEntry() {
-  return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return import.meta.url === pathToFileURL(process.argv[1]).href;
+  }
 }
 
 function normalizePath(path) {
