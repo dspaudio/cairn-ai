@@ -12,10 +12,11 @@ import {
   splitSections,
   updateConfig,
 } from "../scripts/cairn-lifecycle.mjs";
-import { runState } from "../scripts/cairn-state.mjs";
+import { runState, runStateResult } from "../scripts/cairn-state.mjs";
 
 const root = resolve(".");
 const lifecycleScript = join(root, "scripts", "cairn-lifecycle.mjs");
+const stateScript = join(root, "scripts", "cairn-state.mjs");
 const cliScript = join(root, "scripts", "cairn.mjs");
 
 test("updateConfig replaces Cairn sections and preserves unrelated TOML", () => {
@@ -127,6 +128,56 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     });
     assert.equal(linked.status, 0, linked.stderr);
     assert.match(linked.stdout, /Usage: cairn install\|upgrade/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("stop gate blocks completion when active plan work remains", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn-stop-gate-"));
+  try {
+    await runState("manual", { root: temp, locale: "en-US" });
+    await writeFile(join(temp, "PLAN.md"), [
+      "# PLAN",
+      "",
+      "## Active Plans",
+      "",
+      "- [Pending work](docs/plan/pending-work.md)",
+      "",
+      "## Completed Plans",
+      "",
+      "- Move completed topics here with evidence links.",
+      "",
+    ].join("\n"));
+    await writeFile(join(temp, "docs", "plan", "pending-work.md"), [
+      "# Plan: Pending work",
+      "",
+      "## Evidence",
+      "",
+      "- Dry-run or check:",
+      "- Module acceptance: npm test passed",
+      "",
+      "## Status",
+      "",
+      "- [x] Planned",
+      "- [ ] Implemented",
+      "- [ ] Reviewed",
+      "",
+    ].join("\n"));
+
+    const result = await runStateResult("stop", { root: temp, locale: "en-US" });
+    assert.equal(result.status, 1);
+    assert.match(result.message, /blocked completion signal/i);
+    assert.match(result.message, /docs\/plan\/pending-work\.md/);
+    assert.match(result.message, /Implemented/);
+
+    const cli = spawnSync(process.execPath, [stateScript, "stop"], {
+      cwd: root,
+      env: { ...process.env, HARNESS_REPO_ROOT: temp, LC_ALL: "en-US" },
+      encoding: "utf8",
+    });
+    assert.equal(cli.status, 1);
+    assert.match(cli.stdout, /continue the next incomplete slice/);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
