@@ -94,10 +94,10 @@ Publish the Cairn stop-gate fix so active plan work blocks premature Stop/Subage
 - Tool readiness: `node scripts/cairn.mjs toolcheck` passed; detected stack `javascript`, `node` OK.
 - Release preparation checks: `npm run check` passed with 12 tests; `npm pack --dry-run` passed for `cairn-ai@0.1.7` with 60 tarball files; `npm publish --dry-run` passed for tag `latest`.
 - CI fix: first PR run passed Ubuntu but failed Windows because active plan path containment used a POSIX slash prefix; changed to `node:path.relative()` plus `isAbsolute()`, then reran `npm run check`, `npm pack --dry-run`, and `npm publish --dry-run` successfully.
-- Dev PR merge: pending.
-- Main PR merge: pending.
-- npm publish: pending.
-- Local environment update: pending.
+- Dev PR merge: `dev` pushed with release commits; PR #17 created from `dev` to `main`.
+- Main PR merge: PR #17 merged to `main` at merge commit `d22fbd382c76cad2d35805795a600334dcc932c0` after Ubuntu and Windows CI passed.
+- npm publish: `npm publish` succeeded for `cairn-ai@0.1.7`; `npm view cairn-ai version` returned `0.1.7` and `latest` points to `0.1.7`.
+- Local environment update: `node scripts/cairn.mjs upgrade && node scripts/cairn.mjs doctor` passed; `bun add -g cairn-ai@latest` installed `cairn-ai@0.1.7`; `cairn doctor` passed.
 - Verification pass count: 2.
 - Blocker after two failed passes: none.
 
@@ -108,4 +108,4 @@ Publish the Cairn stop-gate fix so active plan work blocks premature Stop/Subage
 - [x] Implemented
 - [x] Module acceptance passed
 - [x] Surface integration passed
-- [ ] Reviewed
+- [x] Reviewed
