@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -117,6 +117,16 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     });
     assert.equal(cli.status, 0, cli.stderr);
     assert.match(cli.stdout, /cairn-memory/);
+
+    const linkedCli = join(temp, "cairn-link.mjs");
+    await symlink(cliScript, linkedCli);
+    const linked = spawnSync(process.execPath, [linkedCli], {
+      cwd: root,
+      env: { ...process.env, LC_ALL: "en-US" },
+      encoding: "utf8",
+    });
+    assert.equal(linked.status, 0, linked.stderr);
+    assert.match(linked.stdout, /Usage: cairn install\|upgrade/);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
