@@ -54,6 +54,8 @@ async function doctor() {
   const config = await readText(configPath);
   checks.push(["config features.plugins", hasSetting(config, "features", "plugins", "true")]);
   checks.push(["config features.plugin_hooks", hasSetting(config, "features", "plugin_hooks", "true")]);
+  checks.push(["config features.multi_agent", hasSetting(config, "features", "multi_agent", "true")]);
+  checks.push(["config agents.max_depth", hasSetting(config, "agents", "max_depth", "2")]);
   checks.push(["config marketplace", config.includes("[marketplaces.cairn]")]);
   checks.push(["config plugin enabled", config.includes('[plugins."cairn@cairn"]') && hasSetting(config, 'plugins."cairn@cairn"', "enabled", "true")]);
   const expectedStates = await trustedHookStates();
@@ -152,6 +154,8 @@ export function updateConfig(config, hookStates) {
   let next = removeCairnConfig(config);
   next = ensureSetting(next, "features", "plugins", "true");
   next = ensureSetting(next, "features", "plugin_hooks", "true");
+  next = ensureSetting(next, "features", "multi_agent", "true");
+  next = ensureSetting(next, "agents", "max_depth", "2");
   next = append(next, `[marketplaces.cairn]\nlast_updated = ${JSON.stringify(new Date().toISOString().replace(/\.\d{3}Z$/, "Z"))}\nsource_type = "local"\nsource = ${JSON.stringify(marketplaceRoot)}\n`);
   next = append(next, '[plugins."cairn@cairn"]\nenabled = true\n');
   for (const state of hookStates) next = append(next, `[hooks.state.${JSON.stringify(state.key)}]\ntrusted_hash = ${JSON.stringify(state.trustedHash)}\n`);

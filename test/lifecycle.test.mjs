@@ -43,6 +43,9 @@ test("updateConfig replaces Cairn sections and preserves unrelated TOML", () => 
   const output = updateConfig(input, [{ key: "cairn@cairn:hooks/hooks.json:stop:0:0", trustedHash: "sha256:new" }]);
 
   assert.match(output, /\[features\]\nplugins = true\nother = true/);
+  assert.match(output, /plugin_hooks = true/);
+  assert.match(output, /multi_agent = true/);
+  assert.match(output, /\[agents\]\nmax_depth = 2/);
   assert.match(output, /\[profiles\.default\]\nmodel = "gpt-5"/);
   assert.match(output, /\[marketplaces\.cairn\]/);
   assert.match(output, /\[plugins\."cairn@cairn"\]\nenabled = true/);
@@ -292,6 +295,10 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
 
     const config = await readFile(env.CODEX_CONFIG_PATH, "utf8");
     assert.match(config, /\[profiles\.default\]/);
+    assert.match(config, /\[features\][\s\S]*plugins = true/);
+    assert.match(config, /\[features\][\s\S]*plugin_hooks = true/);
+    assert.match(config, /\[features\][\s\S]*multi_agent = true/);
+    assert.match(config, /\[agents\][\s\S]*max_depth = 2/);
     assert.match(config, /\[marketplaces\.cairn\]/);
     assert.match(config, /\[hooks\.state\."cairn@cairn:hooks\/hooks\.json:stop:0:0"\]/);
 

@@ -102,8 +102,8 @@ cairn uninstall
 cairn toolcheck
 ```
 
-- `cairn install`: installs the plugin into the Codex marketplace cache and configures hook trust state, Claude Code mirror files, and Antigravity skills/workflows.
-- `cairn upgrade`: updates the installation, hook trust state, Claude Code mirror files, and Antigravity skills/workflows from the current source.
+- `cairn install`: installs the plugin into the Codex marketplace cache and configures Codex multi-agent settings, hook trust state, Claude Code mirror files, and Antigravity skills/workflows.
+- `cairn upgrade`: updates the installation, Codex multi-agent settings, hook trust state, Claude Code mirror files, and Antigravity skills/workflows from the current source.
 - `cairn doctor`: diagnoses Codex settings, installation, hook trust state, Claude Code mirror files, and Antigravity mirror files.
 - `cairn uninstall`: removes Cairn-added Codex settings, cache, Claude Code mirror files, and Antigravity mirror files.
 - `cairn toolcheck`: detects repository stacks and checks or installs required LSP and verification tools.
