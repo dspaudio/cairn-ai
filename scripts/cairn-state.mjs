@@ -44,15 +44,15 @@ This file is a short index of active and completed work plans.
 - Plans must be decision-complete before implementation.
 - Run complexity triage before applying agent, plugin, or delegated workflow guidance.
 - Record the selected Light Path or Heavy Path and the checked Heavy Path signals in \`docs/plan/<topic>.md\`.
-- Split implementation into small module slices.
+- Split implementation into small module tasks.
 - Detect repository stack and required LSP/check tools before implementation.
 - Install or bootstrap missing required tools before declaring them unavailable.
-- Each slice normally passes exactly two gates.
+- Each task normally passes exactly two gates.
   - Module acceptance verification.
   - Surface integration verification.
 - Run dry-run or check mode before external-state mutation when available.
-- Use at most two verification passes per slice by default.
-- If a gate fails, diagnose once, shrink or split the slice, and rerun both gates.
+- Use at most two verification passes per task by default.
+- If a gate fails, diagnose once, shrink the task or split it into sub-tasks, and rerun both gates.
 - After two failed passes, record the blocker in \`docs/plan/<topic>.md\`.
 `;
 
@@ -136,8 +136,9 @@ async function pendingActivePlanItems(root) {
     }
     const unchecked = [...text.matchAll(/^\s*-\s+\[\s\]\s+(.+)$/gm)].map((match) => match[1].trim());
     const emptyEvidence = emptyEvidenceItems(text);
-    if (unchecked.length > 0 || emptyEvidence.length > 0) {
-      pending.push({ path: relativePath, unchecked, emptyEvidence });
+    const missingHeavyPathTests = heavyPathMissingTests(text);
+    if (unchecked.length > 0 || emptyEvidence.length > 0 || missingHeavyPathTests.length > 0) {
+      pending.push({ path: relativePath, unchecked, emptyEvidence, missingHeavyPathTests });
     }
   }
 
@@ -177,6 +178,16 @@ function emptyEvidenceItems(text) {
   return empty;
 }
 
+function heavyPathMissingTests(text) {
+  if (!/^\s*-\s+Selected path:\s*Heavy Path\.?\s*$/im.test(text)) return [];
+  const evidence = section(text, "Evidence");
+  const hasExplicitTestEvidence = [
+    /^\s*-\s+(Tests?|Test execution|Automated tests):\s*\S.+$/im,
+    /^\s*-\s+Module acceptance:\s+.*\b(npm test|node --test|pytest|phpunit|go test|cargo test|mvn test|gradle test|swift test|xcodebuild test)\b/im,
+  ].some((pattern) => pattern.test(evidence));
+  return hasExplicitTestEvidence ? [] : ["Heavy Path test evidence is missing"];
+}
+
 function section(text, title) {
   const pattern = new RegExp(`^##\\s+${escapeRegExp(title)}\\s*$([\\s\\S]*?)(?=^##\\s+|(?![\\s\\S]))`, "m");
   return text.match(pattern)?.[1]?.trim() ?? "";
@@ -187,16 +198,17 @@ function stopBlockedMessage({ event, ko, pending }) {
   const suffix = pending.length > 3 ? `; +${pending.length - 3} more` : "";
   if (ko) {
     const subject = event === "subagent-stop" ? "서브에이전트 완료 신호" : "완료 신호";
-    return `Cairn 종료 게이트: ${subject}를 차단했습니다. 미완료 작업이 남아 있습니다. PLAN.md의 Active Plans를 다시 읽고 다음 미완료 slice를 계속 진행하세요: ${itemText}${suffix}`;
+    return `Cairn 종료 게이트: ${subject}를 차단했습니다. 미완료 작업이 남아 있습니다. PLAN.md의 Active Plans를 다시 읽고 다음 미완료 task를 계속 진행하세요: ${itemText}${suffix}`;
   }
   const subject = event === "subagent-stop" ? "subagent completion signal" : "completion signal";
-  return `Cairn stop gate: blocked ${subject}. Incomplete work remains. Re-read PLAN.md Active Plans and continue the next incomplete slice: ${itemText}${suffix}`;
+  return `Cairn stop gate: blocked ${subject}. Incomplete work remains. Re-read PLAN.md Active Plans and continue the next incomplete task: ${itemText}${suffix}`;
 }
 
 function formatPendingItem(item) {
   const reasons = [
     ...item.unchecked.map((label) => `unchecked: ${label}`),
     ...item.emptyEvidence.map((label) => `empty evidence: ${label}`),
+    ...(item.missingHeavyPathTests ?? []).map((label) => `missing tests: ${label}`),
   ];
   return `${item.path} (${reasons.slice(0, 3).join(", ")})`;
 }

@@ -99,8 +99,12 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(message("memory", "ko-KR"), /cairn-memory/);
     assert.match(message("plan", "en-US"), /Every agent.*project-root MEMORY\.md/);
     assert.match(message("plan", "en-US"), /Light\/Heavy Path triage/);
+    assert.match(message("plan", "en-US"), /whole work.*tasks and sub-tasks/i);
+    assert.match(message("plan", "ko-KR"), /전체 작업.*task.*sub-task/);
     assert.match(message("work", "ko-KR"), /모든 에이전트.*MEMORY\.md/);
     assert.match(message("work", "ko-KR"), /Light\/Heavy Path/);
+    assert.match(message("work", "en-US"), /side question.*resume/i);
+    assert.match(message("work", "ko-KR"), /곁가지 질문.*active work/);
 
     const output = await runState("manual", { root: temp, locale: "en-US" });
     assert.equal(output, "Cairn initialized MEMORY.md, PLAN.md, docs/memory, and docs/plan.");
@@ -177,7 +181,81 @@ test("stop gate blocks completion when active plan work remains", async () => {
       encoding: "utf8",
     });
     assert.equal(cli.status, 1);
-    assert.match(cli.stdout, /continue the next incomplete slice/);
+    assert.match(cli.stdout, /continue the next incomplete task/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("stop gate requires explicit test evidence for Heavy Path plans", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn-heavy-tests-"));
+  try {
+    await runState("manual", { root: temp, locale: "en-US" });
+    await writeFile(join(temp, "PLAN.md"), [
+      "# PLAN",
+      "",
+      "## Active Plans",
+      "",
+      "- [Heavy work](docs/plan/heavy-work.md)",
+      "",
+      "## Completed Plans",
+      "",
+    ].join("\n"));
+    await writeFile(join(temp, "docs", "plan", "heavy-work.md"), [
+      "# Plan: Heavy work",
+      "",
+      "## Complexity Triage",
+      "",
+      "- Selected path: Heavy Path.",
+      "",
+      "## Evidence",
+      "",
+      "- Dry-run or check: not applicable",
+      "- Module acceptance: node --check scripts/cairn-state.mjs passed",
+      "- Surface integration: npm pack --dry-run passed",
+      "",
+      "## Status",
+      "",
+      "- [x] Planned",
+      "- [x] Dry-run or check passed, or not applicable was recorded",
+      "- [x] Implemented",
+      "- [x] Module acceptance passed",
+      "- [x] Surface integration passed",
+      "- [x] Reviewed",
+      "",
+    ].join("\n"));
+
+    const blocked = await runStateResult("stop", { root: temp, locale: "en-US" });
+    assert.equal(blocked.status, 1);
+    assert.match(blocked.message, /missing tests: Heavy Path test evidence is missing/);
+
+    await writeFile(join(temp, "docs", "plan", "heavy-work.md"), [
+      "# Plan: Heavy work",
+      "",
+      "## Complexity Triage",
+      "",
+      "- Selected path: Heavy Path.",
+      "",
+      "## Evidence",
+      "",
+      "- Dry-run or check: not applicable",
+      "- Tests: npm test passed",
+      "- Module acceptance: node --check scripts/cairn-state.mjs passed",
+      "- Surface integration: npm pack --dry-run passed",
+      "",
+      "## Status",
+      "",
+      "- [x] Planned",
+      "- [x] Dry-run or check passed, or not applicable was recorded",
+      "- [x] Implemented",
+      "- [x] Module acceptance passed",
+      "- [x] Surface integration passed",
+      "- [x] Reviewed",
+      "",
+    ].join("\n"));
+
+    const passed = await runStateResult("stop", { root: temp, locale: "en-US" });
+    assert.equal(passed.status, 0);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
@@ -221,12 +299,19 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(manifest.hooks, "./hooks/hooks.json");
     assert.match(manifest.interface.defaultPrompt.join("\n"), /every agent must read the project-root MEMORY\.md/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /whole work.*executable tasks.*sub-tasks/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /recursively delegate bounded sub-tasks to subagents/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /side question.*resume.*pause, stop, or switch tasks/i);
     const explorer = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "explorer.md"), "utf8");
     const worker = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "worker.md"), "utf8");
     assert.match(explorer, /Before doing any assigned task, read the project-root `MEMORY\.md`/);
+    assert.match(explorer, /recursively delegate bounded read-only sub-tasks to subagents/);
     assert.match(worker, /Before doing any assigned task, read the project-root `MEMORY\.md`/);
+    assert.match(worker, /recursively delegate bounded sub-tasks to subagents/);
     await stat(join(env.CLAUDE_HOME, "commands", "cairn-plan.md"));
     await stat(join(env.ANTIGRAVITY_HOME, "skills", "cairn-plan", "SKILL.md"));
+    const antigravityWork = await readFile(join(env.ANTIGRAVITY_HOME, "workflows", "cairn-work.md"), "utf8");
+    assert.match(antigravityWork, /side question.*resume the previous active work/i);
 
     const uninstall = runLifecycle("uninstall", env);
     assert.equal(uninstall.status, 0, uninstall.stderr);

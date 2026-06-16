@@ -14,11 +14,13 @@ Procedure:
 4. Run `node scripts/cairn.mjs toolcheck` when available.
 5. If required LSP/check tools are missing, run `node scripts/cairn.mjs toolcheck --install` or a repository-native install command before accepting a fallback.
 6. Explore before asking the user.
-7. Run complexity triage before applying agent, plugin, or delegated workflow guidance, and record it before mutating files.
-8. Use Light Path by default unless a Heavy Path condition clearly applies.
-9. Use `explorer` for independent read-only discovery, impact analysis, pattern search, and read-only verification when available.
-10. Use `worker` for bounded implementation or verification tasks with clear file ownership. Tell every delegated agent to read the project-root `MEMORY.md` before work. Keep urgent blocking work local.
-11. Write `docs/plan/<topic>.md`.
-12. Add the topic link and status to `PLAN.md`.
-13. Put the selected Light/Heavy Path, checked Heavy Path signals, tool readiness, module acceptance verification, and surface integration verification on every module slice.
-14. Use the OS locale for user-visible output unless the user asks for another language.
+7. Understand the whole work and affected surfaces first, then classify it into small executable tasks. If a task is still too broad to verify cleanly, split it into sub-tasks.
+8. Run complexity triage before applying agent, plugin, or delegated workflow guidance, and record it before mutating files.
+9. Use Light Path by default unless a Heavy Path condition clearly applies.
+10. Use `explorer` for independent read-only discovery, impact analysis, pattern search, and read-only verification when available.
+11. Use `worker` for bounded implementation or verification tasks with clear file ownership. When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, and preserve others' edits. Keep urgent blocking work local.
+12. Write `docs/plan/<topic>.md`.
+13. Add the topic link and status to `PLAN.md`.
+14. Put the selected Light/Heavy Path, checked Heavy Path signals, tool readiness, module acceptance verification, and surface integration verification on every module task.
+15. For Heavy Path, include an explicit automated test command and `Tests:` evidence line; Heavy Path completion must not rely on generic verification wording alone.
+16. Use the OS locale for user-visible output unless the user asks for another language.

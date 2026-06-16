@@ -4,6 +4,13 @@
 
 Describe the observable result.
 
+## Whole Work
+
+- Outcome:
+- Affected surfaces:
+- Task classification:
+- Sub-tasks, if needed:
+
 ## Memory Inputs
 
 - `MEMORY.md`
@@ -44,7 +51,7 @@ Describe the observable result.
 ## Agent Assignments
 
 - `explorer`: read-only discovery, impact analysis, pattern search, and read-only verification when available.
-- `worker`: bounded implementation slices with clear file ownership, or scoped verification work.
+- `worker`: bounded implementation tasks with clear file ownership, or scoped verification work.
 - Local main session: urgent blocking work when the next step depends immediately on the result.
 
 ## Tool Readiness
@@ -61,14 +68,15 @@ Describe the observable result.
 
 - Dry-run or check mode before external-state mutation:
 - No dry-run available, if applicable:
-- Verification loop budget: two passes per slice by default.
-- Failure handling: diagnose once, shrink or split the slice, rerun both gates, then record a blocker after the second failed pass.
+- Verification loop budget: two passes per task by default.
+- Failure handling: diagnose once, shrink the task or split it into sub-tasks, rerun both gates, then record a blocker after the second failed pass.
 
-## Module Slices
+## Module Tasks
 
-### Slice 1: <module>
+### Task 1: <module>
 
 - Contract:
+- Sub-tasks, if needed:
 - Files:
 - Dependencies:
 - Tool readiness requirement:
@@ -80,6 +88,7 @@ Describe the observable result.
 
 - Dry-run or check:
 - Tool readiness:
+- Tests:
 - Module acceptance:
 - Surface integration:
 - Verification pass count:

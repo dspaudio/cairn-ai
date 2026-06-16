@@ -4,12 +4,12 @@ Cairn 是面向 Codex、Claude Code 和 Antigravity 的高 token 效率 multi-ag
 
 [English](README.md)
 
-Cairn 的核心思路是保留有用的 agent harness 行为：hooks、persistent state、explicit planning、focused delegation 和 stop-time guards。Cairn 不把重复的 TDD verification loops 作为默认流程，而是把工作拆成小的 module slices，并用两个 verification gates 证明每个 slice。
+Cairn 的核心思路是保留有用的 agent harness 行为：hooks、persistent state、explicit planning、focused delegation 和 stop-time guards。Cairn 不把重复的 TDD verification loops 作为默认流程，而是把工作拆成小的 module tasks，并用两个 verification gates 证明每个 task。
 
 1. Module acceptance verification: 证明被修改的 module contract。
 2. Surface integration verification: 通过 CLI、HTTP、browser 或 file artifacts 等真实 surface 证明行为。
 
-在 slice 修改外部状态之前，Cairn 会记录并运行最接近的 dry-run 或 check mode。verification 是有边界的：默认每个 slice 有两次 verification pass，然后 agent 会记录 blocker 或拆分 slice，而不是继续开放式循环。
+在 task 修改外部状态之前，Cairn 会记录并运行最接近的 dry-run 或 check mode。verification 是有边界的：默认每个 task 有两次 verification pass，然后 agent 会记录 blocker 或拆分 task，而不是继续开放式循环。
 
 Cairn 也把 tool readiness 视为工作的一部分。它会根据 repository stack 检查 LSP、typecheck、lint、dry-run 和 verification tools。如果缺少必要工具，Cairn 会先尝试 project-local 或 repository-native installation，再接受 fallback。
 
@@ -47,15 +47,15 @@ cairn toolcheck --install
 - Migrations 和 database changes 在 write/apply commands 前使用 `--pretend`、dry-run、schema diff、rollback feasibility checks 或最接近的 repository-native equivalent。
 - Package、release、infrastructure、deployment、code generation 和 formatting work 在可用时，先使用 check、plan、diff、validate 或 dry-run modes，再修改状态。
 - 如果没有 dry-run，plan 会记录该事实，并选择最小且可逆的 command 或 test artifact。
-- 如果 verification gate 失败，Cairn 会诊断一次，缩小或拆分 slice，然后重新运行两个 gates。
-- 同一 slice 两次 verification pass 失败后，Cairn 会在 `docs/plan/<topic>.md` 中记录 blocker，而不是继续重复循环。
+- 如果 verification gate 失败，Cairn 会诊断一次，缩小或拆分 task，然后重新运行两个 gates。
+- 同一 task 两次 verification pass 失败后，Cairn 会在 `docs/plan/<topic>.md` 中记录 blocker，而不是继续重复循环。
 
 ## Model Guidance
 
 Cairn 只对 Claude-family 和 Codex-family models 应用 model-specific adjustment。
 
 - Claude-family: 适合 long context、policy interpretation 和 plan/evidence review。
-- Codex-family: 适合 small implementation slices、explicit file edits、command-based verification 和 bounded `worker` tasks。
+- Codex-family: 适合 small implementation tasks、explicit file edits、command-based verification 和 bounded `worker` tasks。
 
 详细指南位于 `docs/model-guidance/README.md`、`docs/model-guidance/claude.md` 和 `docs/model-guidance/codex.md`。
 
@@ -101,8 +101,8 @@ cairn toolcheck
 - `cairn toolcheck`: 检测 repository stacks，并检查或安装 required LSP 和 verification tools。
 - `cairn-memory`: 探索 domain knowledge 并更新 `MEMORY.md`。
 - `cairn-plan`: 在 `docs/plan/` 下创建 decision-complete plan。
-- `cairn-work`: 执行当前 `PLAN.md` 中的下一个 module slice，并收集两个 verification gates。
-- `cairn-review`: 根据 plan、memory 和 evidence review completed slices。
+- `cairn-work`: 执行当前 `PLAN.md` 中的下一个 module task，并收集两个 verification gates。
+- `cairn-review`: 根据 plan、memory 和 evidence review completed tasks。
 
 `install` 和 `upgrade` 在修改 `~/.codex/config.toml` 前会创建 `*.cairn-backup-*` backups。source plugin manifest 保持 validator-friendly；只有 installed cache copy 会添加启用 Codex hooks 的 `hooks` field。
 

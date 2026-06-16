@@ -17,7 +17,7 @@ Claude-family models are strong at long-context retention, policy interpretation
 - Do not accept "tool missing" as a reason to skip precise codebase exploration until install or bootstrap has been attempted.
 - Do not skip the two verification gates even on Light Path.
 - Do not approve a plan that lacks dry-run or check evidence for external-state-changing work.
-- Do not allow open-ended verification loops. Require a blocker or slice split after two failed passes.
+- Do not allow open-ended verification loops. Require a blocker or sub-task split after two failed passes.
 - On Heavy Path, check plan gaps before implementation.
 - Before asking the user, use repository evidence and available `explorer`/`worker` delegation when it materially improves speed or quality.
 - Write user-visible output in the OS locale unless the user asks for another language.
@@ -35,7 +35,7 @@ Claude-family models are strong at long-context retention, policy interpretation
 - Keep the plan short and executable.
 - Always record complexity triage and the selected Light/Heavy Path.
 - Always record tool readiness and blockers.
-- Each module slice must include files, contract, dry-run or check command when applicable, module acceptance verification, and surface integration verification.
+- Each module task must include files, contract, dry-run or check command when applicable, module acceptance verification, and surface integration verification.
 
 ### Review
 

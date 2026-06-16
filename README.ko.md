@@ -4,12 +4,12 @@ Cairn은 Codex, Claude Code, Antigravity를 위한 토큰 효율적인 멀티에
 
 [English](README.md)
 
-핵심 아이디어는 hooks, 지속 상태, 명시적 계획, 집중 위임, 종료 시점 가드 같은 유용한 에이전트 하네스 동작을 유지하는 것입니다. Cairn은 반복적인 TDD 검증 루프를 기본값으로 삼지 않습니다. 대신 작업을 작은 모듈 조각으로 나누고 두 가지 검증 게이트로 증명합니다.
+핵심 아이디어는 hooks, 지속 상태, 명시적 계획, 집중 위임, 종료 시점 가드 같은 유용한 에이전트 하네스 동작을 유지하는 것입니다. Cairn은 반복적인 TDD 검증 루프를 기본값으로 삼지 않습니다. 대신 작업을 작은 모듈 작업으로 나누고 두 가지 검증 게이트로 증명합니다.
 
 1. 모듈 수용 검증: 변경된 모듈 계약을 증명합니다.
 2. 표면 통합 검증: CLI, HTTP, 브라우저, 파일 산출물 같은 실제 표면을 통해 동작을 증명합니다.
 
-외부 상태를 변경할 수 있는 조각은 실행 전에 가장 가까운 dry-run 또는 check 모드를 기록하고 실행합니다. 검증은 제한됩니다. 기본적으로 각 조각은 두 번의 검증 패스를 가지며, 이후에는 반복 루프를 계속하지 않고 blocker를 기록하거나 조각을 더 작게 나눕니다.
+외부 상태를 변경할 수 있는 작업은 실행 전에 가장 가까운 dry-run 또는 check 모드를 기록하고 실행합니다. 검증은 제한됩니다. 기본적으로 각 작업은 두 번의 검증 패스를 가지며, 이후에는 반복 루프를 계속하지 않고 blocker를 기록하거나 작업을 sub-task로 나눕니다.
 
 Cairn은 도구 준비 상태도 작업의 일부로 다룹니다. LSP, typecheck, lint, dry-run, 검증 도구를 저장소 스택 기준으로 확인하고, 필수 도구가 없으면 fallback을 받아들이기 전에 프로젝트 로컬 또는 저장소 네이티브 설치를 시도합니다.
 
@@ -47,15 +47,15 @@ cairn toolcheck --install
 - 마이그레이션과 데이터베이스 변경은 write/apply 명령 전에 `--pretend`, dry-run, schema diff, rollback 가능성 검사, 또는 가장 가까운 저장소 네이티브 방식을 사용합니다.
 - 패키지, 릴리스, 인프라, 배포, 코드 생성, 포매팅 작업은 가능한 경우 상태 변경 전에 check, plan, diff, validate, dry-run 모드를 사용합니다.
 - dry-run이 없으면 계획에 그 사실을 기록하고 가장 작고 되돌릴 수 있는 명령 또는 테스트 산출물을 선택합니다.
-- 검증 게이트가 실패하면 Cairn은 한 번 진단하고 조각을 줄이거나 나눈 뒤 두 게이트를 다시 실행합니다.
-- 같은 조각에서 두 번의 검증 패스가 실패하면 반복 루프를 계속하지 않고 `docs/plan/<topic>.md`에 blocker를 기록합니다.
+- 검증 게이트가 실패하면 Cairn은 한 번 진단하고 작업을 줄이거나 sub-task로 나눈 뒤 두 게이트를 다시 실행합니다.
+- 같은 작업에서 두 번의 검증 패스가 실패하면 반복 루프를 계속하지 않고 `docs/plan/<topic>.md`에 blocker를 기록합니다.
 
 ## Model Guidance
 
 Cairn은 Claude-family와 Codex-family 모델에만 모델별 조정을 적용합니다.
 
 - Claude-family: 긴 컨텍스트, 정책 해석, 계획/증거 검토에 유용합니다.
-- Codex-family: 작은 구현 조각, 명시적 파일 편집, command 기반 검증, 제한된 `worker` 작업에 유용합니다.
+- Codex-family: 작은 구현 작업, 명시적 파일 편집, command 기반 검증, 제한된 `worker` 작업에 유용합니다.
 
 자세한 가이드는 `docs/model-guidance/README.md`, `docs/model-guidance/claude.md`, `docs/model-guidance/codex.md`에 있습니다.
 
@@ -101,8 +101,8 @@ cairn toolcheck
 - `cairn toolcheck`: 저장소 스택을 감지하고 필요한 LSP와 검증 도구를 확인하거나 설치합니다.
 - `cairn-memory`: 도메인 지식을 탐색하고 `MEMORY.md`를 갱신합니다.
 - `cairn-plan`: `docs/plan/` 아래에 decision-complete plan을 만듭니다.
-- `cairn-work`: 현재 `PLAN.md`의 다음 모듈 조각을 실행하고 두 검증 게이트를 확보합니다.
-- `cairn-review`: 계획, memory, 증거를 기준으로 완료된 조각을 검토합니다.
+- `cairn-work`: 현재 `PLAN.md`의 다음 모듈 작업을 실행하고 두 검증 게이트를 확보합니다.
+- `cairn-review`: 계획, memory, 증거를 기준으로 완료된 작업을 검토합니다.
 
 `install`과 `upgrade`는 `~/.codex/config.toml`을 수정하기 전에 `*.cairn-backup-*` 백업을 만듭니다. 소스 플러그인 manifest는 validator-friendly 상태를 유지하고, 설치된 cache copy에만 Codex hook 활성화를 위한 `hooks` field가 추가됩니다.
 

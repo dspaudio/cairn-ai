@@ -53,15 +53,15 @@ This file is a short index of active and completed work plans.
 
 - Every agent must start assigned work by reading the project-root `MEMORY.md` for domain knowledge and repository policy.
 - Plans must be decision-complete before implementation.
-- Split implementation into small module slices.
+- Split implementation into small module tasks.
 - Detect repository stack and required LSP/check tools before implementation.
 - Install or bootstrap missing required tools before declaring them unavailable.
-- Each slice normally passes exactly two gates.
+- Each task normally passes exactly two gates.
   - Module acceptance verification.
   - Surface integration verification.
 - Run dry-run or check mode before external-state mutation when available.
-- Use at most two verification passes per slice by default.
-- If a gate fails, diagnose once, shrink or split the slice, and rerun both gates.
+- Use at most two verification passes per task by default.
+- If a gate fails, diagnose once, shrink the task or split it into sub-tasks, and rerun both gates.
 - After two failed passes, record the blocker in `docs/plan/<topic>.md`.
 EOF
 fi
