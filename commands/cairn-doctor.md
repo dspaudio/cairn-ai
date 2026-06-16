@@ -20,7 +20,8 @@ Checks:
 - Codex cached installation.
 - Marketplace file.
 - Hook manifest link in the installed copy.
-- `features.plugins`, `features.plugin_hooks`.
+- `features.plugins`, `features.plugin_hooks`, `features.multi_agent`.
+- `agents.max_depth`.
 - `cairn@cairn` plugin enabled.
 - hook trust state.
 - Claude Code commands and agents mirror files.

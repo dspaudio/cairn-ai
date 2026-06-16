@@ -94,8 +94,8 @@ cairn uninstall
 cairn toolcheck
 ```
 
-- `cairn install`: Codex marketplace cache에 플러그인을 설치하고 hook trust state, Claude Code mirror 파일, Antigravity skills/workflows를 설정합니다.
-- `cairn upgrade`: 현재 소스에서 설치, hook trust state, Claude Code mirror 파일, Antigravity skills/workflows를 갱신합니다.
+- `cairn install`: Codex marketplace cache에 플러그인을 설치하고 Codex multi-agent 설정, hook trust state, Claude Code mirror 파일, Antigravity skills/workflows를 설정합니다.
+- `cairn upgrade`: 현재 소스에서 설치, Codex multi-agent 설정, hook trust state, Claude Code mirror 파일, Antigravity skills/workflows를 갱신합니다.
 - `cairn doctor`: Codex 설정, 설치, hook trust state, Claude Code mirror 파일, Antigravity mirror 파일을 진단합니다.
 - `cairn uninstall`: Cairn이 추가한 Codex 설정, cache, Claude Code mirror 파일, Antigravity mirror 파일을 제거합니다.
 - `cairn toolcheck`: 저장소 스택을 감지하고 필요한 LSP와 검증 도구를 확인하거나 설치합니다.
