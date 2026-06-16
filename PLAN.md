@@ -5,11 +5,11 @@ This file is a short index of active and completed work plans.
 ## Active Plans
 
 - Link detailed plans under `docs/plan/`.
-- [Release 0.1.9 Codex multi-agent settings](docs/plan/release-0.1.9-codex-multi-agent-settings.md): publish npm, merge dev to main, and update the local installation.
 
 ## Completed Plans
 
 - Move completed topics here with evidence links.
+- [Release 0.1.9 Codex multi-agent settings](docs/plan/release-0.1.9-codex-multi-agent-settings.md): PR #22 merged to main, `cairn-ai@0.1.9` published to npm, and local Cairn installation upgraded.
 - [Release 0.1.8 Cairn policy updates](docs/plan/release-0.1.8-cairn-policy-updates.md): PR #19 merged to main, `cairn-ai@0.1.8` published to npm, and local Cairn installation upgraded.
 - [Cairn recursive subagent policy](docs/plan/cairn-recursive-subagent-policy.md): allowed recursive bounded sub-task delegation in plugin, skills, commands, workflows, and agent definitions; verified with `npm test`, `npm run check`, and `npm pack --dry-run`.
 - [Cairn planner decomposition policy](docs/plan/cairn-planner-decomposition-policy.md): required whole-work planning before task/sub-task classification; verified with `npm test`, `npm run check`, and `npm pack --dry-run`.
