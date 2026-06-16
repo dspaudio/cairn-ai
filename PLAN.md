@@ -5,6 +5,7 @@ This file is a short index of active and completed work plans.
 ## Active Plans
 
 - Link detailed plans under `docs/plan/`.
+- [Release 0.1.9 Codex multi-agent settings](docs/plan/release-0.1.9-codex-multi-agent-settings.md): publish npm, merge dev to main, and update the local installation.
 
 ## Completed Plans
 
