@@ -4,12 +4,12 @@ Cairn は Codex、Claude Code、Antigravity のためのトークン効率の高
 
 [English](README.md)
 
-Cairn の基本方針は、hooks、永続状態、明示的な planning、focused delegation、stop-time guards といった有用な agent harness の動作を残すことです。Cairn は反復的な TDD verification loop を既定にしません。代わりに作業を小さな module slice に分け、2 つの verification gate で証明します。
+Cairn の基本方針は、hooks、永続状態、明示的な planning、focused delegation、stop-time guards といった有用な agent harness の動作を残すことです。Cairn は反復的な TDD verification loop を既定にしません。代わりに作業を小さな module task に分け、2 つの verification gate で証明します。
 
 1. Module acceptance verification: 変更された module contract を証明します。
 2. Surface integration verification: CLI、HTTP、browser、file artifacts など実際の surface を通して動作を証明します。
 
-slice が外部状態を変更する前に、Cairn は最も近い dry-run または check mode を記録して実行します。verification は制限されます。既定では各 slice は 2 回の verification pass を持ち、その後は反復 loop を続けず blocker を記録するか slice を分割します。
+task が外部状態を変更する前に、Cairn は最も近い dry-run または check mode を記録して実行します。verification は制限されます。既定では各 task は 2 回の verification pass を持ち、その後は反復 loop を続けず blocker を記録するか task を分割します。
 
 Cairn は tool readiness も作業の一部として扱います。LSP、typecheck、lint、dry-run、verification tools を repository stack に照らして確認します。必要な tool がない場合、fallback を受け入れる前に project-local または repository-native installation を試みます。
 
@@ -47,15 +47,15 @@ cairn toolcheck --install
 - Migrations と database changes は write/apply commands の前に `--pretend`、dry-run、schema diff、rollback feasibility checks、または最も近い repository-native equivalent を使います。
 - Package、release、infrastructure、deployment、code generation、formatting work は可能な場合、状態変更の前に check、plan、diff、validate、dry-run modes を使います。
 - dry-run がない場合、plan はその事実を記録し、最小で reversible な command または test artifact を選びます。
-- verification gate が失敗した場合、Cairn は一度診断し、slice を縮小または分割して両方の gate を再実行します。
-- 同じ slice で 2 回の verification pass が失敗した場合、反復 loop を続けず `docs/plan/<topic>.md` に blocker を記録します。
+- verification gate が失敗した場合、Cairn は一度診断し、task を縮小または分割して両方の gate を再実行します。
+- 同じ task で 2 回の verification pass が失敗した場合、反復 loop を続けず `docs/plan/<topic>.md` に blocker を記録します。
 
 ## Model Guidance
 
 Cairn は Claude-family と Codex-family models にのみ model-specific adjustment を適用します。
 
 - Claude-family: long context、policy interpretation、plan/evidence review に有用です。
-- Codex-family: small implementation slices、explicit file edits、command-based verification、bounded `worker` tasks に有用です。
+- Codex-family: small implementation tasks、explicit file edits、command-based verification、bounded `worker` tasks に有用です。
 
 詳細は `docs/model-guidance/README.md`、`docs/model-guidance/claude.md`、`docs/model-guidance/codex.md` にあります。
 
@@ -101,8 +101,8 @@ cairn toolcheck
 - `cairn toolcheck`: repository stacks を検出し、required LSP と verification tools を確認または install します。
 - `cairn-memory`: domain knowledge を探索し `MEMORY.md` を更新します。
 - `cairn-plan`: `docs/plan/` に decision-complete plan を作成します。
-- `cairn-work`: 現在の `PLAN.md` の次の module slice を実行し、2 つの verification gates を取得します。
-- `cairn-review`: plan、memory、evidence に照らして completed slices を review します。
+- `cairn-work`: 現在の `PLAN.md` の次の module task を実行し、2 つの verification gates を取得します。
+- `cairn-review`: plan、memory、evidence に照らして completed tasks を review します。
 
 `install` と `upgrade` は `~/.codex/config.toml` を変更する前に `*.cairn-backup-*` backups を作ります。source plugin manifest は validator-friendly のままにし、Codex hooks を有効化する `hooks` field は installed cache copy にだけ追加されます。
 

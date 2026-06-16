@@ -13,6 +13,8 @@ The root `MEMORY.md` is an index, not detailed knowledge. Record details in `doc
 
 Every delegated agent must read the project-root `MEMORY.md` before doing its assigned discovery, evidence, or update task.
 
+When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
+
 ## Procedure
 
 1. Run `node scripts/cairn-state.mjs manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
@@ -20,6 +22,7 @@ Every delegated agent must read the project-root `MEMORY.md` before doing its as
 3. Delegate when it materially improves speed or quality instead of asking the user.
    - `explorer`: read-only domain discovery, boundaries, invariants, policies, contradictions, and stale facts when available.
    - `worker`: exact file paths, commands, schemas, references, and bounded evidence capture.
+   - Recursive subagent delegation is allowed only for bounded sub-tasks when the current surface supports it.
 4. Write detailed facts to `docs/memory/<domain>.md`.
 5. Keep only one-line links and summaries in `MEMORY.md`.
 6. Write user-visible output in the OS locale unless the user asks for another language.

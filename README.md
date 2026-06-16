@@ -12,12 +12,12 @@ Cairn is a token-efficient multi-agent harness plugin for Codex, Claude Code, an
 - [Deutsch](README.de.md)
 - [Português](README.pt.md)
 
-The core idea is to keep useful agent-harness behavior: hooks, persistent state, explicit planning, focused delegation, and stop-time guards. Cairn does not make repeated TDD verification loops the default. Instead, it splits work into small module slices and proves each slice with two verification gates.
+The core idea is to keep useful agent-harness behavior: hooks, persistent state, explicit planning, focused delegation, and stop-time guards. Cairn does not make repeated TDD verification loops the default. Instead, it splits work into small module tasks and proves each task with two verification gates.
 
 1. Module acceptance verification: proves the changed module contract.
 2. Surface integration verification: proves behavior through the real surface, such as CLI, HTTP, browser, or file artifacts.
 
-Before a slice mutates external state, Cairn records and runs the closest available dry-run or check mode. Verification is bounded: each slice gets two verification passes by default, then the agent records a blocker or splits the slice instead of continuing an open-ended loop.
+Before a task mutates external state, Cairn records and runs the closest available dry-run or check mode. Verification is bounded: each task gets two verification passes by default, then the agent records a blocker or splits it into sub-tasks instead of continuing an open-ended loop.
 
 Cairn also treats tool readiness as part of the work. LSP, typecheck, lint, dry-run, and verification tools are checked against the repository stack. If a required tool is missing, Cairn attempts project-local or repository-native installation before accepting a fallback.
 
@@ -55,15 +55,15 @@ cairn toolcheck --install
 - Migrations and database changes use `--pretend`, dry-run, schema diff, rollback feasibility checks, or the closest repository-native equivalent before write/apply commands.
 - Package, release, infrastructure, deployment, code generation, and formatting work use check, plan, diff, validate, or dry-run modes before mutating state when available.
 - If no dry-run exists, the plan records that fact and selects the smallest reversible command or test artifact available.
-- If a verification gate fails, Cairn diagnoses once, shrinks or splits the slice, and reruns both gates.
-- After two failed verification passes for the same slice, Cairn records the blocker in `docs/plan/<topic>.md` instead of continuing a repeated loop.
+- If a verification gate fails, Cairn diagnoses once, shrinks the task or splits it into sub-tasks, and reruns both gates.
+- After two failed verification passes for the same task, Cairn records the blocker in `docs/plan/<topic>.md` instead of continuing a repeated loop.
 
 ## Model Guidance
 
 Cairn only applies model-specific adjustment to Claude-family and Codex-family models.
 
 - Claude-family: useful for long context, policy interpretation, and plan/evidence review.
-- Codex-family: useful for small implementation slices, explicit file edits, command-based verification, and bounded `worker` tasks.
+- Codex-family: useful for small implementation tasks, explicit file edits, command-based verification, and bounded `worker` tasks.
 
 Detailed guidance lives in `docs/model-guidance/README.md`, `docs/model-guidance/claude.md`, and `docs/model-guidance/codex.md`.
 
@@ -109,8 +109,8 @@ cairn toolcheck
 - `cairn toolcheck`: detects repository stacks and checks or installs required LSP and verification tools.
 - `cairn-memory`: explores domain knowledge and updates `MEMORY.md`.
 - `cairn-plan`: creates a decision-complete plan under `docs/plan/`.
-- `cairn-work`: executes the next module slice in the current `PLAN.md` with two verification gates.
-- `cairn-review`: reviews completed slices against plan, memory, and evidence.
+- `cairn-work`: executes the next module task in the current `PLAN.md` with two verification gates.
+- `cairn-review`: reviews completed tasks against plan, memory, and evidence.
 
 Install and upgrade create `*.cairn-backup-*` backups before modifying `~/.codex/config.toml`. The source plugin manifest stays validator-friendly; only the installed cache copy gets a `hooks` field to activate Codex hooks.
 

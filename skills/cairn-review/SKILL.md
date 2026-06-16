@@ -1,6 +1,6 @@
 ---
 name: cairn-review
-description: Review completed Cairn slices against MEMORY.md, PLAN.md, domain policy, and two-gate evidence.
+description: Review completed Cairn tasks against MEMORY.md, PLAN.md, domain policy, and two-gate evidence.
 ---
 
 # Cairn Review
@@ -9,18 +9,21 @@ Use this after meaningful implementation with Cairn.
 
 ## Purpose
 
-Review is not another implementation loop. Confirm that the completed slice satisfies the plan and that memory and plan artifacts are useful to the next agent.
+Review is not another implementation loop. Confirm that the completed task satisfies the plan and that memory and plan artifacts are useful to the next agent.
 
 Every review run and every delegated review agent must read the project-root `MEMORY.md` before doing assigned work.
 
+When subagent tools are available, each agent may recursively delegate bounded review sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
+
 ## Procedure
 
-1. Read the completed slice in `docs/plan/<topic>.md`.
+1. Read the completed task in `docs/plan/<topic>.md`.
 2. Read `MEMORY.md` and relevant `docs/memory/*.md`.
 3. Check changed files, tool readiness evidence, and evidence paths.
 4. Delegate independent review when it materially improves speed or quality and the current tool policy allows it.
    - Use `explorer` for read-only impact analysis, pattern checks, and independent diff inspection.
    - Use `worker` for scoped verification command re-runs or QA artifact capture.
+   - Recursive subagent delegation is allowed only for bounded sub-tasks when the current surface supports it.
    - Keep blocking review work local when the next step depends immediately on the result.
 5. Report findings first, ordered by severity, with file and line references. If there are no issues, say so clearly and record remaining test gaps or residual risk.
 6. Write user-visible output in the OS locale unless the user asks for another language.
@@ -28,7 +31,7 @@ Every review run and every delegated review agent must read the project-root `ME
 ## Reviewer Prompt Format
 
 ```text
-TASK: Review correctness, scope, and evidence for slice <slice-id>.
+TASK: Review correctness, scope, and evidence for task <task-id>.
 EXPECTED OUTCOME: Findings ordered by severity with file and line references, or an explicit no-issue result with residual risk.
 REQUIRED TOOLS: Read-only diff inspection, tool readiness checks, verification command execution, plan/memory reading.
 MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Check tool readiness and install-attempt evidence. Check dry-run or check evidence when external state could change. Check both module evidence and surface evidence. Preserve proper nouns exactly. Use the OS locale for user-visible text.

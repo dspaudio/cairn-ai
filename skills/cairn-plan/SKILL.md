@@ -15,6 +15,8 @@ Every planning run starts by reading the project-root `MEMORY.md`. Treat it as t
 
 Do not treat planning as optional for implementation work that is more than a narrow single-file fix. If the current request can change behavior, architecture, data, external state, or multiple files, produce or update a plan artifact before mutation.
 
+Plan from the whole work down. First understand the full requested outcome and affected surfaces, then classify the work into small executable tasks. If one task is still too broad to verify cleanly, split that task into sub-tasks.
+
 ## Procedure
 
 1. Run `node scripts/cairn-state.mjs manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
@@ -24,16 +26,18 @@ Do not treat planning as optional for implementation work that is more than a na
 5. Run `node scripts/cairn.mjs toolcheck` when available, or `scripts/cairn-toolcheck.mjs` directly, to identify repository stacks and required tools.
 6. If LSP, typecheck, lint, dry-run, or verification tools are missing, run `node scripts/cairn.mjs toolcheck --install` or the closest repository-native install command before treating the tool as unavailable.
 7. Explore the repository with focused search and LSP/symbol tools after tool readiness is confirmed.
-8. Identify the closest available dry-run or check mode for every slice that can mutate external state.
-9. Run complexity triage before applying workflow guidance from agents, plugins, or delegated roles. Record the route before any implementation slice.
-10. Delegate according to the selected path and model guidance instead of asking the user.
+8. Summarize the whole work and affected surfaces, then classify the plan into small executable tasks. Use sub-tasks only when a task needs further breakdown to be verifiable.
+9. Identify the closest available dry-run or check mode for every task that can mutate external state.
+10. Run complexity triage before applying workflow guidance from agents, plugins, or delegated roles. Record the route before any implementation task.
+11. Delegate according to the selected path and model guidance instead of asking the user.
    - Use `explorer` for independent read-only codebase discovery, impact analysis, pattern searches, and read-only verification that can run in parallel when the current tool list supports it.
-   - Use `worker` for bounded implementation slices with clear file ownership, disjoint write scope, or verification tasks that can run while the main session continues.
+   - Use `worker` for bounded implementation tasks with clear file ownership, disjoint write scope, or verification tasks that can run while the main session continues.
+   - When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents, subject to the current surface's depth and concurrency limits.
    - Keep urgent blocking work local when the next step depends immediately on the result.
-   - Tell every delegated agent to read the project-root `MEMORY.md` before work, and tell workers they are not alone in the codebase and must not revert others' edits.
-11. Create `docs/plan/<topic>.md` from `templates/work-plan.md`.
-12. Add a short index entry to `PLAN.md`.
-13. Write user-visible output in the OS locale unless the user asks for another language.
+   - Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, and tell workers they are not alone in the codebase and must not revert others' edits.
+12. Create `docs/plan/<topic>.md` from `templates/work-plan.md`.
+13. Add a short index entry to `PLAN.md`.
+14. Write user-visible output in the OS locale unless the user asks for another language.
 
 ## Complexity Triage
 
@@ -93,15 +97,18 @@ Heavy Path flow: plan -> pre-implementation review -> bounded `worker` implement
 ## Planning Rules
 
 - Every plan must be decision-complete.
+- Every plan must describe the whole work first, then classify it into executable tasks and any needed sub-tasks.
+- Every plan must allow recursive subagent delegation for bounded sub-tasks when the current agent surface supports it.
 - Every plan must include complexity triage and the selected path.
 - Every plan must explicitly list Heavy Path signals checked, even when Light Path is selected.
 - Every plan must include applied model guidance and rationale.
 - Every plan must include tool readiness results: detected stack, required LSP/check tools, installed tools, and blockers.
-- Every implementation slice must be small enough to verify with two checks.
+- Every implementation task must be small enough to verify with two checks.
+- Heavy Path tasks must include an explicit automated test command and a `Tests:` evidence line; Heavy Path completion cannot rely on generic verification wording without test evidence.
 - The default checks are module acceptance verification and surface integration verification.
-- Every risky or external-state-changing slice must include the closest available dry-run or check command before the write/apply command.
+- Every risky or external-state-changing task must include the closest available dry-run or check command before the write/apply command.
 - Verification can expand for risk, but the reason must be recorded.
-- The default loop budget is two verification passes per slice. If a gate fails, diagnose once, shrink or split the slice, and rerun both gates. After two failed passes, record the blocker in `docs/plan/<topic>.md` instead of continuing an open-ended loop.
+- The default loop budget is two verification passes per task. If a gate fails, diagnose once, shrink the task or split it into sub-tasks, and rerun both gates. After two failed passes, record the blocker in `docs/plan/<topic>.md` instead of continuing an open-ended loop.
 - Ask the user only when agents, repository evidence, or local verification cannot answer the decision.
 - User-visible text must follow the OS locale unless the user asks for another language.
 
@@ -132,13 +139,13 @@ Prefer repository-native dry-run and check modes before mutating external state.
 TASK: Produce <role> input needed for the <topic> plan.
 EXPECTED OUTCOME: Return concrete decisions, file paths, dependencies, risks, and evidence requirements.
 REQUIRED TOOLS: Read-only repository exploration, tool readiness checks, LSP/symbol tools, local command checks.
-MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Prefer repository evidence. Install or bootstrap missing required tools before declaring them unavailable. Identify assumptions. Use `explorer` for read-only discovery and `worker` for bounded implementation or verification when available and useful. Tell every delegated agent to read the project-root `MEMORY.md` before work. Tell workers they are not alone in the codebase and must not revert others' edits. Use the OS locale for user-visible text.
-MUST NOT DO: Edit production code. Ask the user. Expand scope.
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Prefer repository evidence. Install or bootstrap missing required tools before declaring them unavailable. Identify assumptions. Use `explorer` for read-only discovery and `worker` for bounded implementation or verification when available and useful. When subagent tools are available, allow recursive delegation of bounded sub-tasks. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work. Tell workers they are not alone in the codebase and must not revert others' edits. Use the OS locale for user-visible text.
+MUST NOT DO: Edit production code. Ask the user. Expand scope. Delegate vague or unbounded work.
 CONTEXT: User request, MEMORY.md, relevant docs/memory notes, applied model guidance, repository root.
 ```
 
 ## Completion Criteria
 
 - `PLAN.md` references the plan topic.
-- `docs/plan/<topic>.md` includes goal, memory inputs, model guidance, tool readiness, complexity triage, selected path, agent assignments, module slices, and two checks per slice.
+- `docs/plan/<topic>.md` includes goal, memory inputs, model guidance, tool readiness, complexity triage, selected path, agent assignments, module tasks, and two checks per task.
 - The next implementation task can run without making planning decisions.
