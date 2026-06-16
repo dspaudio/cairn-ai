@@ -106,7 +106,12 @@ Publish Cairn policy updates for Codex model inheritance, Heavy Path test eviden
 - Tests: `npm test` passed with 13 tests.
 - Module acceptance: `npm test && npm run check` passed; `npm run check` reran syntax checks, JSON parsing, and 13 tests.
 - Surface integration: `npm pack --dry-run && npm publish --dry-run` passed for `cairn-ai@0.1.8`.
-- Verification pass count: one release-preparation pass.
+- Dev PR merge: `dev` was pushed at `fce8c5938f603113c2e9a95c65e63531c59784df`; PR #19 was created from `dev` to `main`.
+- Main PR merge: PR #19 merged to `main` at merge commit `8be04093dc17330f74cca568b9093d4f1cb459b0` after Ubuntu and Windows CI passed.
+- Branch alignment: local `dev` fast-forwarded to `origin/main`; `origin/dev` and `origin/main` both point to `8be04093dc17330f74cca568b9093d4f1cb459b0`.
+- npm publish: `npm publish` succeeded for `cairn-ai@0.1.8`; `npm view cairn-ai version` returned `0.1.8` and `latest` points to `0.1.8`.
+- Local environment update: `bun add -g cairn-ai@latest` installed `cairn-ai@0.1.8`; `cairn upgrade && cairn doctor` passed all installation checks.
+- Verification pass count: one release-preparation pass plus one publish/local-update verification pass.
 - Blocker after two failed passes: none.
 
 ## Status
@@ -116,4 +121,4 @@ Publish Cairn policy updates for Codex model inheritance, Heavy Path test eviden
 - [x] Implemented
 - [x] Module acceptance passed
 - [x] Surface integration passed
-- [ ] Reviewed
+- [x] Reviewed
