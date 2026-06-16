@@ -113,11 +113,12 @@ Publish the Cairn Codex multi-agent settings update as `cairn-ai@0.1.9`, merge `
 - Tests: `npm test` passed with 13 tests.
 - Module acceptance: `npm test && npm run check` passed; `npm run check` reran syntax checks, JSON parsing, and 13 tests.
 - Surface integration: `npm pack --dry-run && npm publish --dry-run` passed for `cairn-ai@0.1.9`.
-- Dev PR merge:
-- Main PR merge:
-- npm publish:
-- Local environment update:
-- Verification pass count:
+- Dev PR merge: PR #21 merged `codex/release-0.1.9-codex-multi-agent-settings` into `dev` at merge commit `e9dd67eddacc55b840c12b21881d9957402ff7c9` after Windows and Ubuntu CI passed.
+- Main PR merge: PR #22 merged `dev` into `main` at merge commit `ef3f00e4b6d3cf2765ed4b368957d68e807cc588` after Windows and Ubuntu CI passed.
+- Branch alignment: `origin/dev` and `origin/main` were fast-forward aligned to `ef3f00e4b6d3cf2765ed4b368957d68e807cc588`.
+- npm publish: `npm publish` succeeded for `cairn-ai@0.1.9`; after registry propagation, `npm view cairn-ai version` returned `0.1.9` and `latest` points to `0.1.9`.
+- Local environment update: `bun add -g cairn-ai@latest` installed `cairn-ai@0.1.9`; `cairn upgrade && cairn doctor` passed all installation checks, including `config features.multi_agent` and `config agents.max_depth`.
+- Verification pass count: one release-preparation pass plus one publish/local-update verification pass.
 - Blocker after two failed passes: none.
 
 ## Status
@@ -127,4 +128,4 @@ Publish the Cairn Codex multi-agent settings update as `cairn-ai@0.1.9`, merge `
 - [x] Implemented
 - [x] Module acceptance passed
 - [x] Surface integration passed
-- [ ] Reviewed
+- [x] Reviewed
