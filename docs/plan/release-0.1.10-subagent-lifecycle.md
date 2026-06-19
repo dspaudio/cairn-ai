@@ -123,11 +123,11 @@ Publish the subagent lifecycle and stop-gate policy updates as `cairn-ai@0.1.10`
 - Version metadata: `node -e "const fs=require('node:fs'); for (const f of ['package.json','.codex-plugin/plugin.json']) { const data=JSON.parse(fs.readFileSync(f,'utf8')); if (data.version !== '0.1.10') throw new Error(f + ' version ' + data.version); }"` passed, confirming both release metadata versions are `0.1.10`.
 - Module acceptance: `npm run check` passed for `cairn-ai@0.1.10`.
 - Surface integration: `npm --cache /private/tmp/cairn-npm-cache pack --dry-run` and `npm --cache /private/tmp/cairn-npm-cache publish --dry-run` passed for `cairn-ai@0.1.10`.
-- Dev PR merge:
-- Main PR merge:
-- npm publish:
-- Verification pass count: 1 release-preparation pass so far.
-- Blocker after two failed passes:
+- Dev PR merge: PR #25 merged `codex/release-0.1.10-subagent-lifecycle` into `dev` at merge commit `e23b89c352814aa954539fd613a43491a002c781` after Ubuntu and Windows CI passed.
+- Main PR merge: PR #26 merged `dev` into `main` at merge commit `8166c25877ba408b855883946bb5433451f1a418` after Ubuntu and Windows CI passed.
+- npm publish: `npm --cache /private/tmp/cairn-npm-cache publish` succeeded for `cairn-ai@0.1.10`; `npm view cairn-ai version` returned `0.1.10`.
+- Verification pass count: 1 release-preparation pass plus 1 publish/PR verification pass.
+- Blocker after two failed passes: none.
 
 ## Status
 
@@ -136,4 +136,4 @@ Publish the subagent lifecycle and stop-gate policy updates as `cairn-ai@0.1.10`
 - [x] Implemented
 - [x] Module acceptance passed
 - [x] Surface integration passed
-- [ ] Reviewed
+- [x] Reviewed
