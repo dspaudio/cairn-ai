@@ -20,7 +20,7 @@ Claude-family models are strong at long-context retention, policy interpretation
 - Do not allow open-ended verification loops. Require a blocker or sub-task split after two failed passes.
 - On Heavy Path, check plan gaps before implementation.
 - Before asking the user, use repository evidence and available `explorer`/`worker` delegation when it materially improves speed or quality.
-- Write user-visible output in the OS locale unless the user asks for another language.
+- Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Path Guidance
 

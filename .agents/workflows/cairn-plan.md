@@ -20,4 +20,4 @@ Procedure:
 12. Write `docs/plan/<topic>.md`.
 13. Add the topic link and status to `PLAN.md`.
 14. Put the selected Light/Heavy Path, checked Heavy Path signals, tool readiness, module acceptance verification, and surface integration verification on every module task.
-15. Use the OS locale for user-visible output unless the user asks for another language.
+15. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts unless the user asks for another language.

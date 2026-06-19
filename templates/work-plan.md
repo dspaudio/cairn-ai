@@ -24,7 +24,7 @@ Describe the observable result.
   - `docs/model-guidance/<claude-or-codex>.md`
 - Rationale:
 - Role-specific adjustment:
-- User-visible output locale: OS locale unless the user asks for another language.
+- User-visible response and artifact locale: OS locale unless the user asks for another language.
 
 ## Complexity Triage
 

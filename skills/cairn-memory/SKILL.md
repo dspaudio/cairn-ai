@@ -25,7 +25,7 @@ When subagent tools are available, each agent may recursively delegate bounded s
    - Recursive subagent delegation is allowed only for bounded sub-tasks when the current surface supports it.
 4. Write detailed facts to `docs/memory/<domain>.md`.
 5. Keep only one-line links and summaries in `MEMORY.md`.
-6. Write user-visible output in the OS locale unless the user asks for another language.
+6. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Delegation Prompt Format
 
@@ -33,7 +33,7 @@ When subagent tools are available, each agent may recursively delegate bounded s
 TASK: Explore persistent domain knowledge for <domain>.
 EXPECTED OUTCOME: Return facts, source paths, and proof commands concisely.
 REQUIRED TOOLS: Read-only file search, LSP/symbol tools, command checks.
-MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Cite local paths. Separate facts from inference. Use the OS locale for user-visible text.
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Cite local paths. Separate facts from inference. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
 MUST NOT DO: Edit files. Ask the user. Guess missing names.
 CONTEXT: Current task, repository root, existing MEMORY.md entries.
 ```
