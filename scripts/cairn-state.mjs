@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -92,7 +92,7 @@ export async function runStateResult(event = "manual", { root = process.env.HARN
     };
   }
   if (event === "stop" || event === "subagent-stop") {
-    const pending = await pendingActivePlanItems(resolvedRoot);
+    const pending = await pendingPlanItems(resolvedRoot);
     if (pending.length > 0) {
       return {
         status: 1,
@@ -119,30 +119,48 @@ async function writeIfMissing(path, content) {
   }
 }
 
-async function pendingActivePlanItems(root) {
+async function pendingPlanItems(root) {
   const planPath = join(root, "PLAN.md");
   const plan = await readFile(planPath, "utf8");
   const activePlans = markdownLinksToPlanFiles(section(plan, "Active Plans"));
+  const completedPlans = markdownLinksToPlanFiles(section(plan, "Completed Plans"));
+  const indexedPlans = new Map();
+  for (const relativePath of activePlans) indexedPlans.set(relativePath, "active");
+  for (const relativePath of completedPlans) {
+    if (!indexedPlans.has(relativePath)) indexedPlans.set(relativePath, "completed");
+  }
+  for (const relativePath of await docsPlanFiles(root)) {
+    if (!indexedPlans.has(relativePath)) indexedPlans.set(relativePath, "unindexed");
+  }
   const pending = [];
 
-  for (const relativePath of activePlans) {
+  for (const [relativePath, indexState] of indexedPlans) {
     const path = resolve(root, relativePath);
     const pathFromRoot = relative(root, path);
     if (pathFromRoot.startsWith("..") || isAbsolute(pathFromRoot)) continue;
     const text = await readPlanFile(path);
     if (text === null) {
-      pending.push({ path: relativePath, unchecked: ["active plan file is missing"], emptyEvidence: [] });
+      pending.push({ path: relativePath, indexIssues: [`${indexState} plan file is missing`], unchecked: [], emptyEvidence: [] });
       continue;
     }
+    const indexIssues = indexState === "unindexed" ? ["not linked in PLAN.md Active Plans or Completed Plans"] : [];
     const unchecked = [...text.matchAll(/^\s*-\s+\[\s\]\s+(.+)$/gm)].map((match) => match[1].trim());
     const emptyEvidence = emptyEvidenceItems(text);
     const missingHeavyPathTests = heavyPathMissingTests(text);
-    if (unchecked.length > 0 || emptyEvidence.length > 0 || missingHeavyPathTests.length > 0) {
-      pending.push({ path: relativePath, unchecked, emptyEvidence, missingHeavyPathTests });
+    if (indexIssues.length > 0 || unchecked.length > 0 || emptyEvidence.length > 0 || missingHeavyPathTests.length > 0) {
+      pending.push({ path: relativePath, indexIssues, unchecked, emptyEvidence, missingHeavyPathTests });
     }
   }
 
   return pending;
+}
+
+async function docsPlanFiles(root) {
+  const entries = await readdir(join(root, "docs", "plan"), { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => `docs/plan/${entry.name}`)
+    .sort();
 }
 
 async function readPlanFile(path) {
@@ -206,6 +224,7 @@ function stopBlockedMessage({ event, ko, pending }) {
 
 function formatPendingItem(item) {
   const reasons = [
+    ...(item.indexIssues ?? []).map((label) => `index: ${label}`),
     ...item.unchecked.map((label) => `unchecked: ${label}`),
     ...item.emptyEvidence.map((label) => `empty evidence: ${label}`),
     ...(item.missingHeavyPathTests ?? []).map((label) => `missing tests: ${label}`),

@@ -25,16 +25,20 @@ Cairn also treats tool readiness as part of the work. LSP, typecheck, lint, dry-
 
 Cairn is influenced by LazyCodex (`https://github.com/code-yeongyu/lazycodex`). The borrowed ideas are the installable agent-harness shape, Codex hook trust/setup handling, project memory, planning skills, executable workflow commands, diagnostics, and skill/agent packaging across local agent surfaces.
 
-Cairn intentionally diverges from LazyCodex in the execution policy. It does not adopt LazyCodex's role-chain execution model or open-ended completion loops. Cairn uses Light/Heavy Path triage, bounded `explorer`/`worker` delegation, two verification gates, and explicit stop conditions instead.
+Cairn intentionally diverges from LazyCodex in the execution policy. It does not adopt LazyCodex's role-chain execution model or open-ended completion loops. Cairn uses Light/Heavy Path triage, main-agent orchestration, bounded `explorer`/`worker` delegation, two verification gates, and explicit stop conditions instead.
 
 ## Complexity Triage
 
 Every implementation task passes complexity triage first, before agent, plugin, or delegated workflow guidance. Triage is decided from repository exploration, expected change scope, and risk signals without asking the user.
 
-- Light Path: narrow changes inside existing architecture layers. This is the default. Implement directly or use one bounded `worker`, then keep the verification gate.
+- Light Path: narrow changes inside existing architecture layers. This is the default. The user-called/main agent still orchestrates and delegates implementation edits to one bounded `worker` whenever subagent tools are available, then keeps the verification gate.
 - Heavy Path: new directory/module/layer, new domain model/service/abstraction, security/session/auth, external API/message queue/payment, DB schema/migration, concurrency/transaction/cache changes, cross-domain refactor, or explicit extra-care request.
 
-The selected path and rationale are recorded in `docs/plan/<topic>.md` when a plan artifact exists. Even on Light Path, the two verification gates remain.
+The selected path and rationale are recorded in `docs/plan/<topic>.md` when a plan artifact exists. Even on Light Path, the two verification gates remain. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence.
+
+When the subagent tool provides a progress-reporting channel, subagents report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing. The orchestrator immediately relays received status events to the user. If no mid-run reporting channel exists, the orchestrator relays observable events such as assignment, waiting, and final completion.
+
+When a delegated subagent finishes, it provides a final report before leaving. After the orchestrator captures that final report and evidence, the completed subagent is closed or released. The orchestrator then reviews the final report and evidence before marking the work complete.
 
 ## Tool Readiness
 
@@ -132,7 +136,7 @@ Cairn's reusable instructions are written in English for global use. User-visibl
 ## Delegation
 
 - `explorer`: handles read-only codebase discovery, impact analysis, pattern searches, and read-only verification when available.
-- `worker`: handles bounded implementation or verification tasks with clear file ownership.
-- Main session: keeps urgent blocking work local when the next step depends immediately on the result.
+- `worker`: handles actual implementation edits or verification tasks with clear file ownership.
+- Main session: orchestrates, verifies, and records evidence; it keeps only urgent non-implementation blocking work local when the next step depends immediately on the result, except that unavailable subagent tools make the main agent take over implementation directly.
 
 Every delegation prompt uses six sections: TASK, EXPECTED OUTCOME, REQUIRED TOOLS, MUST DO, MUST NOT DO, CONTEXT.

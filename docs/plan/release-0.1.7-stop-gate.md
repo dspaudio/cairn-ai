@@ -92,6 +92,7 @@ Publish the Cairn stop-gate fix so active plan work blocks premature Stop/Subage
 ## Evidence
 
 - Tool readiness: `node scripts/cairn.mjs toolcheck` passed; detected stack `javascript`, `node` OK.
+- Tests: `npm run check` passed with 12 tests.
 - Release preparation checks: `npm run check` passed with 12 tests; `npm pack --dry-run` passed for `cairn-ai@0.1.7` with 60 tarball files; `npm publish --dry-run` passed for tag `latest`.
 - CI fix: first PR run passed Ubuntu but failed Windows because active plan path containment used a POSIX slash prefix; changed to `node:path.relative()` plus `isAbsolute()`, then reran `npm run check`, `npm pack --dry-run`, and `npm publish --dry-run` successfully.
 - Dev PR merge: `dev` pushed with release commits; PR #17 created from `dev` to `main`.
