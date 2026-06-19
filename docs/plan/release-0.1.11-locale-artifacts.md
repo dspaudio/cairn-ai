@@ -138,11 +138,14 @@
 - Tool readiness: `node scripts/cairn.mjs toolcheck` passed; `gh auth status` authenticated as `dspaudio`; `npm whoami` returned `wonkyoo.nam`; `npm view cairn-ai version` returned `0.1.10`.
 - Tests: `npm test` passed with 15 tests; `npm run check` passed and reran the 15 tests.
 - Module acceptance: `npm run check` passed for `cairn-ai@0.1.11`.
-- Surface integration: `npm pack --dry-run` and `npm publish --dry-run` passed for `cairn-ai@0.1.11`.
+- Surface integration: `npm pack --dry-run` and `npm publish --dry-run` passed for `cairn-ai@0.1.11`; `npm view cairn-ai version dist-tags.latest` returned `0.1.11` for both fields.
 - Version metadata: `package.json` and `.codex-plugin/plugin.json` both report version `0.1.11`.
 - Delegation takeover: subagent tools were unavailable in the active tool list, so the main agent implemented directly and recorded this takeover.
-- Verification pass count: 1 release-preparation pass.
-- Blocker after two failed passes:
+- Dev PR merge: PR #29 merged `codex/release-0.1.11-locale-artifacts` into `dev` at merge commit `a46aa65f06d3540a486797b080d40b9d01aaa59e` after Ubuntu and Windows CI passed.
+- Main PR merge: PR #30 merged `dev` into `main` at merge commit `c85af86bed15cf3d6c445350c7225a35bc5e49e5` after Ubuntu and Windows CI passed. PR branch update first merged prior `main` completion evidence into `dev`.
+- npm publish: `npm publish` succeeded for `cairn-ai@0.1.11`; publish-time `prepack` ran `npm run check`, which passed with 15 tests.
+- Verification pass count: 1 release-preparation pass plus 1 publish/PR verification pass.
+- Blocker after two failed passes: none.
 
 ## Status
 
@@ -151,4 +154,4 @@
 - [x] Implemented
 - [x] Module acceptance passed
 - [x] Surface integration passed
-- [ ] Reviewed
+- [x] Reviewed

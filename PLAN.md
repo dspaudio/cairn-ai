@@ -5,11 +5,11 @@ This file is a short index of active and completed work plans.
 ## Active Plans
 
 - Link detailed plans under `docs/plan/`.
-- [Release 0.1.11 locale artifacts](docs/plan/release-0.1.11-locale-artifacts.md): prepare version bump, dev/main PR merges, npm publish, and completion evidence.
 
 ## Completed Plans
 
 - Move completed topics here with evidence links.
+- [Release 0.1.11 locale artifacts](docs/plan/release-0.1.11-locale-artifacts.md): PR #29 merged to `dev`, PR #30 merged to `main`, and `cairn-ai@0.1.11` published to npm.
 - [Release 0.1.10 subagent lifecycle](docs/plan/release-0.1.10-subagent-lifecycle.md): PR #25 merged to `dev`, PR #26 merged to `main`, and `cairn-ai@0.1.10` published to npm.
 - [Cairn subagent close on completion](docs/plan/cairn-subagent-close-on-completion.md): required delegated subagents to provide a final report before leaving, then close/release after evidence capture, then have the orchestrator review the final report and evidence before completion; verified with `node --test test/lifecycle.test.mjs`, `npm run check`, and `npm --cache /private/tmp/cairn-npm-cache pack --dry-run`.
 - [Cairn subagent unavailable main fallback](docs/plan/cairn-subagent-unavailable-main-fallback.md): corrected unavailable-subagent fallback to main-agent takeover and made subagent progress reporting conditional on tool channel support; verified with `node --test test/lifecycle.test.mjs`, `npm run check`, and `npm --cache /private/tmp/cairn-npm-cache pack --dry-run`.
