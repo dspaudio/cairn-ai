@@ -17,16 +17,20 @@ Cairn은 도구 준비 상태도 작업의 일부로 다룹니다. LSP, typechec
 
 Cairn은 LazyCodex(`https://github.com/code-yeongyu/lazycodex`)의 영향을 받았습니다. 영향을 받은 부분은 설치 가능한 에이전트 하네스 구조, Codex hook trust/setup 처리, project memory, planning skills, 실행 가능한 workflow commands, diagnostics, 그리고 local agent surfaces 전반의 skill/agent packaging입니다.
 
-Cairn은 실행 정책에서는 LazyCodex와 다릅니다. LazyCodex의 role-chain execution model이나 open-ended completion loop는 채택하지 않습니다. 대신 Light/Heavy Path triage, 제한된 `explorer`/`worker` 위임, 두 검증 게이트, 명시적 stop condition을 사용합니다.
+Cairn은 실행 정책에서는 LazyCodex와 다릅니다. LazyCodex의 role-chain execution model이나 open-ended completion loop는 채택하지 않습니다. 대신 Light/Heavy Path triage, main-agent orchestration, 제한된 `explorer`/`worker` 위임, 두 검증 게이트, 명시적 stop condition을 사용합니다.
 
 ## Complexity Triage
 
 모든 구현 작업은 agent, plugin, delegated workflow 지침을 적용하기 전에 먼저 complexity triage를 거칩니다. triage는 사용자에게 묻지 않고 저장소 탐색, 예상 변경 범위, 위험 신호를 기준으로 결정합니다.
 
-- Light Path: 기존 아키텍처 레이어 안의 좁은 변경입니다. 기본값이며, 직접 구현하거나 하나의 제한된 `worker`를 사용한 뒤 검증 게이트를 유지합니다.
+- Light Path: 기존 아키텍처 레이어 안의 좁은 변경입니다. 기본값이지만, 사용자가 호출한 main agent는 여전히 orchestration을 맡고 subagent 도구가 있으면 구현 편집을 하나의 제한된 `worker`에 위임한 뒤 검증 게이트를 유지합니다.
 - Heavy Path: 새 디렉터리/모듈/레이어, 새 도메인 모델/서비스/추상화, 보안/세션/인증, 외부 API/message queue/payment, DB schema/migration, concurrency/transaction/cache 변경, 여러 도메인 리팩터링, 또는 사용자의 extra-care 요청입니다.
 
-선택된 path와 근거는 계획 산출물이 있을 때 `docs/plan/<topic>.md`에 기록합니다. Light Path에서도 두 검증 게이트는 유지됩니다.
+선택된 path와 근거는 계획 산출물이 있을 때 `docs/plan/<topic>.md`에 기록합니다. Light Path에서도 두 검증 게이트는 유지됩니다. subagent 도구가 없으면 main agent가 implementation을 직접 인계하고, 그 takeover를 evidence에 기록합니다.
+
+subagent 도구가 progress-reporting channel을 제공하면 subagent는 작업 시작, 방향 결정/확인, 주기적 진행, 완료 시점에 orchestrator에게 상태를 보고합니다. orchestrator는 받은 status event를 즉시 사용자에게 전달합니다. mid-run reporting channel이 없으면 orchestrator는 할당, 대기, 최종 완료처럼 관측 가능한 event를 사용자에게 전달합니다.
+
+위임받은 subagent는 작업을 마치면 퇴근 전에 final report를 남깁니다. orchestrator가 final report와 evidence를 회수한 뒤 완료된 subagent를 close/release합니다. 그 다음 orchestrator가 final report와 evidence를 검토한 뒤 작업 완료 여부를 판단합니다.
 
 ## Tool Readiness
 
@@ -124,7 +128,7 @@ Cairn의 재사용 지침은 전역 사용을 위해 영어로 작성됩니다. 
 ## Delegation
 
 - `explorer`: 가능한 경우 read-only codebase discovery, impact analysis, pattern search, read-only verification을 처리합니다.
-- `worker`: 명확한 file ownership이 있는 제한된 implementation 또는 verification task를 처리합니다.
-- Main session: 다음 단계가 즉시 결과에 의존하는 urgent blocking work를 로컬에서 처리합니다.
+- `worker`: 명확한 file ownership이 있는 실제 implementation edit 또는 verification task를 처리합니다.
+- Main session: orchestrate, verify, evidence 기록을 맡으며, 다음 단계가 즉시 결과에 의존하는 urgent non-implementation blocking work만 로컬에서 처리합니다. 다만 subagent 도구가 없으면 main agent가 implementation을 직접 인계합니다.
 
 모든 delegation prompt는 TASK, EXPECTED OUTCOME, REQUIRED TOOLS, MUST DO, MUST NOT DO, CONTEXT 여섯 섹션을 사용합니다.

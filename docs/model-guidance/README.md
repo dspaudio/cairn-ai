@@ -17,6 +17,11 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - Keep detailed judgment in `docs/memory/`, `docs/plan/`, and `docs/model-guidance/`.
 - Preserve proper nouns, file names, variable names, service names, alert names, MCP tool names, and agent names exactly as written.
 - Select Light Path or Heavy Path before implementation.
+- Treat the user-called/main agent as the orchestrator: it plans, assigns, verifies, and records evidence.
+- Delegate actual implementation edits to `worker` subagents whenever subagent tools are available, regardless of Light Path or Heavy Path.
+- When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, the orchestrator relays observable events such as assignment, waiting, and final completion.
+- When a delegated subagent finishes, require a final report before it leaves; after capturing the final report and evidence, the orchestrator closes or releases the completed subagent, then reviews the final report and evidence before marking the work complete.
+- If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence.
 - Detect required LSP, typecheck, lint, dry-run, and verification tools before implementation.
 - Missing required tools must trigger a project-local, repository-native, or ephemeral install attempt before they can be treated as unavailable.
 - Every implementation task must pass module acceptance verification and surface integration verification.
@@ -27,5 +32,5 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 ## Delegation Defaults
 
 - `explorer`: use for read-only codebase discovery, impact analysis, pattern searches, and read-only verification when available.
-- `worker`: use for bounded implementation or verification tasks with clear file ownership.
-- Main session: keep urgent blocking work local when the next step depends immediately on the result.
+- `worker`: use for actual implementation edits or verification tasks with clear file ownership.
+- Main session: orchestrate, immediately relay received subagent status events or observable subagent lifecycle events to the user, verify, and record evidence; keep only urgent non-implementation blocking work local when the next step depends immediately on the result, except that unavailable subagent tools make the main agent take over implementation directly.

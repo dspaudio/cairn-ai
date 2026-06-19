@@ -108,6 +108,20 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(message("work", "ko-KR"), /Light\/Heavy Path/);
     assert.match(message("work", "en-US"), /side question.*resume/i);
     assert.match(message("work", "ko-KR"), /곁가지 질문.*active work/);
+    for (const locale of ["en-US", "ko-KR", "ja-JP", "zh-CN", "es-ES", "fr-FR", "de-DE", "pt-BR"]) {
+      for (const command of ["plan", "work"]) {
+        const output = message(command, locale);
+        assert.match(output, /user-called\/main agent (?:is the orchestrator|orchestrates)/i, `${locale} ${command} orchestrator policy`);
+        assert.match(output, /(implementation edits.*worker subagents?|worker subagents?.*implementation edits)/i, `${locale} ${command} worker edit policy`);
+        assert.match(output, /progress-reporting channel.*subagents report status.*starting work.*deciding or confirming direction.*periodic progress.*finishing/i, `${locale} ${command} status report policy`);
+        assert.match(output, /orchestrator must immediately relay received status events to the user/i, `${locale} ${command} relay policy`);
+        assert.match(output, /no mid-run reporting channel exists.*observable events.*assignment.*waiting.*final completion/i, `${locale} ${command} observable relay policy`);
+        assert.match(output, /delegated subagent finishes.*final report before leaving/i, `${locale} ${command} final report before leave policy`);
+        assert.match(output, /captures? the final report and evidence.*close or release the completed subagent/i, `${locale} ${command} close completed subagent policy`);
+        assert.match(output, /close or release the completed subagent.*review the final report and evidence/i, `${locale} ${command} final report evidence review policy`);
+        assert.match(output, /subagent tools are unavailable.*main agent takes over implementation directly.*records that takeover in evidence/i, `${locale} ${command} takeover policy`);
+      }
+    }
 
     const output = await runState("manual", { root: temp, locale: "en-US" });
     assert.equal(output, "Cairn initialized MEMORY.md, PLAN.md, docs/memory, and docs/plan.");
@@ -185,6 +199,80 @@ test("stop gate blocks completion when active plan work remains", async () => {
     });
     assert.equal(cli.status, 1);
     assert.match(cli.stdout, /continue the next incomplete task/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("stop gate blocks unindexed plan work", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn-unindexed-plan-"));
+  try {
+    await runState("manual", { root: temp, locale: "en-US" });
+    await writeFile(join(temp, "docs", "plan", "unindexed-work.md"), [
+      "# Plan: Unindexed work",
+      "",
+      "## Evidence",
+      "",
+      "- Dry-run or check:",
+      "- Module acceptance: npm test passed",
+      "- Surface integration: npm pack --dry-run passed",
+      "",
+      "## Status",
+      "",
+      "- [x] Planned",
+      "- [ ] Implemented",
+      "- [ ] Reviewed",
+      "",
+    ].join("\n"));
+
+    const result = await runStateResult("stop", { root: temp, locale: "en-US" });
+    assert.equal(result.status, 1);
+    assert.match(result.message, /docs\/plan\/unindexed-work\.md/);
+    assert.match(result.message, /index: not linked in PLAN\.md Active Plans or Completed Plans/);
+    assert.match(result.message, /unchecked: Implemented/);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("stop gate rechecks completed plan evidence", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn-completed-plan-"));
+  try {
+    await runState("manual", { root: temp, locale: "en-US" });
+    await writeFile(join(temp, "PLAN.md"), [
+      "# PLAN",
+      "",
+      "## Active Plans",
+      "",
+      "- Link detailed plans under `docs/plan/`.",
+      "",
+      "## Completed Plans",
+      "",
+      "- [Completed too early](docs/plan/completed-too-early.md)",
+      "",
+    ].join("\n"));
+    await writeFile(join(temp, "docs", "plan", "completed-too-early.md"), [
+      "# Plan: Completed too early",
+      "",
+      "## Evidence",
+      "",
+      "- Dry-run or check: npm run check passed",
+      "- Module acceptance:",
+      "- Surface integration: npm pack --dry-run passed",
+      "",
+      "## Status",
+      "",
+      "- [x] Planned",
+      "- [x] Implemented",
+      "- [ ] Reviewed",
+      "",
+    ].join("\n"));
+
+    const result = await runStateResult("stop", { root: temp, locale: "en-US" });
+    assert.equal(result.status, 1);
+    assert.match(result.message, /docs\/plan\/completed-too-early\.md/);
+    assert.match(result.message, /unchecked: Reviewed/);
+    assert.match(result.message, /empty evidence: Module acceptance/);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
@@ -307,6 +395,15 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.equal(manifest.hooks, "./hooks/hooks.json");
     assert.match(manifest.interface.defaultPrompt.join("\n"), /every agent must read the project-root MEMORY\.md/i);
     assert.match(manifest.interface.defaultPrompt.join("\n"), /whole work.*executable tasks.*sub-tasks/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /user-called\/main agent is the orchestrator/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /implementation edits must be delegated to worker subagents/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /progress-reporting channel.*subagents report status.*starting work.*deciding or confirming direction.*periodic progress.*finishing/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /orchestrator must immediately relay received status events to the user/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /no mid-run reporting channel exists.*observable events.*assignment.*waiting.*final completion/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /delegated subagent finishes.*final report before leaving/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /captures? the final report and evidence.*close or release the completed subagent/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /close or release the completed subagent.*review the final report and evidence/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence/i);
     assert.match(manifest.interface.defaultPrompt.join("\n"), /recursively delegate bounded sub-tasks to subagents/i);
     assert.match(manifest.interface.defaultPrompt.join("\n"), /side question.*resume.*pause, stop, or switch tasks/i);
     const explorer = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "explorer.md"), "utf8");
