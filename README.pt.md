@@ -119,7 +119,7 @@ Codex-only hooks nao sao portados para Antigravity. Em vez disso, os mesmos proc
 
 ## Locale Policy
 
-As instrucoes reutilizaveis do Cairn sao escritas em English para global use. User-visible output deve seguir o OS locale configurado, a menos que o usuario peca explicitamente outro idioma. A CLI localiza mensagens comuns para `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de` e `pt`, e volta para English em unsupported locales. O texto `statusMessage` dos Codex hooks permanece static English, enquanto hook command output e English ou Korean.
+As instrucoes reutilizaveis do Cairn sao escritas em English para global use. User-visible output e documentation, plans e memory artifacts gerados ou atualizados devem seguir o OS locale configurado, a menos que o usuario peca explicitamente outro idioma. Isso inclui conteudo em `MEMORY.md`, `PLAN.md`, `docs/memory` e `docs/plan`. A CLI localiza mensagens comuns para `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de` e `pt`, e volta para English em unsupported locales. O texto `statusMessage` dos Codex hooks permanece static English, enquanto hook command output e English ou Korean.
 
 ## Delegation
 

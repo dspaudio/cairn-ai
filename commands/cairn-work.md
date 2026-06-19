@@ -22,4 +22,4 @@ Procedure:
 12. Re-run surface integration verification.
 13. Record tool readiness and verification evidence in `docs/plan/<topic>.md` and update `PLAN.md`.
 14. If the user asks a side question, status question, or narrow clarification while this task is still active, answer it briefly and then resume the previous active work unless the user explicitly asks to pause, stop, or switch tasks.
-15. Use the OS locale for user-visible output unless the user asks for another language.
+15. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts unless the user asks for another language.

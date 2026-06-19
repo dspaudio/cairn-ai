@@ -97,6 +97,7 @@ test("hookHash is stable and sensitive to hook identity", () => {
 
 test("CLI messages and state initialization run without a POSIX shell", async () => {
   const temp = await mkdtemp(join(tmpdir(), "cairn-state-"));
+  const tempKo = await mkdtemp(join(tmpdir(), "cairn-state-ko-"));
   try {
     assert.match(message("usage", "en-US"), /cairn install\|upgrade/);
     assert.match(message("memory", "ko-KR"), /cairn-memory/);
@@ -108,6 +109,10 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(message("work", "ko-KR"), /Light\/Heavy Path/);
     assert.match(message("work", "en-US"), /side question.*resume/i);
     assert.match(message("work", "ko-KR"), /곁가지 질문.*active work/);
+    for (const command of ["memory", "plan", "work", "review"]) {
+      assert.match(message(command, "en-US"), /generated or updated documentation, plans, and memory artifacts/i);
+      assert.match(message(command, "ko-KR"), /문서, 계획, 메모리 산출물/);
+    }
     for (const locale of ["en-US", "ko-KR", "ja-JP", "zh-CN", "es-ES", "fr-FR", "de-DE", "pt-BR"]) {
       for (const command of ["plan", "work"]) {
         const output = message(command, locale);
@@ -131,6 +136,15 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(plan, /Every agent.*project-root `MEMORY\.md`/);
     assert.match(plan, /Run complexity triage/);
     assert.match(plan, /checked Heavy Path signals/);
+    assert.match(plan, /generated or updated documentation, plans, and memory artifacts/i);
+
+    const outputKo = await runState("manual", { root: tempKo, locale: "ko-KR" });
+    assert.equal(outputKo, "Cairn이 MEMORY.md, PLAN.md, docs/memory, docs/plan을 초기화했습니다.");
+    const memoryKo = await readFile(join(tempKo, "MEMORY.md"), "utf8");
+    const planKo = await readFile(join(tempKo, "PLAN.md"), "utf8");
+    assert.match(memoryKo, /문서, 계획, 메모리 산출물/);
+    assert.match(planKo, /복잡도 트리아지/);
+    assert.match(planKo, /문서, 계획, 메모리 산출물/);
 
     const cli = spawnSync(process.execPath, [cliScript, "memory"], {
       cwd: root,
@@ -151,6 +165,7 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(linked.stdout, /Usage: cairn install\|upgrade/);
   } finally {
     await rm(temp, { recursive: true, force: true });
+    await rm(tempKo, { recursive: true, force: true });
   }
 });
 

@@ -123,7 +123,7 @@ Codex 전용 hooks는 Antigravity로 포팅하지 않습니다. 대신 같은 pl
 
 ## Locale Policy
 
-Cairn의 재사용 지침은 전역 사용을 위해 영어로 작성됩니다. 사용자에게 보이는 출력은 사용자가 다른 언어를 명시하지 않는 한 설정된 OS locale을 따릅니다. CLI는 `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de`, `pt`의 일반 메시지를 현지화하고, 지원하지 않는 locale은 영어로 fallback합니다. Codex hook `statusMessage` 텍스트는 정적 영어로 유지하고, hook command output은 영어 또는 한국어입니다.
+Cairn의 재사용 지침은 전역 사용을 위해 영어로 작성됩니다. 사용자에게 보이는 출력과 생성 또는 갱신되는 문서, 계획, 메모리 산출물은 사용자가 다른 언어를 명시하지 않는 한 설정된 OS locale을 따릅니다. 여기에는 `MEMORY.md`, `PLAN.md`, `docs/memory`, `docs/plan` 내용이 포함됩니다. CLI는 `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de`, `pt`의 일반 메시지를 현지화하고, 지원하지 않는 locale은 영어로 fallback합니다. Codex hook `statusMessage` 텍스트는 정적 영어로 유지하고, hook command output은 영어 또는 한국어입니다.
 
 ## Delegation
 

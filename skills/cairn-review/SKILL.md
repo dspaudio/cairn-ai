@@ -26,7 +26,7 @@ When subagent tools are available, each agent may recursively delegate bounded r
    - Recursive subagent delegation is allowed only for bounded sub-tasks when the current surface supports it.
    - Keep blocking review work local when the next step depends immediately on the result.
 5. Report findings first, ordered by severity, with file and line references. If there are no issues, say so clearly and record remaining test gaps or residual risk.
-6. Write user-visible output in the OS locale unless the user asks for another language.
+6. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Reviewer Prompt Format
 
@@ -34,7 +34,7 @@ When subagent tools are available, each agent may recursively delegate bounded r
 TASK: Review correctness, scope, and evidence for task <task-id>.
 EXPECTED OUTCOME: Findings ordered by severity with file and line references, or an explicit no-issue result with residual risk.
 REQUIRED TOOLS: Read-only diff inspection, tool readiness checks, verification command execution, plan/memory reading.
-MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Check tool readiness and install-attempt evidence. Check dry-run or check evidence when external state could change. Check both module evidence and surface evidence. Preserve proper nouns exactly. Use the OS locale for user-visible text.
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Check tool readiness and install-attempt evidence. Check dry-run or check evidence when external state could change. Check both module evidence and surface evidence. Preserve proper nouns exactly. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
 MUST NOT DO: Edit files. Ask the user. Approve skipped LSP/typecheck/lint without install evidence. Approve missing evidence or open-ended verification loops.
 CONTEXT: docs/plan/<topic>.md, MEMORY.md, relevant docs/memory notes, changed files.
 ```
