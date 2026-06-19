@@ -119,7 +119,7 @@ Codex-only hooks 不会移植到 Antigravity。相同的 planning、memory、com
 
 ## Locale Policy
 
-Cairn 的 reusable instructions 为了 global use 使用英文编写。除非用户明确要求其他语言，user-visible output 应遵循 configured OS locale。CLI 会本地化 `en`、`ko`、`ja`、`zh`、`es`、`fr`、`de` 和 `pt` 的 common messages，不支持的 locales fallback 到 English。Codex hook `statusMessage` text 保持 static English，而 hook command output 为 English 或 Korean。
+Cairn 的 reusable instructions 为了 global use 使用英文编写。除非用户明确要求其他语言，user-visible output 以及生成或更新的 documentation、plans、memory artifacts 应遵循 configured OS locale。这包括 `MEMORY.md`、`PLAN.md`、`docs/memory` 和 `docs/plan` 内容。CLI 会本地化 `en`、`ko`、`ja`、`zh`、`es`、`fr`、`de` 和 `pt` 的 common messages，不支持的 locales fallback 到 English。Codex hook `statusMessage` text 保持 static English，而 hook command output 为 English 或 Korean。
 
 ## Delegation
 

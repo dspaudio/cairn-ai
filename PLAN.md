@@ -5,6 +5,7 @@ This file is a short index of active and completed work plans.
 ## Active Plans
 
 - Link detailed plans under `docs/plan/`.
+- [Release 0.1.11 locale artifacts](docs/plan/release-0.1.11-locale-artifacts.md): prepare version bump, dev/main PR merges, npm publish, and completion evidence.
 
 ## Completed Plans
 

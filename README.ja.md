@@ -119,7 +119,7 @@ Codex-only hooks は Antigravity へ port されません。代わりに同じ p
 
 ## Locale Policy
 
-Cairn の reusable instructions は global use のため英語で書かれています。user-visible output は user が別の language を指定しない限り configured OS locale に従います。CLI は `en`、`ko`、`ja`、`zh`、`es`、`fr`、`de`、`pt` の common messages を localize し、unsupported locales は English に fallback します。Codex hook `statusMessage` text は static English のまま、hook command output は English または Korean です。
+Cairn の reusable instructions は global use のため英語で書かれています。user-visible output と生成または更新される documentation、plans、memory artifacts は、user が別の language を指定しない限り configured OS locale に従います。これには `MEMORY.md`、`PLAN.md`、`docs/memory`、`docs/plan` の内容が含まれます。CLI は `en`、`ko`、`ja`、`zh`、`es`、`fr`、`de`、`pt` の common messages を localize し、unsupported locales は English に fallback します。Codex hook `statusMessage` text は static English のまま、hook command output は English または Korean です。
 
 ## Delegation
 

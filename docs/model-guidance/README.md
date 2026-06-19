@@ -27,7 +27,7 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - Every implementation task must pass module acceptance verification and surface integration verification.
 - Before mutating external state, run the closest available dry-run, check, plan, diff, validate, or equivalent command.
 - Limit each task to two verification passes by default. After two failed passes, record the blocker or split it into sub-tasks instead of continuing a repeated loop.
-- User-visible output must follow the OS locale unless the user asks for another language.
+- User-visible responses and generated or updated documentation, plans, and memory artifacts must follow the OS locale unless the user asks for another language.
 
 ## Delegation Defaults
 

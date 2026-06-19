@@ -41,7 +41,7 @@ Plan from the whole work down. First understand the full requested outcome and a
    - Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, and tell workers they are not alone in the codebase and must not revert others' edits.
 12. Create `docs/plan/<topic>.md` from `templates/work-plan.md`.
 13. Add a short index entry to `PLAN.md`.
-14. Write user-visible output in the OS locale unless the user asks for another language.
+14. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Complexity Triage
 
@@ -118,7 +118,7 @@ Heavy Path flow: plan -> pre-implementation review -> bounded `worker` implement
 - Verification can expand for risk, but the reason must be recorded.
 - The default loop budget is two verification passes per task. If a gate fails, diagnose once, shrink the task or split it into sub-tasks, and rerun both gates. After two failed passes, record the blocker in `docs/plan/<topic>.md` instead of continuing an open-ended loop.
 - Ask the user only when agents, repository evidence, or local verification cannot answer the decision.
-- User-visible text must follow the OS locale unless the user asks for another language.
+- User-visible responses and generated or updated documentation, plans, and memory artifacts must follow the OS locale unless the user asks for another language.
 
 ## Tool Readiness Policy
 
@@ -147,7 +147,7 @@ Prefer repository-native dry-run and check modes before mutating external state.
 TASK: Produce <role> input needed for the <topic> plan.
 EXPECTED OUTCOME: Return concrete decisions, file paths, dependencies, risks, and evidence requirements.
 REQUIRED TOOLS: Read-only repository exploration, tool readiness checks, LSP/symbol tools, local command checks.
-MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Prefer repository evidence. Install or bootstrap missing required tools before declaring them unavailable. Identify assumptions. Treat the user-called/main agent as the orchestrator. Use `explorer` for read-only discovery and `worker` for actual implementation edits or verification when subagent tools are available, regardless of Light Path or Heavy Path. When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing the final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence. When subagent tools are available, allow recursive delegation of bounded sub-tasks. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work. Tell workers they are not alone in the codebase and must not revert others' edits. Use the OS locale for user-visible text.
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Prefer repository evidence. Install or bootstrap missing required tools before declaring them unavailable. Identify assumptions. Treat the user-called/main agent as the orchestrator. Use `explorer` for read-only discovery and `worker` for actual implementation edits or verification when subagent tools are available, regardless of Light Path or Heavy Path. When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing the final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence. When subagent tools are available, allow recursive delegation of bounded sub-tasks. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work. Tell workers they are not alone in the codebase and must not revert others' edits. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
 MUST NOT DO: Edit production code. Ask the user. Expand scope. Delegate vague or unbounded work.
 CONTEXT: User request, MEMORY.md, relevant docs/memory notes, applied model guidance, repository root.
 ```

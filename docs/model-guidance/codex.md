@@ -25,7 +25,7 @@ Codex-family models are strong at small implementation tasks, explicit tool use,
 - Do not trust success-looking output alone. Confirm real files, commands, and surface evidence.
 - Do not skip LSP, typecheck, lint, dry-run, or verification because a tool is missing. Try repository-local installation or record the failed install attempt as a blocker.
 - Do not continue an open-ended verification loop. Use at most two verification passes per task unless the plan records a risk-based exception.
-- Write user-visible output in the OS locale unless the user asks for another language.
+- Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Path Guidance
 

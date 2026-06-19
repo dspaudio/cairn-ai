@@ -8,6 +8,7 @@ Short index of work plans. Link detailed plans under `docs/plan/`.
 - Install or bootstrap missing required tools before declaring them unavailable.
 - Heavy Path completion requires explicit automated test evidence.
 - Record tool readiness, dry-run/check evidence, module acceptance evidence, and surface integration evidence in detailed plans.
+- Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Active Plans
 

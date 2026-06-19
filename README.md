@@ -131,7 +131,7 @@ Codex-only hooks are not ported to Antigravity. Instead, the same planning, memo
 
 ## Locale Policy
 
-Cairn's reusable instructions are written in English for global use. User-visible output should follow the configured OS locale unless the user explicitly asks for another language. The CLI localizes common messages for `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de`, and `pt`, and falls back to English for unsupported locales. Codex hook `statusMessage` text remains static English, while hook command output is English or Korean.
+Cairn's reusable instructions are written in English for global use. User-visible output and generated or updated documentation, plans, and memory artifacts should follow the configured OS locale unless the user explicitly asks for another language. This includes `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` content. The CLI localizes common messages for `en`, `ko`, `ja`, `zh`, `es`, `fr`, `de`, and `pt`, and falls back to English for unsupported locales. Codex hook `statusMessage` text remains static English, while hook command output is English or Korean.
 
 ## Delegation
 

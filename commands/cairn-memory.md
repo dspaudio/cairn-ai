@@ -14,4 +14,4 @@ Procedure:
 4. Use `explorer` for read-only domain discovery and contradiction checks when available; use `worker` for exact references, command checks, and bounded evidence capture. When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, and preserve others' edits.
 5. Write details to `docs/memory/<domain>.md`.
 6. Keep `MEMORY.md` as a short index.
-7. Use the OS locale for user-visible output unless the user asks for another language.
+7. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts unless the user asks for another language.
