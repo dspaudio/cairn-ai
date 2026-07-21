@@ -65,11 +65,13 @@ O harness cria e mantem estes arquivos na raiz do repositorio alvo.
 
 - `MEMORY.md`: indice curto de persistent domain knowledge.
 - `docs/memory/*.md`: conhecimento detalhado por dominio.
-- `.cairn/state.json`: estado git-ignored de goal, task e receipt para retomada e stop gates com escopo.
+- `.cairn/state.json`: estado git-ignored de goal, task e evidence record para retomada e stop gates com escopo.
 - `PLAN.md`: indice curto de active and completed work topics.
 - `docs/plan/*.md`: detailed execution plans.
 
 Arquivos raiz ficam curtos e os detalhes vao para `docs/`, para que agentes leiam apenas o contexto necessario.
+
+Para economizar tokens, crie primeiro um test contract com requisitos, invariantes, limites e modos de falha. Use o tool exit code de `goal verify -- <argv>` como autoridade, resuma o sucesso e expanda o contexto apenas em falhas. Inspecione o package lifecycle e execute normalmente `npm pack --dry-run`. Scripts content-producing ou desconhecidos nunca devem usar `--ignore-scripts`; use-o apenas quando os scripts estiverem ausentes ou comprovadamente content-neutral e a evidencia do full check continuar atual.
 
 ## Commands
 

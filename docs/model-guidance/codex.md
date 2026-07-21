@@ -31,6 +31,8 @@ Codex-family models are strong at small implementation tasks, explicit tool use,
 
 ### Planning
 
+- Use `update_plan` to display the initial triage roadmap before repository exploration, then use `create_goal` when exposed so the Codex UI has an active goal before the turn can be interrupted.
+- Treat the initial plan as decision-complete for its `triage-plan` task, not as authorization to implement. After triage, update the same repository plan and `update_plan` roadmap to the decision-complete implementation revision.
 - On Light Path, write explicit task contracts when a plan artifact exists.
 - Record detected stack, required tools, install commands, and tool blockers.
 - Specify file scope and verification commands so implementation does not need to rediscover them.
@@ -39,6 +41,8 @@ Codex-family models are strong at small implementation tasks, explicit tool use,
 
 ### Implementation
 
+- Invest Codex reasoning in executable test design first, then hand the bounded failing contract to implementation and require the minimum passing patch.
+- Run verification through `goal verify -- ...`. On success, retain exact argv, tool exit code, pass count, output digest, and watched-workspace fingerprint. Expand diagnostics only for the failing test and its related file/symbol scope; reject stale evidence after related changes.
 - If acting as the user-called/main agent, orchestrate the work and delegate actual implementation edits to `worker` whenever subagent tools are available, regardless of Light Path or Heavy Path.
 - If acting as the user-called/main agent, immediately relay received subagent status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion.
 - If acting as the user-called/main agent, close or release completed subagents after capturing their final report and evidence, then review the final report and evidence before marking the work complete.
@@ -46,6 +50,7 @@ Codex-family models are strong at small implementation tasks, explicit tool use,
 - Confirm required tools are available. Install or bootstrap missing required tools before implementation.
 - Run the recorded dry-run or check command before external-state mutation when applicable.
 - After changes, run both module acceptance verification and surface integration verification.
+- Inspect package lifecycle scripts before package verification. Run normal `npm pack --dry-run` by default; content-producing or unknown lifecycle scripts must never use `--ignore-scripts`, while absent or proven content-neutral scripts may use it only when the prior full check remains fresh.
 - If a gate fails, diagnose once, shrink the task or split it into sub-tasks, and rerun both gates. Stop after the second failed pass and record the blocker.
 - Return evidence in a form that can be recorded in `docs/plan/<topic>.md`.
 

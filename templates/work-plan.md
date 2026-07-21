@@ -1,5 +1,11 @@
 # Plan: <topic>
 
+## Plan Phase
+
+- Initial: decision-complete for `triage-plan`; not implementation-ready.
+- Finalized: decision-complete for implementation after planned triage.
+- Codex UI synchronization: `update_plan` status and `create_goal` status, or an explicit unavailable reason.
+
 ## Goal
 
 Describe the observable result.
@@ -74,12 +80,25 @@ Describe the observable result.
 
 ## Execution Guardrails
 
+- Test contract first: requirements, invariants, boundaries, failure modes, expected initial failure, and authoritative tool result.
+- Token budget: high reasoning for plan/triage/test design; bounded minimum implementation; concise tool-derived verification summaries.
+- Verification ladder: focused tests, one final full check, then package dry-run if no files changed. Inspect lifecycle scripts first; run normal `npm pack --dry-run` by default. Content-producing or unknown scripts must never use `--ignore-scripts`; only absent or proven content-neutral scripts may use it while evidence remains fresh.
+- Evidence freshness: relevant changes after verification make affected evidence stale.
 - Dry-run or check mode before external-state mutation:
 - No dry-run available, if applicable:
 - Verification loop budget: two passes per task by default.
 - Failure handling: diagnose once, shrink the task or split it into sub-tasks, rerun both gates, then record a blocker after the second failed pass.
 
 ## Module Tasks
+
+### Task 0: planned triage and plan finalization
+
+- Task ID: `triage-plan`
+- Initial status: `active`
+- Contract: execute the investigation scope and Heavy Path criteria declared by the initial plan, then update this file and the Codex UI plan to the decision-complete implementation revision.
+- Required evidence records:
+  - `planArtifact`: command, exit code 0, timestamp, goal ID, task ID, and plan ID.
+  - `triageDecision`: command, exit code 0, timestamp, goal ID, task ID, and plan ID.
 
 ### Task 1: <module>
 
@@ -93,7 +112,7 @@ Describe the observable result.
 - Dry-run or check command:
 - Module acceptance verification:
 - Surface integration verification:
-- Required receipts:
+- Required evidence records:
   - `moduleAcceptance`: command, exit code 0, timestamp, goal ID, task ID, and plan ID.
   - `surfaceIntegration`: command or QA artifact, exit code 0, timestamp, goal ID, task ID, and plan ID.
 - Assigned agent ID, if delegated:
@@ -106,7 +125,7 @@ Describe the observable result.
 - Tests:
 - Module acceptance:
 - Surface integration:
-- Goal final review receipt:
+- Goal final review evidence record:
 - Verification pass count:
 - Blocker after two failed passes:
 

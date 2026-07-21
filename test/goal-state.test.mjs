@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -29,7 +29,8 @@ test("goal start persists a versioned, bound state atomically", async () => {
       completionCriteria: ["All tasks have successful receipts"],
     });
 
-    assert.equal(state.schemaVersion, 1);
+    assert.equal(state.schemaVersion, 2);
+    assert.equal(state.goal.evidencePolicy, "tool-bound");
     assert.equal(state.goal.status, "active");
     assert.equal(state.tasks[0].status, "active");
     assert.equal(state.tasks[1].status, "pending");
@@ -37,6 +38,56 @@ test("goal start persists a versioned, bound state atomically", async () => {
     assert.deepEqual(JSON.parse(text), state);
     const leftovers = await readdir(join(root, ".cairn"));
     assert.equal(leftovers.filter((name) => name.endsWith(".tmp")).length, 0);
+  });
+});
+
+test("schema v1 state migrates to tool-bound schema v2 without losing declared evidence", async () => {
+  await withTempRoot(async (root) => {
+    const now = new Date().toISOString();
+    await mkdir(join(root, ".cairn"), { recursive: true });
+    await writeFile(goalStatePath(root), `${JSON.stringify({
+      schemaVersion: 1,
+      revision: 3,
+      goal: {
+        id: "goal-v1",
+        title: "Migrate old state",
+        planId: "docs/plan/v1.md",
+        status: "active",
+        completionCriteria: [],
+        requiredEvidence: ["finalReview"],
+        ownerSessionId: null,
+        blocker: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      tasks: [{
+        id: "legacy",
+        title: "Legacy task",
+        status: "active",
+        assignedAgentId: null,
+        requiredEvidence: ["moduleAcceptance", "surfaceIntegration"],
+        blocker: null,
+        createdAt: now,
+        updatedAt: now,
+      }],
+      receipts: [{
+        id: "receipt-v1",
+        scope: "task",
+        kind: "moduleAcceptance",
+        taskId: "legacy",
+        goalId: "goal-v1",
+        planId: "docs/plan/v1.md",
+        command: "node --test",
+        exitCode: 0,
+        timestamp: now,
+        source: "tool",
+      }],
+    }, null, 2)}\n`);
+
+    const migrated = await readGoalState({ root });
+    assert.equal(migrated.schemaVersion, 2);
+    assert.equal(migrated.goal.evidencePolicy, "tool-bound");
+    assert.equal(migrated.receipts[0].source, "declared");
   });
 });
 
@@ -59,12 +110,34 @@ test("main CLI forwards the goal namespace to the installed runtime command", as
   });
 });
 
+test("goal CLI preserves inline option values while parsing quiet as boolean", async () => {
+  await withTempRoot(async (root) => {
+    const cli = spawnSync(process.execPath, [
+      cliScript,
+      "goal", "start",
+      `--root=${root}`,
+      "--goal=Inline CLI goal=a=b",
+      "--plan=docs/plan/inline.md",
+      "--tasks=Inline task",
+      "--session=inline-session",
+      "--quiet=false",
+    ], { encoding: "utf8" });
+
+    assert.equal(cli.status, 0, cli.stderr);
+    const state = JSON.parse(cli.stdout);
+    assert.equal(state.goal.title, "Inline CLI goal=a=b");
+    assert.equal(state.goal.planId, "docs/plan/inline.md");
+    assert.equal(state.goal.ownerSessionId, "inline-session");
+  });
+});
+
 test("top-level task CLI accepts action and task id shorthand", async () => {
   await withTempRoot(async (root) => {
     await startGoal({
       root,
       goal: "Task shorthand",
       planId: "docs/plan/task-shorthand.md",
+      evidencePolicy: "declared",
       tasks: [{ id: "only", title: "Only task" }],
     });
     for (const kind of ["moduleAcceptance", "surfaceIntegration"]) {
@@ -84,6 +157,7 @@ test("receipt CLI accepts the kebab-case exit-code option", async () => {
       root,
       goal: "Receipt CLI",
       planId: "docs/plan/receipt-cli.md",
+      evidencePolicy: "declared",
       tasks: [{ id: "receipt", title: "Record receipt" }],
     });
 
@@ -104,12 +178,133 @@ test("receipt CLI accepts the kebab-case exit-code option", async () => {
   });
 });
 
+test("tool-bound goals execute verification, reject declared and stale evidence, and keep failures unrecorded", async () => {
+  await withTempRoot(async (root) => {
+    const watched = join(root, "watched.txt");
+    await writeFile(watched, "v1\n");
+    const started = spawnSync(process.execPath, [
+      cliScript,
+      "goal", "start",
+      "--quiet",
+      "--root", root,
+      "--goal", "Tool-bound evidence",
+      "--plan", "docs/plan/tool-bound.md",
+      "--tasks", JSON.stringify([{
+        id: "verify",
+        title: "Verify with the tool",
+        requiredEvidence: ["moduleAcceptance", "surfaceIntegration"],
+      }]),
+    ], { encoding: "utf8" });
+    assert.equal(started.status, 0, started.stderr);
+
+    await assert.rejects(
+      recordReceipt({
+        root,
+        taskId: "verify",
+        kind: "moduleAcceptance",
+        command: "fabricated tool evidence",
+        exitCode: 0,
+        source: "tool",
+      }),
+      /only goal verify/i,
+    );
+
+    const preflightMarker = join(root, "must-not-run.txt");
+    const invalidTarget = spawnSync(process.execPath, [
+      cliScript,
+      "goal", "verify",
+      "--quiet",
+      "--root", root,
+      "--task", "missing-task",
+      "--kind", "moduleAcceptance",
+      "--watch", watched,
+      "--",
+      process.execPath,
+      "-e",
+      `require("node:fs").writeFileSync(${JSON.stringify(preflightMarker)}, "ran")`,
+    ], { encoding: "utf8" });
+    assert.notEqual(invalidTarget.status, 0);
+    assert.match(invalidTarget.stderr, /unknown task/i);
+    await assert.rejects(access(preflightMarker));
+
+    const declared = spawnSync(process.execPath, [
+      cliScript,
+      "goal", "receipt",
+      "--quiet",
+      "--root", root,
+      "--task", "verify",
+      "--kind", "moduleAcceptance",
+      "--command", "node --test (never executed)",
+      "--exit-code", "0",
+    ], { encoding: "utf8" });
+    assert.equal(declared.status, 0, declared.stderr);
+    const declaredCompletion = spawnSync(process.execPath, [
+      cliScript, "goal", "task", "--root", root, "--task", "verify", "--status", "completed",
+    ], { encoding: "utf8" });
+    assert.notEqual(declaredCompletion.status, 0);
+    assert.match(declaredCompletion.stderr, /tool-bound evidence/i);
+
+    const failed = runVerify(root, "moduleAcceptance", watched, "process.exit(7)");
+    assert.notEqual(failed.status, 0);
+    assert.match(failed.stderr, /verification failed.*exit 7/is);
+    assert.equal((await readGoalState({ root })).receipts.filter((item) => item.source === "tool").length, 0);
+
+    for (const kind of ["moduleAcceptance", "surfaceIntegration"]) {
+      const verified = runVerify(root, kind, watched, "console.log('verified')");
+      assert.equal(verified.status, 0, verified.stderr);
+      assert.equal(verified.stdout, "");
+    }
+    const verifiedState = await readGoalState({ root });
+    const toolEvidence = verifiedState.receipts.filter((item) => item.source === "tool");
+    assert.equal(toolEvidence.length, 2);
+    assert.deepEqual(toolEvidence[0].argv.slice(0, 2), [process.execPath, "-e"]);
+    assert.match(toolEvidence[0].outputDigest, /^sha256:[a-f0-9]{64}$/);
+    assert.match(toolEvidence[0].workspaceFingerprint, /^sha256:[a-f0-9]{64}$/);
+    assert.match(toolEvidence[0].summary, /verification passed.*outputBytes/i);
+    assert.ok(toolEvidence[0].summary.length < 120);
+
+    const exactArgv = spawnSync(process.execPath, [
+      cliScript,
+      "goal", "verify",
+      "--quiet",
+      "--root", root,
+      "--task", "verify",
+      "--kind", "surfaceIntegration",
+      "--watch", watched,
+      "--",
+      process.execPath,
+      "-e",
+      "process.exit(0)",
+      "",
+      "  spaced  ",
+    ], { encoding: "utf8" });
+    assert.equal(exactArgv.status, 0, exactArgv.stderr);
+    assert.deepEqual((await readGoalState({ root })).receipts.at(-1).argv.slice(-2), ["", "  spaced  "]);
+
+    await writeFile(watched, "v2\n");
+    const staleCompletion = spawnSync(process.execPath, [
+      cliScript, "goal", "task", "--root", root, "--task", "verify", "--status", "completed",
+    ], { encoding: "utf8" });
+    assert.notEqual(staleCompletion.status, 0);
+    assert.match(staleCompletion.stderr, /stale evidence/i);
+
+    for (const kind of ["moduleAcceptance", "surfaceIntegration"]) {
+      const refreshed = runVerify(root, kind, watched, "console.log('refreshed')");
+      assert.equal(refreshed.status, 0, refreshed.stderr);
+    }
+    const completed = spawnSync(process.execPath, [
+      cliScript, "goal", "task", "--quiet", "--root", root, "--task", "verify", "--status", "completed",
+    ], { encoding: "utf8" });
+    assert.equal(completed.status, 0, completed.stderr);
+  });
+});
+
 test("receipts fail closed and task completion advances only after successful bound evidence", async () => {
   await withTempRoot(async (root) => {
     const initial = await createTwoTaskGoal(root);
     await assert.rejects(
       setTaskStatus({ root, taskId: "first", status: "completed" }),
-      /successful, bound receipt/,
+      /successful, bound evidence record/,
     );
     await assert.rejects(
       recordReceipt({ root, taskId: "first", kind: "moduleAcceptance", command: "npm test", exitCode: 1 }),
@@ -150,17 +345,21 @@ test("automatic context hooks do not initialize an uninitialized repository", as
   await withTempRoot(async (root) => {
     const session = await runStateResult("session-start", { root, locale: "en-US", payload: { cwd: root, session_id: "s1", turn_id: "t1" } });
     const prompt = await runStateResult("user-prompt-submit", { root, locale: "en-US", payload: { cwd: root, session_id: "s1", turn_id: "t1", prompt: "Implement the requested fix" } });
-    assert.match(session.message, /read the project-root MEMORY/);
-    assert.match(prompt.message, /read the project-root MEMORY/);
+    assert.match(session.message, /read (?:the project-)?root MEMORY/);
+    assert.match(prompt.message, /read (?:the project-)?root MEMORY/);
     assert.equal(session.hookOutput.hookSpecificOutput.hookEventName, "SessionStart");
     assert.equal(prompt.hookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /request itself as authorization/i);
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /even when the user does not mention a goal/i);
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /decision-complete plan.*before implementation/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /Implementation\/continue.*initial triage plan/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /update_plan, then create_goal/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /repository goal before exploration/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /finalize the plan after triage, then implement/i);
     assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /consultation, explanation, or plan-only requests/i);
     const promptKo = await runStateResult("user-prompt-submit", { root, locale: "ko-KR", payload: { cwd: root, session_id: "s1", turn_id: "t2", prompt: "요청한 수정을 구현해줘" } });
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /사용자가 goal을 언급하지 않아도 이 요청 자체를 권한/);
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /상담·설명·계획 전용 요청에는 goal을 만들지 마세요/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /구현\/계속 실행.*초기 트리아지 계획/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /update_plan → create_goal/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /탐색 전 저장소 goal 시작/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /트리아지 후 계획 확정 → 구현/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /상담·설명·계획 전용은 goal 없이/);
     await assert.rejects(access(join(root, "MEMORY.md")));
     await assert.rejects(access(join(root, ".cairn")));
   });
@@ -215,7 +414,7 @@ test("active goal context includes the ordered task roadmap and side-question re
     assert.match(context, /Work steps:\n1\. inspect \[active\] Inspect the issue/);
     assert.match(context, /2\. implement \[pending\] Implement the fix/);
     assert.match(context, /3\. verify \[pending\] Verify the result/);
-    assert.match(context, /After answering a side question, return to current task inspect/);
+    assert.match(context, /After a side question, resume inspect/);
 
     const promptKo = await runStateResult("user-prompt-submit", {
       root,
@@ -224,7 +423,7 @@ test("active goal context includes the ordered task roadmap and side-question re
     });
     const contextKo = promptKo.hookOutput.hookSpecificOutput.additionalContext;
     assert.match(contextKo, /작업 단계:\n1\. inspect \[active\] Inspect the issue/);
-    assert.match(contextKo, /곁가지 질문에 답한 뒤.*현재 task inspect로 돌아와/);
+    assert.match(contextKo, /곁가지 질문 뒤.*inspect를 재개/);
   });
 });
 
@@ -265,6 +464,28 @@ test("blocked transitions require a reason and state revisions advance", async (
   });
 });
 
+test("active context resumes a blocked task instead of reporting all tasks complete", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Resume blocked work",
+      planId: "docs/plan/blocked-context.md",
+      tasks: [{ id: "blocked-task", title: "Resolve the blocker" }],
+    });
+    await setTaskStatus({ root, taskId: "blocked-task", status: "blocked", blocker: "Waiting on a dependency" });
+    await transitionGoal({ root, status: "active" });
+
+    const prompt = await runStateResult("user-prompt-submit", {
+      root,
+      locale: "en-US",
+      payload: { cwd: root, prompt: "Continue" },
+    });
+    const context = prompt.hookOutput.hookSpecificOutput.additionalContext;
+    assert.match(context, /Current: blocked-task.*Resolve the blocker/);
+    assert.doesNotMatch(context, /All tasks.*complete/i);
+  });
+});
+
 test("Stop returns the Codex continuation JSON only for an active current task", async () => {
   await withTempRoot(async (root) => {
     const active = await createTwoTaskGoal(root);
@@ -272,6 +493,8 @@ test("Stop returns the Codex continuation JSON only for an active current task",
     assert.equal(blocked.status, 0);
     assert.equal(blocked.hookOutput.decision, "block");
     assert.match(blocked.hookOutput.reason, /first/);
+    assert.match(blocked.hookOutput.reason, /evidence record/i);
+    assert.doesNotMatch(blocked.hookOutput.reason, /receipt/i);
 
     const cli = spawnSync(process.execPath, [stateScript, "stop"], {
       cwd: root,
@@ -303,6 +526,8 @@ test("SubagentStop only blocks the current task assigned to the stopping agent",
     const assigned = await runStateResult("subagent-stop", { root, locale: "en-US", payload: { cwd: root, agent_id: "agent-current", turn_id: "t1", stop_hook_active: false } });
     assert.equal(assigned.hookOutput.decision, "block");
     assert.match(assigned.hookOutput.reason, /only this assigned task/);
+    assert.match(assigned.hookOutput.reason, /evidence record/i);
+    assert.doesNotMatch(assigned.hookOutput.reason, /receipt/i);
 
     const continued = await runStateResult("subagent-stop", { root, locale: "en-US", payload: { cwd: root, agent_id: "agent-current", turn_id: "t1", stop_hook_active: true } });
     assert.equal(continued.hookOutput.continue, true);
@@ -320,8 +545,25 @@ async function createTwoTaskGoal(root) {
     root,
     goal: "Complete goal state coverage",
     planId: "docs/plan/goal-state.md",
+    evidencePolicy: "declared",
     tasks: [{ id: "first", title: "First task" }, { id: "second", title: "Second task" }],
   });
+}
+
+function runVerify(root, kind, watched, source) {
+  return spawnSync(process.execPath, [
+    cliScript,
+    "goal", "verify",
+    "--quiet",
+    "--root", root,
+    "--task", "verify",
+    "--kind", kind,
+    "--watch", watched,
+    "--",
+    process.execPath,
+    "-e",
+    source,
+  ], { encoding: "utf8" });
 }
 
 async function withTempRoot(work) {

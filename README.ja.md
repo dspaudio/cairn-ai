@@ -65,11 +65,13 @@ harness は対象 repository root に次の files を作成して維持します
 
 - `MEMORY.md`: persistent domain knowledge の短い index。
 - `docs/memory/*.md`: domain ごとの詳細 knowledge。
-- `.cairn/state.json`: 再開と scoped stop gate のための git-ignored goal/task/receipt 状態。
+- `.cairn/state.json`: 再開と scoped stop gate のための git-ignored goal/task/evidence-record 状態。
 - `PLAN.md`: active/completed work topics の短い index。
 - `docs/plan/*.md`: detailed execution plans。
 
 root files は短く保ち、詳細は `docs/` に移すことで、agents が必要な context だけを読めるようにします。
+
+トークン効率のため、実装前に要件・不変条件・境界・失敗モードを test contract にします。`goal verify -- <argv>` の tool exit code を判定基準にし、成功は短く、失敗時だけ context を広げます。package lifecycle を確認し、通常の `npm pack --dry-run` を既定にします。content-producing または不明な script では `--ignore-scripts` を使わず、script がないか content-neutral と証明され、full-check evidence が新鮮な場合だけ使用します。
 
 ## Commands
 

@@ -1,15 +1,17 @@
 #!/usr/bin/env node
-import { randomUUID } from "node:crypto";
-import { realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { lstatSync, readFileSync, readlinkSync, realpathSync, readdirSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const GOAL_STATE_VERSION = 1;
+export const GOAL_STATE_VERSION = 2;
 export const GOAL_STATUSES = new Set(["active", "paused", "blocked", "cancelled", "completed"]);
 export const TASK_STATUSES = new Set(["pending", "active", "blocked", "completed"]);
 
 const terminalGoalStatuses = new Set(["cancelled", "completed"]);
+const evidencePolicies = new Set(["declared", "tool-bound"]);
 const defaultTaskEvidence = ["moduleAcceptance", "surfaceIntegration"];
 const defaultGoalEvidence = ["finalReview"];
 const goalTransitions = {
@@ -33,7 +35,7 @@ export function goalStatePath(root = process.cwd()) {
 export async function readGoalState({ root = process.cwd() } = {}) {
   try {
     const text = await readFile(goalStatePath(root), "utf8");
-    return validateState(JSON.parse(text));
+    return validateState(migrateState(JSON.parse(text)));
   } catch (error) {
     if (error?.code === "ENOENT") return null;
     if (error instanceof SyntaxError) throw new Error(`Cairn goal state is invalid JSON: ${error.message}`);
@@ -41,7 +43,7 @@ export async function readGoalState({ root = process.cwd() } = {}) {
   }
 }
 
-export async function startGoal({ root = process.cwd(), goal, planId, tasks, completionCriteria = [], requiredEvidence = defaultGoalEvidence, ownerSessionId = null } = {}) {
+export async function startGoal({ root = process.cwd(), goal, planId, tasks, completionCriteria = [], requiredEvidence = defaultGoalEvidence, ownerSessionId = null, evidencePolicy = "tool-bound" } = {}) {
   const normalizedGoal = requiredText(goal, "goal");
   const normalizedPlanId = requiredText(planId, "planId");
   if (!Array.isArray(tasks) || tasks.length === 0) throw new Error("tasks must contain at least one task");
@@ -64,6 +66,7 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
       status: "active",
       completionCriteria: normalizeCriteria(completionCriteria),
       requiredEvidence: normalizeCriteria(requiredEvidence),
+      evidencePolicy: validEvidencePolicy(evidencePolicy),
       ownerSessionId: optionalText(ownerSessionId, "ownerSessionId"),
       blocker: null,
       createdAt: now,
@@ -98,7 +101,7 @@ export async function transitionGoal({ root = process.cwd(), status, blocker } =
     if (!goalTransitions[currentStatus].has(nextStatus)) {
       throw new Error(`Cannot transition goal from ${currentStatus} to ${nextStatus}`);
     }
-    if (nextStatus === "completed") ensureGoalCanComplete(state);
+    if (nextStatus === "completed") ensureGoalCanComplete(state, root);
     if (nextStatus === "blocked") state.goal.blocker = requiredText(blocker, "blocker");
     if (nextStatus === "active") state.goal.blocker = null;
     state.goal.status = nextStatus;
@@ -121,7 +124,7 @@ export async function setTaskStatus({ root = process.cwd(), taskId, status, bloc
       const anotherActive = state.tasks.find((item) => item.id !== task.id && item.status === "active");
       if (anotherActive) throw new Error(`Task ${anotherActive.id} is already active`);
     }
-    if (nextStatus === "completed") ensureTaskCanComplete(state, task);
+    if (nextStatus === "completed") ensureTaskCanComplete(state, task, root);
     if (nextStatus === "blocked") task.blocker = requiredText(blocker, "blocker");
     if (nextStatus === "active" || nextStatus === "pending") task.blocker = null;
     task.status = nextStatus;
@@ -149,18 +152,45 @@ export async function assignTask({ root = process.cwd(), taskId, agentId = null 
   });
 }
 
-export async function recordReceipt({ root = process.cwd(), taskId, kind, scope = "task", command, exitCode, timestamp: receiptTimestamp, goalId, planId } = {}) {
+export async function recordReceipt(options = {}) {
+  if (options.source !== undefined && options.source !== "declared") {
+    throw new Error("Only goal verify can create tool evidence");
+  }
+  return recordEvidence({ ...options, source: "declared" });
+}
+
+async function recordEvidence({
+  root = process.cwd(),
+  taskId,
+  kind,
+  scope = "task",
+  command,
+  exitCode,
+  timestamp: receiptTimestamp,
+  goalId,
+  planId,
+  source,
+  argv,
+  outputDigest,
+  summary,
+  workspaceFingerprint: fingerprint,
+  watchPaths = [],
+} = {}) {
   const normalizedScope = validReceiptScope(scope);
   const normalizedTaskId = normalizedScope === "task" ? requiredText(taskId, "taskId") : undefined;
-  const normalizedKind = requiredText(kind, "receipt kind");
+  const normalizedKind = requiredText(kind, "evidence kind");
   const normalizedCommand = validReceiptCommand(command);
-  if (exitCode !== 0) throw new Error("receipt exitCode must be 0");
+  const normalizedSource = validReceiptSource(source);
+  if (exitCode !== 0) throw new Error("evidence exitCode must be 0");
   const normalizedTimestamp = validTimestamp(receiptTimestamp ?? timestamp());
+  const toolFields = normalizedSource === "tool"
+    ? normalizeToolEvidence({ argv, outputDigest, summary, fingerprint, watchPaths })
+    : {};
   return mutateGoal(root, (state) => {
     assertGoalMutable(state);
     const task = normalizedScope === "task" ? taskById(state, normalizedTaskId) : null;
-    if (goalId !== undefined && goalId !== state.goal.id) throw new Error("receipt goalId does not match the active goal");
-    if (planId !== undefined && planId !== state.goal.planId) throw new Error("receipt planId does not match the active goal");
+    if (goalId !== undefined && goalId !== state.goal.id) throw new Error("evidence goalId does not match the active goal");
+    if (planId !== undefined && planId !== state.goal.planId) throw new Error("evidence planId does not match the active goal");
     const receipt = {
       id: `receipt-${randomUUID()}`,
       scope: normalizedScope,
@@ -171,12 +201,78 @@ export async function recordReceipt({ root = process.cwd(), taskId, kind, scope 
       command: normalizedCommand,
       exitCode: 0,
       timestamp: normalizedTimestamp,
+      source: normalizedSource,
+      ...toolFields,
     };
     state.receipts.push(receipt);
     if (task) task.updatedAt = timestamp();
     state.goal.updatedAt = timestamp();
     return state;
   });
+}
+
+export async function verifyAndRecord({
+  root = process.cwd(),
+  taskId,
+  kind,
+  scope = "task",
+  argv,
+  watchPaths = [],
+  runner = spawnSync,
+} = {}) {
+  const normalizedArgv = validArgv(argv);
+  const normalizedWatchPaths = normalizeWatchPaths(root, watchPaths);
+  const normalizedScope = validReceiptScope(scope);
+  const normalizedKind = requiredText(kind, "evidence kind");
+  const initialState = await readGoalState({ root });
+  if (!initialState) throw new Error("No Cairn goal state exists; start a goal first");
+  assertGoalMutable(initialState);
+  const normalizedTaskId = normalizedScope === "task" ? requiredText(taskId, "taskId") : undefined;
+  if (normalizedScope === "task") taskById(initialState, normalizedTaskId);
+  const result = runner(normalizedArgv[0], normalizedArgv.slice(1), {
+    cwd: resolve(root),
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+    shell: false,
+  });
+  if (result.error) throw new Error(`Verification could not start: ${result.error.message}`);
+  const exitCode = Number.isInteger(result.status) ? result.status : 1;
+  const output = combinedOutput(result.stdout, result.stderr);
+  if (exitCode !== 0) {
+    const detail = boundedText(output, 2000);
+    throw new Error(`Verification failed with exit ${exitCode}${detail ? `:\n${detail}` : ""}`);
+  }
+
+  const outputDigest = sha256(output);
+  const fingerprint = workspaceFingerprint(root, normalizedWatchPaths);
+  const command = normalizedArgv.map((value) => JSON.stringify(value)).join(" ");
+  const state = await recordEvidence({
+    root,
+    taskId: normalizedTaskId,
+    kind: normalizedKind,
+    scope: normalizedScope,
+    command,
+    exitCode: 0,
+    source: "tool",
+    argv: normalizedArgv,
+    outputDigest,
+    summary: successSummary(output),
+    workspaceFingerprint: fingerprint,
+    watchPaths: normalizedWatchPaths,
+  });
+  return { state, evidence: state.receipts.at(-1) };
+}
+
+export function workspaceFingerprint(root = process.cwd(), watchPaths = []) {
+  const workspaceRoot = resolve(root);
+  const normalizedWatchPaths = normalizeWatchPaths(workspaceRoot, watchPaths);
+  const gitPaths = normalizedWatchPaths.length === 0 ? listGitWorkspacePaths(workspaceRoot, normalizedWatchPaths) : null;
+  const paths = normalizedWatchPaths.length > 0
+    ? listFilesystemPaths(workspaceRoot, normalizedWatchPaths)
+    : (gitPaths ?? listFilesystemPaths(workspaceRoot, normalizedWatchPaths));
+  const hash = createHash("sha256");
+  for (const path of [...new Set(paths)].sort()) hashWorkspacePath(hash, workspaceRoot, path);
+  return `sha256:${hash.digest("hex")}`;
 }
 
 export function currentTask(state) {
@@ -204,20 +300,21 @@ export function evaluateStop(state, { subagent = false, agentId } = {}) {
     if (!agentId || task.assignedAgentId !== agentId) return { block: false };
     return {
       block: true,
-      reason: `Cairn task ${task.id} (${task.title}) is assigned to this subagent and is ${task.status}. Continue only this assigned task, record a successful receipt, then hand off.`,
+      reason: `Cairn task ${task.id} (${task.title}) is assigned to this subagent and is ${task.status}. Continue only this assigned task, record a successful evidence record, then hand off.`,
     };
   }
   return {
     block: true,
-    reason: `Cairn goal "${state.goal.title}" is active. Continue current task ${task.id} (${task.title}); its status is ${task.status}. Record a successful receipt before marking it complete.`,
+    reason: `Cairn goal "${state.goal.title}" is active. Continue current task ${task.id} (${task.title}); its status is ${task.status}. Record a successful evidence record before marking it complete.`,
   };
 }
 
 export async function handleGoalCli(args = process.argv.slice(2), { stdout = console.log } = {}) {
   const [firstCommand = "help", ...remaining] = args;
   const [command = "help", ...rest] = firstCommand === "goal" ? remaining : [firstCommand, ...remaining];
-  const { options, positional } = parseArgs(rest);
+  const { options, positional, passthrough } = parseArgs(rest);
   const root = options.root ?? process.cwd();
+  const emit = options.quiet ? () => {} : stdout;
   if (command === "start") {
     const tasks = parseTasks(options.tasks ?? positional.slice(0));
     const state = await startGoal({
@@ -228,8 +325,9 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
       completionCriteria: splitValues(options.criteria),
       requiredEvidence: options.requiredEvidence ? splitValues(options.requiredEvidence) : defaultGoalEvidence,
       ownerSessionId: options.session,
+      evidencePolicy: options.evidencePolicy ?? options["evidence-policy"] ?? "tool-bound",
     });
-    stdout(JSON.stringify(state));
+    emit(JSON.stringify(state));
     return state;
   }
   if (command === "status") {
@@ -245,12 +343,12 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
       status: options.status ?? taskAction ?? positional[1],
       blocker: options.reason,
     });
-    stdout(JSON.stringify(state));
+    emit(JSON.stringify(state));
     return state;
   }
   if (command === "assign") {
     const state = await assignTask({ root, taskId: options.task ?? positional[0], agentId: options.agent ?? positional[1] ?? null });
-    stdout(JSON.stringify(state));
+    emit(JSON.stringify(state));
     return state;
   }
   if (command === "receipt") {
@@ -265,8 +363,27 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
       goalId: options.goalId,
       planId: options.plan,
     });
-    stdout(JSON.stringify(state));
+    emit(JSON.stringify(state));
     return state;
+  }
+  if (command === "verify") {
+    const result = await verifyAndRecord({
+      root,
+      taskId: options.task ?? positional[0],
+      kind: options.kind,
+      scope: options.scope,
+      watchPaths: splitValues(options.watch),
+      argv: passthrough,
+    });
+    emit(JSON.stringify({
+      id: result.evidence.id,
+      scope: result.evidence.scope,
+      kind: result.evidence.kind,
+      exitCode: result.evidence.exitCode,
+      outputDigest: result.evidence.outputDigest,
+      workspaceFingerprint: result.evidence.workspaceFingerprint,
+    }));
+    return result.state;
   }
   if (["pause", "resume", "block", "cancel", "complete"].includes(command)) {
     const state = await transitionGoal({
@@ -274,10 +391,10 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
       status: { pause: "paused", resume: "active", block: "blocked", cancel: "cancelled", complete: "completed" }[command],
       blocker: options.reason,
     });
-    stdout(JSON.stringify(state));
+    emit(JSON.stringify(state));
     return state;
   }
-  throw new Error("Usage: cairn-goal start|status|task|assign|receipt|pause|resume|block|cancel|complete [--root PATH]");
+  throw new Error("Usage: cairn-goal start|status|task|assign|receipt|verify|pause|resume|block|cancel|complete [--root PATH]");
 }
 
 async function mutateGoal(root, mutate) {
@@ -306,6 +423,22 @@ function normalizeTask(task, index, defaultStatus) {
   };
 }
 
+function migrateState(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  if (value.schemaVersion !== 1) return value;
+  return {
+    ...value,
+    schemaVersion: GOAL_STATE_VERSION,
+    goal: {
+      ...value.goal,
+      evidencePolicy: value.goal?.evidencePolicy ?? "tool-bound",
+    },
+    receipts: Array.isArray(value.receipts)
+      ? value.receipts.map((receipt) => ({ ...receipt, source: "declared" }))
+      : value.receipts,
+  };
+}
+
 function validateState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Cairn goal state must be an object");
   if (value.schemaVersion !== GOAL_STATE_VERSION) throw new Error(`Unsupported Cairn goal state schema version: ${value.schemaVersion}`);
@@ -316,6 +449,7 @@ function validateState(value) {
   requiredText(goal.title, "goal.title");
   requiredText(goal.planId, "goal.planId");
   validGoalStatus(goal.status);
+  validEvidencePolicy(goal.evidencePolicy);
   validTimestamp(goal.createdAt);
   validTimestamp(goal.updatedAt);
   if (!Array.isArray(goal.completionCriteria)) throw new Error("goal.completionCriteria must be an array");
@@ -324,7 +458,7 @@ function validateState(value) {
   if (goal.ownerSessionId !== null && goal.ownerSessionId !== undefined) requiredText(goal.ownerSessionId, "goal.ownerSessionId");
   if (goal.blocker !== null && goal.blocker !== undefined) requiredText(goal.blocker, "goal.blocker");
   if (!Array.isArray(value.tasks) || value.tasks.length === 0) throw new Error("Cairn goal state must contain tasks");
-  if (!Array.isArray(value.receipts)) throw new Error("Cairn goal state receipts must be an array");
+  if (!Array.isArray(value.receipts)) throw new Error("Cairn goal state evidence records (receipts) must be an array");
   const ids = new Set();
   let activeTasks = 0;
   for (const task of value.tasks) {
@@ -348,56 +482,70 @@ function validateState(value) {
 }
 
 function validateReceipt(receipt, state) {
-  if (!receipt || typeof receipt !== "object") throw new Error("Each receipt must be an object");
-  requiredText(receipt.id, "receipt.id");
+  if (!receipt || typeof receipt !== "object") throw new Error("Each evidence record must be an object");
+  requiredText(receipt.id, "evidence.id");
   const scope = validReceiptScope(receipt.scope);
-  requiredText(receipt.kind, "receipt.kind");
+  requiredText(receipt.kind, "evidence.kind");
   if (scope === "task") {
-    requiredText(receipt.taskId, "receipt.taskId");
-    if (!state.tasks.some((task) => task.id === receipt.taskId)) throw new Error(`Receipt references unknown task: ${receipt.taskId}`);
+    requiredText(receipt.taskId, "evidence.taskId");
+    if (!state.tasks.some((task) => task.id === receipt.taskId)) throw new Error(`Evidence record references unknown task: ${receipt.taskId}`);
   } else if (receipt.taskId !== undefined && receipt.taskId !== null) {
-    throw new Error("goal-scope receipt must not contain taskId");
+    throw new Error("goal-scope evidence record must not contain taskId");
   }
-  if (receipt.goalId !== state.goal.id) throw new Error("receipt goalId does not match goal");
-  if (receipt.planId !== state.goal.planId) throw new Error("receipt planId does not match goal");
+  if (receipt.goalId !== state.goal.id) throw new Error("evidence goalId does not match goal");
+  if (receipt.planId !== state.goal.planId) throw new Error("evidence planId does not match goal");
   validReceiptCommand(receipt.command);
-  if (receipt.exitCode !== 0) throw new Error("receipt exitCode must be 0");
+  if (receipt.exitCode !== 0) throw new Error("evidence exitCode must be 0");
   validTimestamp(receipt.timestamp);
+  const source = validReceiptSource(receipt.source);
+  if (source === "tool") {
+    normalizeToolEvidence({
+      argv: receipt.argv,
+      outputDigest: receipt.outputDigest,
+      summary: receipt.summary,
+      fingerprint: receipt.workspaceFingerprint,
+      watchPaths: receipt.watchPaths,
+    });
+  }
 }
 
-function ensureTaskCanComplete(state, task) {
-  const missingKinds = task.requiredEvidence.filter((kind) => !state.receipts.some((item) => (
-    item.scope === "task" && item.kind === kind && item.taskId === task.id && validReceiptForTask(item, state, task)
-  )));
-  if (missingKinds.length > 0) throw new Error(`Task ${task.id} cannot be completed without successful, bound receipts: ${missingKinds.join(", ")}`);
+function ensureTaskCanComplete(state, task, root) {
+  for (const kind of task.requiredEvidence) {
+    ensureCurrentEvidence({ state, root, scope: "task", task, kind });
+  }
 }
 
-function ensureGoalCanComplete(state) {
+function ensureGoalCanComplete(state, root) {
   const incomplete = state.tasks.filter((task) => task.status !== "completed");
   if (incomplete.length > 0) throw new Error(`Goal cannot be completed while tasks remain: ${incomplete.map((task) => task.id).join(", ")}`);
-  for (const task of state.tasks) ensureTaskCanComplete(state, task);
-  const missingKinds = state.goal.requiredEvidence.filter((kind) => !state.receipts.some((receipt) => (
-    receipt.scope === "goal" && receipt.kind === kind && validReceiptForGoal(receipt, state)
-  )));
-  if (missingKinds.length > 0) throw new Error(`Goal cannot be completed without successful, bound receipts: ${missingKinds.join(", ")}`);
-}
-
-function validReceiptForTask(receipt, state, task) {
-  try {
-    validateReceipt(receipt, state);
-    return receipt.taskId === task.id;
-  } catch {
-    return false;
+  for (const task of state.tasks) ensureTaskCanComplete(state, task, root);
+  for (const kind of state.goal.requiredEvidence) {
+    ensureCurrentEvidence({ state, root, scope: "goal", kind });
   }
 }
 
-function validReceiptForGoal(receipt, state) {
-  try {
-    validateReceipt(receipt, state);
-    return receipt.scope === "goal";
-  } catch {
-    return false;
+function ensureCurrentEvidence({ state, root, scope, task, kind }) {
+  const candidates = state.receipts.filter((receipt) => (
+    receipt.scope === scope
+    && receipt.kind === kind
+    && (scope === "goal" || receipt.taskId === task.id)
+  ));
+  const subject = scope === "goal" ? "Goal" : `Task ${task.id}`;
+  if (state.goal.evidencePolicy === "declared") {
+    if (candidates.length === 0) {
+      throw new Error(`${subject} cannot be completed without successful, bound evidence record: ${kind}`);
+    }
+    return;
   }
+
+  const toolEvidence = candidates.filter((receipt) => receipt.source === "tool");
+  if (toolEvidence.length === 0) {
+    throw new Error(`${subject} cannot be completed without tool-bound evidence record: ${kind}`);
+  }
+  for (const receipt of [...toolEvidence].reverse()) {
+    if (workspaceFingerprint(root, receipt.watchPaths) === receipt.workspaceFingerprint) return;
+  }
+  throw new Error(`${subject} has stale evidence record: ${kind}`);
 }
 
 function activateNextPendingTask(state) {
@@ -431,6 +579,11 @@ function validGoalStatus(value) {
   return value;
 }
 
+function validEvidencePolicy(value) {
+  if (!evidencePolicies.has(value)) throw new Error(`Invalid evidence policy: ${value}`);
+  return value;
+}
+
 function validTaskStatus(value) {
   if (!TASK_STATUSES.has(value)) throw new Error(`Invalid task status: ${value}`);
   return value;
@@ -450,14 +603,19 @@ function taskStatusFromAction(value) {
 }
 
 function validReceiptScope(value) {
-  if (value !== "task" && value !== "goal") throw new Error(`Invalid receipt scope: ${value}`);
+  if (value !== "task" && value !== "goal") throw new Error(`Invalid evidence scope: ${value}`);
+  return value;
+}
+
+function validReceiptSource(value) {
+  if (value !== "declared" && value !== "tool") throw new Error(`Invalid evidence source: ${value}`);
   return value;
 }
 
 function validReceiptCommand(value) {
-  const command = requiredText(value, "receipt command");
+  const command = requiredText(value, "evidence command");
   if (/\b(skip(?:ped)?|todo|tbd|n\/?a|not[ -]?run|not[ -]?applicable|placeholder)\b/i.test(command)) {
-    throw new Error("receipt command cannot be skipped, placeholder, or incomplete evidence");
+    throw new Error("evidence command cannot be skipped, placeholder, or incomplete");
   }
   return command;
 }
@@ -472,6 +630,154 @@ function normalizeCriteria(criteria) {
   return criteria.map((item, index) => requiredText(item, `completionCriteria[${index}]`));
 }
 
+function normalizeToolEvidence({ argv, outputDigest, summary, fingerprint, watchPaths }) {
+  const normalizedArgv = validArgv(argv);
+  const normalizedOutputDigest = validSha256(outputDigest, "evidence outputDigest");
+  const normalizedSummary = requiredText(summary, "evidence summary");
+  const normalizedFingerprint = validSha256(fingerprint, "evidence workspaceFingerprint");
+  if (!Array.isArray(watchPaths)) throw new Error("evidence watchPaths must be an array");
+  const normalizedWatchPaths = watchPaths.map((item, index) => requiredText(item, `evidence watchPaths[${index}]`));
+  return {
+    argv: normalizedArgv,
+    outputDigest: normalizedOutputDigest,
+    summary: normalizedSummary,
+    workspaceFingerprint: normalizedFingerprint,
+    watchPaths: normalizedWatchPaths,
+  };
+}
+
+function validArgv(argv) {
+  if (!Array.isArray(argv) || argv.length === 0) throw new Error("verification command must follow -- as argv");
+  return argv.map((item, index) => {
+    if (typeof item !== "string") throw new Error(`verification argv[${index}] must be a string`);
+    if (index === 0 && item.trim().length === 0) throw new Error("verification executable must be a non-empty string");
+    return item;
+  });
+}
+
+function validSha256(value, label) {
+  if (typeof value !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value)) {
+    throw new Error(`${label} must be a sha256 digest`);
+  }
+  return value;
+}
+
+function normalizeWatchPaths(root, watchPaths) {
+  if (!Array.isArray(watchPaths)) throw new Error("watchPaths must be an array");
+  const workspaceRoot = resolve(root);
+  return [...new Set(watchPaths.map((item, index) => {
+    const source = requiredText(item, `watchPaths[${index}]`);
+    const absolutePath = resolve(workspaceRoot, source);
+    const relativePath = relative(workspaceRoot, absolutePath);
+    if (relativePath === ".." || relativePath.startsWith(`..${sep}`)) {
+      throw new Error(`watch path must remain inside the workspace: ${source}`);
+    }
+    const normalizedPath = relativePath === "" ? "." : relativePath.split(sep).join("/");
+    if (isInternalStatePath(normalizedPath)) throw new Error(`watch path cannot target internal Cairn or Git state: ${source}`);
+    return normalizedPath;
+  }))];
+}
+
+function listGitWorkspacePaths(root, watchPaths) {
+  const args = ["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"];
+  if (watchPaths.length > 0) args.push("--", ...watchPaths);
+  const result = spawnSync("git", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+  if (result.status !== 0 || result.error) return null;
+  const paths = result.stdout.split("\0").filter(Boolean).filter((path) => !isInternalStatePath(path));
+  for (const watchPath of watchPaths) {
+    try {
+      if (!lstatSync(join(root, ...watchPath.split("/"))).isDirectory() && !paths.includes(watchPath)) paths.push(watchPath);
+    } catch (error) {
+      if (error?.code === "ENOENT") paths.push(watchPath);
+      else throw error;
+    }
+  }
+  return paths;
+}
+
+function listFilesystemPaths(root, watchPaths) {
+  const paths = [];
+  const visit = (relativePath) => {
+    if (isInternalStatePath(relativePath)) return;
+    const absolutePath = relativePath === "." ? root : join(root, ...relativePath.split("/"));
+    let stat;
+    try {
+      stat = lstatSync(absolutePath);
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        paths.push(relativePath);
+        return;
+      }
+      throw error;
+    }
+    if (!stat.isDirectory()) {
+      paths.push(relativePath);
+      return;
+    }
+    const entries = readdirSync(absolutePath).sort();
+    if (entries.length === 0) paths.push(relativePath);
+    for (const entry of entries) {
+      const child = relativePath === "." ? entry : `${relativePath}/${entry}`;
+      visit(child);
+    }
+  };
+  for (const path of watchPaths.length > 0 ? watchPaths : ["."]) visit(path);
+  return paths;
+}
+
+function hashWorkspacePath(hash, root, relativePath) {
+  const absolutePath = relativePath === "." ? root : join(root, ...relativePath.split("/"));
+  hash.update(`${relativePath}\0`);
+  let stat;
+  try {
+    stat = lstatSync(absolutePath);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      hash.update("missing\0");
+      return;
+    }
+    throw error;
+  }
+  hash.update(`${stat.mode}\0`);
+  if (stat.isSymbolicLink()) {
+    hash.update(`symlink\0${readlinkSync(absolutePath)}\0`);
+  } else if (stat.isFile()) {
+    hash.update("file\0");
+    hash.update(readFileSync(absolutePath));
+    hash.update("\0");
+  } else if (stat.isDirectory()) {
+    hash.update("directory\0");
+  } else {
+    hash.update("other\0");
+  }
+}
+
+function isInternalStatePath(path) {
+  const firstSegment = path.split("/")[0];
+  return firstSegment === ".git" || firstSegment === ".cairn";
+}
+
+function combinedOutput(stdout, stderr) {
+  return [stdout, stderr].filter((value) => typeof value === "string" && value.length > 0).join("\n").trim();
+}
+
+function boundedText(value, maxLength) {
+  const text = String(value ?? "").trim();
+  if (text.length <= maxLength) return text;
+  return `…${text.slice(-(maxLength - 1))}`;
+}
+
+function successSummary(output) {
+  const text = String(output ?? "");
+  const outputBytes = Buffer.byteLength(text);
+  const outputLines = text.length === 0 ? 0 : text.split(/\r?\n/).length;
+  return `verification passed; outputBytes=${outputBytes}; outputLines=${outputLines}`;
+}
+
+function sha256(value) {
+  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
+}
+
 function optionalText(value, label) {
   return value === undefined || value === null ? null : requiredText(value, label);
 }
@@ -483,16 +789,27 @@ function timestamp() {
 function parseArgs(args) {
   const options = {};
   const positional = [];
+  const passthrough = [];
+  const booleanOptions = new Set(["quiet"]);
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
+    if (value === "--") {
+      passthrough.push(...args.slice(index + 1));
+      break;
+    }
     if (!value.startsWith("--")) {
       positional.push(value);
       continue;
     }
-    const [key, inline] = value.slice(2).split("=", 2);
-    options[key] = inline ?? args[++index];
+    const option = value.slice(2);
+    const equalsIndex = option.indexOf("=");
+    const key = equalsIndex === -1 ? option : option.slice(0, equalsIndex);
+    const inline = equalsIndex === -1 ? undefined : option.slice(equalsIndex + 1);
+    if (inline !== undefined) options[key] = booleanOptions.has(key) ? inline !== "false" : inline;
+    else if (booleanOptions.has(key)) options[key] = true;
+    else options[key] = args[++index];
   }
-  return { options, positional };
+  return { options, positional, passthrough };
 }
 
 function parseTasks(value) {
