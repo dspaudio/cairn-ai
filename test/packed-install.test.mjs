@@ -11,7 +11,7 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 test("packed install remains self-contained after the npm package source is removed", async () => {
   const temp = await mkdtemp(join(tmpdir(), "cairn-packed-install-"));
   const packDirectory = join(temp, "pack");
-  const prefix = join(temp, "npm prefix");
+  const prefix = join(temp, "npm-prefix");
   const project = join(temp, "target project");
   const nestedProject = join(project, "packages", "app");
   const unrelated = join(temp, "unrelated cwd");
