@@ -50,7 +50,7 @@ test("CLI dispatch preserves goal and task root arguments", async () => {
   }
 
   assert.equal(calls.length, 2);
-  assert.equal(calls[0].args[0].endsWith("/scripts/cairn-goal.mjs"), true);
+  assert.equal(calls[0].args[0].endsWith(join("scripts", "cairn-goal.mjs")), true);
   assert.deepEqual(calls[0].args.slice(1), ["status", "--root", "/tmp/project"]);
   assert.deepEqual(calls[1].args.slice(1), ["task", "complete", "task-1", "--root=/tmp/project"]);
 });

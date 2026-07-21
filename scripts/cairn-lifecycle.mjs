@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, posix, relative, resolve, win32 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   RUNTIME_LOCATOR_SCHEMA_VERSION,
@@ -334,7 +334,8 @@ export function renderInstalledMirror(content, {
   locatorPath = installedRuntimeLocatorPath,
   platform = process.platform,
 } = {}) {
-  const quotedCli = quoteShellArg(join(runtimeRoot, "scripts", "cairn.mjs"), platform);
+  const platformJoin = platform === "win32" ? win32.join : posix.join;
+  const quotedCli = quoteShellArg(platformJoin(runtimeRoot, "scripts", "cairn.mjs"), platform);
   let rendered = content
     .replaceAll("{{CAIRN_RUNTIME_LOCATOR_JSON}}", JSON.stringify(locatorPath))
     .replace(/\bnode\s+scripts\/cairn\.mjs\b/g, `node ${quotedCli}`)
@@ -342,7 +343,7 @@ export function renderInstalledMirror(content, {
 
   rendered = rendered.replace(
     /(^|[\s`("'=])(commands|agents|templates|docs\/model-guidance)\/([A-Za-z0-9._<>/-]+)/gm,
-    (_, prefix, directory, suffix) => `${prefix}${join(runtimeRoot, directory, suffix)}`,
+    (_, prefix, directory, suffix) => `${prefix}${platformJoin(runtimeRoot, directory, suffix)}`,
   );
   return rendered;
 }

@@ -111,6 +111,7 @@ function run(command, args, { cwd, env, input } = {}) {
     env,
     input,
     encoding: "utf8",
+    shell: process.platform === "win32" && /\.(?:cmd|bat)$/i.test(command),
     timeout: 60_000,
   });
 }

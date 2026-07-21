@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { accessSync, constants, realpathSync, statSync } from "node:fs";
 import { lstat, readdir } from "node:fs/promises";
-import { delimiter, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { delimiter, isAbsolute, join, posix, relative, resolve, sep, win32 } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -432,9 +432,10 @@ function isRepositoryCommand(command, root) {
   return isAbsolute(command) && isWithin(root, command);
 }
 
-function isWithin(root, candidate) {
-  const path = relative(resolve(root), resolve(candidate));
-  return path === "" || (!path.startsWith(`..${sep}`) && path !== "..");
+export function isWithin(root, candidate, platform = process.platform) {
+  const pathApi = platform === "win32" ? win32 : posix;
+  const path = pathApi.relative(pathApi.resolve(root), pathApi.resolve(candidate));
+  return path === "" || (!pathApi.isAbsolute(path) && !path.startsWith(`..${pathApi.sep}`) && path !== "..");
 }
 
 function safeEnvironment(root) {

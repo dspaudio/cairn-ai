@@ -12,6 +12,7 @@ import {
   createReport,
   detectStacks,
   jdtlsInstall,
+  isWithin,
   packageManager,
   parseCliArgs,
   shouldUseShell,
@@ -96,6 +97,8 @@ test("commandCandidates includes Windows executable shims for local bins", () =>
   assert.equal(shouldUseShell(join(root, "node_modules", ".bin", "tsc.cmd"), "win32"), true);
   assert.equal(shouldUseShell(join(root, "node_modules", ".bin", "tsc"), "win32"), false);
   assert.equal(shouldUseShell(join(root, "node_modules", ".bin", "tsc.cmd"), "linux"), false);
+  assert.equal(isWithin("D:\\a\\repository", "C:\\hostedtoolcache\\node", "win32"), false);
+  assert.equal(isWithin("D:\\a\\repository", "D:\\a\\repository\\tools", "win32"), true);
 });
 
 test("createReport is read-only by default", async () => {
