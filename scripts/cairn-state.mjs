@@ -65,6 +65,7 @@ This file is a short index of active and completed work plans.
 ## Planning Rules
 
 - Every agent must start assigned work by reading the project-root \`MEMORY.md\` for domain knowledge and repository policy.
+- For implementation or continued execution, first write an initial plan with \`triage-plan\` active, synchronize it to native UI plan/goal tools and the repository goal before exploration, then update it after triage.
 - Plans must be decision-complete before implementation.
 - Run complexity triage before applying agent, plugin, or delegated workflow guidance.
 - Record the selected Light Path or Heavy Path and the checked Heavy Path signals in \`docs/plan/<topic>.md\`.
@@ -96,6 +97,7 @@ const planTemplateKo = `# PLAN
 ## Planning Rules
 
 - 모든 에이전트는 배정된 작업을 시작할 때 도메인 지식과 저장소 정책을 위해 프로젝트 루트 \`MEMORY.md\`를 먼저 읽어야 합니다.
+- 구현 또는 계속 실행 요청은 먼저 \`triage-plan\`이 active인 초기 계획을 쓰고, 탐색 전에 UI plan/goal과 저장소 goal을 동기화한 뒤 트리아지 결과로 계획을 갱신합니다.
 - 계획은 구현 전에 의사결정이 완료된 상태여야 합니다.
 - 에이전트, 플러그인, 위임 워크플로 지침을 적용하기 전에 복잡도 트리아지를 실행합니다.
 - 선택한 Light Path 또는 Heavy Path와 확인한 Heavy Path 신호를 \`docs/plan/<topic>.md\`에 기록합니다.
@@ -111,6 +113,13 @@ const planTemplateKo = `# PLAN
 - 게이트가 실패하면 한 번 진단하고, 작업을 줄이거나 sub-task로 나눈 뒤 두 게이트를 다시 실행합니다.
 - 두 번 실패한 뒤에는 blocker를 \`docs/plan/<topic>.md\`에 기록합니다.
 `;
+
+const contextLimits = {
+  goalTitle: 64,
+  taskId: 32,
+  taskTitle: 40,
+  roadmapWindow: 3,
+};
 
 if (isCliEntry()) {
   const event = process.argv[2] ?? "manual";
@@ -156,8 +165,8 @@ export async function runStateResult(event = "manual", {
     return {
       status: 0,
       message: ko
-        ? "Cairn 점검: 외부 상태 변경에는 dry-run/check receipt가 필요합니다. 활성 목표가 있다면 현재 task에 성공 receipt를 기록하세요."
-        : "Cairn check: external-state changes need a dry-run/check receipt. When a goal is active, record a successful receipt for its current task.",
+        ? "Cairn 점검: 외부 상태 변경에는 dry-run/check 증거 기록이 필요합니다. 활성 목표가 있다면 현재 task에 성공 증거를 기록하세요."
+        : "Cairn check: external-state changes need dry-run/check evidence. When a goal is active, record successful evidence for its current task.",
       hookOutput: {},
     };
   }
@@ -200,37 +209,57 @@ async function writeIfMissing(path, content) {
 }
 
 function contextResult({ ko, state, event }) {
-  const base = ko
-    ? "Cairn 컨텍스트: 작업 전 프로젝트 루트 MEMORY.md를 읽으세요."
-    : "Cairn context: read the project-root MEMORY.md before working.";
-  const goalPolicy = event === "user-prompt-submit"
+  const base = ko ? "Cairn: 루트 MEMORY.md를 읽으세요." : "Cairn: read root MEMORY.md.";
+  const idlePolicy = event === "user-prompt-submit"
     ? (ko
-      ? "현재 사용자 prompt가 구현 또는 계속 실행을 요청한다면, 사용자가 goal을 언급하지 않아도 이 요청 자체를 권한으로 간주하세요. decision-complete plan에 순서가 있는 stable task 단계를 정의한 뒤 구현 전에 활성 Cairn goal을 생성하거나 연결하고, 완료·일시정지·차단·취소 상태가 될 때까지 계속 진행하세요. 상담·설명·계획 전용 요청에는 goal을 만들지 마세요."
-      : "If the current user prompt requests implementation or continued execution, treat the request itself as authorization even when the user does not mention a goal. Define stable, ordered task steps in a decision-complete plan, then create or attach an active Cairn goal before implementation and continue until it is completed, paused, blocked, or cancelled. Do not create a goal for consultation, explanation, or plan-only requests.")
+      ? " 구현/계속 실행: 초기 트리아지 계획 작성 → update_plan → create_goal → 탐색 전 저장소 goal 시작 → 트리아지 후 계획 확정 → 구현. 상담·설명·계획 전용은 goal 없이 처리하세요."
+      : " Implementation/continue: write an initial triage plan; call update_plan, then create_goal; start the repository goal before exploration; finalize the plan after triage, then implement. Skip goals for consultation, explanation, or plan-only requests.")
     : "";
-  const initialContext = [base, goalPolicy].filter(Boolean).join(" ");
-  if (!state || state.goal.status !== "active") return contextHookResult({ event, message: initialContext });
-  const task = state.tasks.find((item) => item.status === "active") ?? state.tasks.find((item) => item.status === "pending");
+  if (!state || state.goal.status !== "active") return contextHookResult({ event, message: `${base}${idlePolicy}` });
+  const task = state.tasks.find((item) => item.status === "active")
+    ?? state.tasks.find((item) => item.status === "pending")
+    ?? state.tasks.find((item) => item.status === "blocked");
+  const goalTitle = clipText(state.goal.title, contextLimits.goalTitle);
+  const activeHeader = ko
+    ? `Cairn active: "${goalTitle}". ${base}`
+    : `Cairn active: "${goalTitle}". ${base}`;
   if (!task) {
     return contextHookResult({
       event,
-      message: [initialContext, taskRoadmap(ko, state), activeGoalCompletionMessage(ko, state)].join("\n"),
+      message: [activeHeader, taskRoadmap(ko, state), activeGoalCompletionMessage(ko, state)].join("\n"),
     });
   }
+  const taskId = clipText(task.id, contextLimits.taskId);
+  const taskTitle = clipText(task.title, contextLimits.taskTitle);
   const continuation = ko
-    ? `활성 목표 "${state.goal.title}"의 현재 task는 ${task.id} (${task.title})입니다. 완료 전 성공 receipt를 기록하세요.`
-    : `Active goal "${state.goal.title}" current task: ${task.id} (${task.title}). Record a successful receipt before completing it.`;
+    ? `현재: ${taskId} (${taskTitle}). 바인딩된 증거 뒤에만 완료하세요.`
+    : `Current: ${taskId} (${taskTitle}). Complete only after bound evidence.`;
   const resume = event === "user-prompt-submit"
     ? (ko
-      ? `곁가지 질문에 답한 뒤 사용자가 명시적으로 일시정지·중단·전환을 요청하지 않았다면 현재 task ${task.id}로 돌아와 계속 진행하세요.`
-      : `After answering a side question, return to current task ${task.id} and continue unless the user explicitly asks to pause, stop, or switch tasks.`)
+      ? `곁가지 질문 뒤 일시정지·중단·전환 요청이 없으면 ${taskId}를 재개하세요.`
+      : `After a side question, resume ${taskId} unless asked to pause, stop, or switch.`)
     : "";
-  return contextHookResult({ event, message: [initialContext, taskRoadmap(ko, state), continuation, resume].filter(Boolean).join("\n") });
+  return contextHookResult({ event, message: [activeHeader, taskRoadmap(ko, state), continuation, resume].filter(Boolean).join("\n") });
 }
 
 function taskRoadmap(ko, state) {
-  const steps = state.tasks.map((task, index) => `${index + 1}. ${task.id} [${task.status}] ${task.title}`);
-  return `${ko ? "작업 단계" : "Work steps"}:\n${steps.join("\n")}`;
+  const formatTask = (task, index) => `${index + 1}. ${clipText(task.id, contextLimits.taskId)} [${task.status}] ${clipText(task.title, contextLimits.taskTitle)}`;
+  if (state.tasks.length <= contextLimits.roadmapWindow) {
+    return `${ko ? "작업 단계" : "Work steps"}:\n${state.tasks.map(formatTask).join("\n")}`;
+  }
+
+  const currentIndex = Math.max(0, state.tasks.findIndex((task) => task.status === "active" || task.status === "pending"));
+  const maxStart = state.tasks.length - contextLimits.roadmapWindow;
+  const start = Math.min(Math.max(0, currentIndex - 1), maxStart);
+  const visible = state.tasks.slice(start, start + contextLimits.roadmapWindow);
+  const counts = Object.fromEntries([...TASK_STATUS_NAMES].map((status) => [status, state.tasks.filter((task) => task.status === status).length]));
+  const countSummary = Object.entries(counts).filter(([, count]) => count > 0).map(([status, count]) => `${status} ${count}`).join(", ");
+  const omitted = state.tasks.length - visible.length;
+  const header = ko
+    ? `작업 단계 (${state.tasks.length}개; ${countSummary})`
+    : `Work steps (${state.tasks.length}; ${countSummary})`;
+  const omission = ko ? `… ${omitted}개 단계 생략` : `… ${omitted} steps omitted`;
+  return `${header}:\n${visible.map((task, index) => formatTask(task, start + index)).join("\n")}\n${omission}`;
 }
 
 function contextHookResult({ event, message }) {
@@ -272,9 +301,17 @@ function stopAllowedMessage({ ko, state, event }) {
 }
 
 function activeGoalCompletionMessage(ko, state) {
+  const goalTitle = clipText(state.goal.title, contextLimits.goalTitle);
   return ko
-    ? `활성 목표 "${state.goal.title}"의 모든 task가 완료되었습니다. 완료 기준을 확인하고 명시적으로 complete 상태로 전이하세요.`
-    : `All tasks for active goal "${state.goal.title}" are complete. Verify criteria and explicitly transition the goal to completed.`;
+    ? `활성 목표 "${goalTitle}"의 모든 task가 완료되었습니다. 완료 기준을 확인하고 명시적으로 complete 상태로 전이하세요.`
+    : `All tasks for active goal "${goalTitle}" are complete. Verify criteria and explicitly transition the goal to completed.`;
+}
+
+const TASK_STATUS_NAMES = ["active", "pending", "blocked", "completed"];
+
+function clipText(value, maxLength) {
+  const text = String(value ?? "");
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength - 1)}…`;
 }
 
 function resolveRoot(root, payload) {

@@ -14,14 +14,15 @@ Procedure:
 4. Read Cairn goal status and select only its current task. If implementation was requested but no goal exists, create it from the decision-complete plan.
 5. Confirm required tool readiness. If a required LSP/check tool is missing, report it and obtain explicit user approval before `toolcheck --install --yes` or a repository-native install command.
 6. Confirm the complexity triage and selected Light/Heavy Path recorded in the plan. If missing, update the plan before mutating files.
-7. For Light Path, keep the user-called/main agent in the orchestrator role and delegate implementation edits to one bounded `worker` whenever subagent tools are available, then run focused verification.
-8. For Heavy Path, follow the plan's staged implementation and review gates without role-mapping shortcuts.
-9. Delegate actual implementation edits to `worker` with clear file ownership on both Light Path and Heavy Path whenever subagent tools are available. When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing the final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, and preserve others' edits. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence.
-10. For Heavy Path, run the recorded automated test command and record explicit `Tests:` evidence before any completion claim.
-11. Re-run module acceptance verification.
-12. Re-run surface integration verification.
-13. Record successful verification as structured receipts bound to the goal/task/plan. Missing, failed, skipped, or placeholder receipts never complete a task.
-14. Complete the current task, let Cairn advance to the next one, and continue until every task and goal-level final review receipt passes. Workers return only their assigned task handoff and never select the next task.
-15. Record tool readiness and verification evidence in `docs/plan/<topic>.md`, update goal state, and update `PLAN.md` only after evidence exists.
-16. If the user asks a side question, status question, or narrow clarification while this task is still active, answer it briefly and then resume the previous active work unless the user explicitly asks to pause, stop, or switch tasks.
-17. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts unless the user asks for another language.
+7. Before implementation, spend reasoning on a focused executable test contract covering requirements, invariants, boundaries, and failure modes. Confirm the intended failure, then constrain implementation to the minimum change that passes it.
+8. For Light Path, keep the main agent in the orchestrator role and use one bounded `worker` when allowed; for Heavy Path, follow the recorded staged review gates.
+9. Give implementation the test contract, failing evidence, exact file ownership, and constraints. Require minimal implementation and no repeated broad discovery. Preserve status, final-report, close-and-review, recursive bounded delegation, and main-agent fallback rules.
+10. Treat tool exit codes and bounded summaries as authoritative. Keep success output concise; expand only the failing test and related code context.
+11. For Heavy Path, run the recorded automated test command and record explicit `Tests:` evidence.
+12. Run focused module acceptance, then one final surface integration check through `goal verify -- ...` so the tool exit code, bounded output, and watched-workspace fingerprint are recorded together.
+13. Before package verification, inspect package lifecycle scripts. Run normal `npm pack --dry-run` by default. Content-producing or unknown lifecycle scripts must never use `--ignore-scripts`; only absent or proven content-neutral scripts may use it when the prior full check remains fresh.
+14. Record evidence bound to goal/task/plan. Missing, failed, skipped, stale, or placeholder evidence never completes work; relevant mutation invalidates affected evidence.
+15. Complete the task and continue the goal. Use `--quiet` on successful state mutations; workers report only their assigned task and never select the next one.
+16. Update the plan, goal state, and `PLAN.md` only after evidence exists.
+17. Answer side questions briefly and resume unless explicitly asked to pause, stop, or switch.
+18. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts unless the user asks for another language.

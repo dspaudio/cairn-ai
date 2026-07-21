@@ -85,6 +85,7 @@ if [ ! -f "$plan" ]; then
 ## Planning Rules
 
 - 모든 에이전트는 배정된 작업을 시작할 때 도메인 지식과 저장소 정책을 위해 프로젝트 루트 `MEMORY.md`를 먼저 읽어야 합니다.
+- 구현 또는 계속 실행 요청은 먼저 `triage-plan`이 active인 초기 계획을 쓰고, 탐색 전에 UI plan/goal과 저장소 goal을 동기화한 뒤 트리아지 결과로 계획을 갱신합니다.
 - 계획은 구현 전에 의사결정이 완료된 상태여야 합니다.
 - 에이전트, 플러그인, 위임 워크플로 지침을 적용하기 전에 복잡도 트리아지를 실행합니다.
 - 선택한 Light Path 또는 Heavy Path와 확인한 Heavy Path 신호를 `docs/plan/<topic>.md`에 기록합니다.
@@ -117,6 +118,7 @@ This file is a short index of active and completed work plans.
 ## Planning Rules
 
 - Every agent must start assigned work by reading the project-root `MEMORY.md` for domain knowledge and repository policy.
+- For implementation or continued execution, first write an initial plan with `triage-plan` active, synchronize it to native UI plan/goal tools and the repository goal before exploration, then update it after triage.
 - Plans must be decision-complete before implementation.
 - Split implementation into small module tasks.
 - Detect repository stack and required LSP/check tools before implementation.

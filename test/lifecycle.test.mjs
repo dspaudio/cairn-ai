@@ -96,6 +96,12 @@ test("hookHash is stable and sensitive to hook identity", () => {
   assert.notEqual(first, changed);
 });
 
+test("hook status messages use user-facing evidence terminology", async () => {
+  const hooks = await readFile(join(root, "hooks", "hooks.json"), "utf8");
+  assert.doesNotMatch(hooks, /statusMessage[^\n]*receipt/i);
+  assert.match(hooks, /statusMessage[^\n]*evidence/i);
+});
+
 test("CLI messages and state initialization run without a POSIX shell", async () => {
   const temp = await mkdtemp(join(tmpdir(), "cairn-state-"));
   const tempKo = await mkdtemp(join(tmpdir(), "cairn-state-ko-"));
@@ -108,7 +114,7 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(message("plan", "ko-KR"), /전체 작업.*task.*sub-task/);
     assert.match(message("work", "ko-KR"), /모든 에이전트.*MEMORY\.md/);
     assert.match(message("work", "ko-KR"), /Light\/Heavy Path/);
-    assert.match(message("work", "en-US"), /side question.*resume/i);
+    assert.match(message("work", "en-US"), /resume active work after side questions/i);
     assert.match(message("work", "ko-KR"), /곁가지 질문.*active work/);
     for (const command of ["memory", "plan", "work", "review"]) {
       assert.match(message(command, "en-US"), /generated or updated documentation, plans, and memory artifacts/i);
@@ -258,20 +264,24 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(manifest.interface.defaultPrompt.join("\n"), /every agent must read the project-root MEMORY\.md/i);
     assert.match(manifest.interface.defaultPrompt.join("\n"), /whole work.*executable tasks.*sub-tasks/i);
     assert.match(manifest.interface.defaultPrompt.join("\n"), /user-called\/main agent is the orchestrator/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /implementation edits must be delegated to worker subagents/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /progress-reporting channel.*subagents report status.*starting work.*deciding or confirming direction.*periodic progress.*finishing/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /orchestrator must immediately relay received status events to the user/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /no mid-run reporting channel exists.*observable events.*assignment.*waiting.*final completion/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /delegated subagent finishes.*final report before leaving/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /captures? the final report and evidence.*close or release the completed subagent/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /close or release the completed subagent.*review the final report and evidence/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /recursively delegate bounded sub-tasks to subagents/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /implementation or continued-execution requests.*request itself as authorization.*even when the user does not mention a goal/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /stable, ordered task steps.*full task roadmap and current task.*side question returns to the original work/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /decision-complete plan.*before implementation/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /consultation, explanation, or plan-only requests/i);
-    assert.match(manifest.interface.defaultPrompt.join("\n"), /side question.*resume.*pause, stop, or switch tasks/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /delegate bounded implementation edits to worker subagents/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /progress-reporting channel.*report start, direction, periodic progress, and finish/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /relay those events immediately/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /otherwise relay assignment, waiting, and final completion/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /return a final report/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /capture evidence, close\/release the agent, then review its report/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /otherwise the main agent implements and records takeover evidence/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /recursively delegate only bounded work/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /implementation\/continue requests authorize an active Cairn goal even without the word goal/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /initial plan with triage-plan active/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /before exploration call update_plan, then create_goal/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /triage finalizes the repository and UI plans before implementation/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /roadmap\/current-task recovery context/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /advance a UI step only after the matching repository task passes bound evidence/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /consultation, explanation, and plan-only requests/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /side questions.*resume.*pause, stop, or switch/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /test contract first.*requirements, invariants, boundaries, and failure modes.*executable tests before implementation/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /tool exit codes and machine summaries as authoritative.*expand context only for failing tests/i);
     const explorer = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "explorer.md"), "utf8");
     const worker = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "worker.md"), "utf8");
     assert.match(explorer, /Before doing any assigned task, read the project-root `MEMORY\.md`/);

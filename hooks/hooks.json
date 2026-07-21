@@ -32,7 +32,7 @@
             "type": "command",
             "command": "node \"${PLUGIN_ROOT}/scripts/cairn-state.mjs\" post-tool-use",
             "timeout": 10,
-            "statusMessage": "Cairn: reminding current goal receipt requirements"
+            "statusMessage": "Cairn: reminding current goal evidence requirements"
           }
         ]
       }

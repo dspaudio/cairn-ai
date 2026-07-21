@@ -4,6 +4,7 @@ Short index of work plans. Link detailed plans under `docs/plan/`.
 
 ## Planning Rules
 
+- For implementation or continued execution, write an initial plan with `triage-plan` active, synchronize it to native UI plan/goal tools and the repository goal before exploration, then update it after triage.
 - Detect repository stack and required LSP/check tools before implementation.
 - Install or bootstrap missing required tools before declaring them unavailable.
 - Heavy Path completion requires explicit automated test evidence.

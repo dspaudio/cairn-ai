@@ -4,24 +4,21 @@ Use the `cairn-plan` skill.
 
 Prerequisite: resolve the installed Cairn runtime from the plugin or skill locator. If `cairn doctor` fails, restore it with the published/global lifecycle command. Never look for Cairn scripts, templates, or model guidance in the target repository.
 
-Goal: leave a decision-complete plan for the current task in files before non-trivial implementation.
+Goal: show an initial plan and goal before triage can be interrupted, then leave a decision-complete implementation plan before non-trivial implementation.
 
 Procedure:
 
 1. Every agent must read the project-root `MEMORY.md` for domain knowledge and repository policy before repository exploration, tool selection, work, or delegation.
-2. Read relevant `docs/memory/*.md`.
-3. If the active or assigned model is Claude-family, read `cairn://docs/model-guidance/claude.md`; if Codex-family, read `cairn://docs/model-guidance/codex.md`, resolving it through the installed runtime.
-4. Run the installed runtime's `toolcheck --root <repoRoot>`.
-5. If required LSP/check tools are missing, report the proposed install and obtain explicit user approval. Only then use `toolcheck --install --yes --root <repoRoot>` for pinned/supported installers or the approved repository-native command.
-6. Explore before asking the user.
-7. Understand the whole work and affected surfaces first, then classify it into small executable tasks. If a task is still too broad to verify cleanly, split it into sub-tasks.
-8. Run complexity triage before applying agent, plugin, or delegated workflow guidance, and record it before mutating files.
+2. For implementation or continued execution, write an initial `docs/plan/<topic>.md` and `PLAN.md` entry from the request and `MEMORY.md`. Make `triage-plan` the first active task and specify its investigation scope, path-decision criteria, plan-update condition, and anticipated implementation/verification stages. This initial plan must be decision-complete for triage and explicitly not implementation-ready.
+3. Before repository exploration, toolcheck, complexity triage, delegation, or a non-blocking user question, call Codex `update_plan` and then `create_goal` when those UI tools are available. Mirror the same roadmap into the repository Cairn goal. Record unavailable UI tools instead of silently implying UI synchronization. Skip goal activation for consultation, explanation, and plan-only requests.
+4. Read relevant `docs/memory/*.md` as directed by the initial triage task.
+5. Read the applicable installed model guidance.
+6. Run the installed runtime's `toolcheck --root <repoRoot>` and handle missing tools through the explicit approval policy.
+7. Explore the repository according to the initial triage task before asking the user.
+8. Understand the whole work and affected surfaces, classify it into executable tasks/sub-tasks, run Light/Heavy Path triage, and update the same repository plan and Codex `update_plan` roadmap to a decision-complete implementation plan.
 9. Use Light Path by default unless a Heavy Path condition clearly applies.
-10. Use `explorer` for independent read-only discovery, impact analysis, pattern search, and read-only verification when available.
-11. Treat the user-called/main agent as the orchestrator: it plans, assigns, verifies, relays received subagent status events or observable lifecycle events to the user, and records evidence. Use `worker` for actual implementation edits with clear file ownership whenever subagent tools are available, on both Light Path and Heavy Path. When the subagent tool provides a progress-reporting channel, require subagents to report status when starting work, when deciding or confirming direction, during periodic progress, and when finishing; immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing the final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, and preserve others' edits. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence.
-12. Write `docs/plan/<topic>.md`.
-13. Add the topic link and status to `PLAN.md`.
-14. Give the plan and every task stable IDs plus fail-closed task and goal evidence requirements. If implementation was requested, start or attach the Cairn goal after planning; do not activate a goal for plan-only requests.
-15. Put the selected Light/Heavy Path, checked Heavy Path signals, tool readiness, module acceptance verification, and surface integration verification on every module task.
-16. For Heavy Path, include an explicit automated test command and `Tests:` evidence line; Heavy Path completion must not rely on generic verification wording alone.
-17. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts unless the user asks for another language.
+10. Apply delegation and orchestration policy only after the route is recorded. If subagent tools are unavailable or disallowed by a higher-priority policy, the main agent takes over and records it.
+11. Do not begin implementation until the updated plan records selected path, checked Heavy Path signals, tool readiness, file scope, dry-run/check, module acceptance, surface integration, stable IDs, and fail-closed evidence.
+12. For Heavy Path, include an explicit automated test command and `Tests:` evidence line.
+13. Keep the repository goal and Codex UI plan statuses synchronized as triage and later tasks advance. Advance a UI step only after the matching repository Cairn task transition succeeds with its required bound evidence records.
+14. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts unless the user asks for another language.
