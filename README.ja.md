@@ -33,8 +33,8 @@ Cairn は execution policy では LazyCodex と異なります。LazyCodex の r
 `cairn toolcheck` は現在の repository から JavaScript、TypeScript、Python、PHP、Java、Kotlin、Swift、Go、Rust stacks を検出し、対応する LSP と verification tools を確認します。
 
 ```sh
-cairn toolcheck
-cairn toolcheck --install
+cairn toolcheck --root .
+cairn toolcheck --install --yes --root .
 ```
 
 - `toolcheck` は detected stacks と missing tools を報告します。
@@ -57,7 +57,7 @@ Cairn は Claude-family と Codex-family models にのみ model-specific adjustm
 - Claude-family: long context、policy interpretation、plan/evidence review に有用です。
 - Codex-family: small implementation tasks、explicit file edits、command-based verification、bounded `worker` tasks に有用です。
 
-詳細は `docs/model-guidance/README.md`、`docs/model-guidance/claude.md`、`docs/model-guidance/codex.md` にあります。
+詳細はインストール済みプラグインの `cairn://docs/model-guidance/README.md`、`cairn://docs/model-guidance/claude.md`、`cairn://docs/model-guidance/codex.md` にあります。
 
 ## Repository Artifacts
 
@@ -65,7 +65,7 @@ harness は対象 repository root に次の files を作成して維持します
 
 - `MEMORY.md`: persistent domain knowledge の短い index。
 - `docs/memory/*.md`: domain ごとの詳細 knowledge。
-- `docs/model-guidance/*.md`: Claude と Codex model adjustment guidance。
+- `.cairn/state.json`: 再開と scoped stop gate のための git-ignored goal/task/receipt 状態。
 - `PLAN.md`: active/completed work topics の短い index。
 - `docs/plan/*.md`: detailed execution plans。
 

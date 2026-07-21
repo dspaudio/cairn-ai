@@ -1,6 +1,6 @@
 {
   "name": "cairn",
-  "version": "0.1.11",
+  "version": "0.2.0",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity.",
   "author": {
     "name": "WkNam"
@@ -24,6 +24,7 @@
       "Use Cairn to create MEMORY.md and PLAN.md for this repository.",
       "At the start of each task, every agent must read the project-root MEMORY.md for domain knowledge and repository policy before planning, implementation, review, or delegation.",
       "Run cairn-toolcheck before planning implementation work.",
+      "Resolve Cairn scripts, templates, commands, agents, and model guidance from the installed plugin runtime locator; never search for those runtime files in the target repository. Keep the target repository root separate and pass it explicitly to Cairn commands.",
       "Before non-trivial implementation, run cairn-plan for this task without asking me for discoverable facts.",
       "When planning, first understand the whole work, then classify it into small executable tasks; if a task needs further breakdown, split it into sub-tasks.",
       "The user-called/main agent is the orchestrator: plan, assign, verify, and record evidence; actual implementation edits must be delegated to worker subagents whenever subagent tools are available, on both Light Path and Heavy Path.",
@@ -33,6 +34,10 @@
       "If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence; do not stop before local implementation solely because subagent tools are unavailable.",
       "Record Light Path or Heavy Path complexity triage in docs/plan/<topic>.md before mutating files.",
       "Run cairn-work from the current PLAN.md and pass dry-run/check, module acceptance, and surface integration gates.",
+      "For implementation requests, persist one active Cairn goal with stable task IDs. After a task passes its required bound receipts, advance immediately to the next task and continue until goal-level final review completes; active is never a completion state.",
+      "Missing, failed, skipped, stale, or placeholder evidence never completes a task. A worker may report only its assigned task; the main agent reviews the handoff and advances the goal.",
+      "If progress cannot continue, explicitly pause, block with a concrete reason, or cancel the Cairn goal instead of silently stopping. Do not repeatedly block a re-entered stop hook in the same turn.",
+      "Tool installation is an external-state change: report the proposal and obtain explicit user approval before using a pinned/supported installer.",
       "If I ask a side question, status question, or narrow clarification while a plan or task is still active, answer it briefly and then resume the previous active work unless I explicitly ask you to pause, stop, or switch tasks."
     ]
   }

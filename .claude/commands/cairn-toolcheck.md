@@ -2,9 +2,6 @@
 
 Detect repository stacks and check required LSP, typecheck, lint, dry-run, and verification tools.
 
-```sh
-node scripts/cairn.mjs toolcheck
-node scripts/cairn.mjs toolcheck --install
-```
+Read the installed Cairn runtime locator at `{{CAIRN_RUNTIME_LOCATOR_JSON}}`. Invoke Node directly with the absolute `entrypoints.cli` value, `toolcheck`, and an explicit `--root` pointing at the target repository; do not build a shell-interpolated command from the path.
 
-Use `--install` before accepting a missing required tool as unavailable.
+If required tools are missing, report the proposed install and obtain explicit user approval. Only then add `--install --yes` for a pinned/supported installer or use the approved repository-native command.

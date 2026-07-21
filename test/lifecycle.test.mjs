@@ -9,6 +9,7 @@ import {
   hookHash,
   pathHasSegment,
   removeCairnConfig,
+  shouldCopyPluginPath,
   splitSections,
   updateConfig,
 } from "../scripts/cairn-lifecycle.mjs";
@@ -169,199 +170,39 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
   }
 });
 
-test("stop gate blocks completion when active plan work remains", async () => {
-  const temp = await mkdtemp(join(tmpdir(), "cairn-stop-gate-"));
+test("stop hook ignores historical Markdown plans when no Cairn goal is active", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn-goal-scope-"));
   try {
     await runState("manual", { root: temp, locale: "en-US" });
-    await writeFile(join(temp, "PLAN.md"), [
-      "# PLAN",
-      "",
-      "## Active Plans",
-      "",
-      "- [Pending work](docs/plan/pending-work.md)",
-      "",
-      "## Completed Plans",
-      "",
-      "- Move completed topics here with evidence links.",
-      "",
-    ].join("\n"));
-    await writeFile(join(temp, "docs", "plan", "pending-work.md"), [
-      "# Plan: Pending work",
+    await writeFile(join(temp, "docs", "plan", "stale-unindexed-work.md"), [
+      "# Plan: stale work",
       "",
       "## Evidence",
       "",
-      "- Dry-run or check:",
-      "- Module acceptance: npm test passed",
+      "- Tests: skipped",
       "",
       "## Status",
       "",
-      "- [x] Planned",
       "- [ ] Implemented",
-      "- [ ] Reviewed",
       "",
     ].join("\n"));
 
-    const result = await runStateResult("stop", { root: temp, locale: "en-US" });
-    assert.equal(result.status, 1);
-    assert.match(result.message, /blocked completion signal/i);
-    assert.match(result.message, /docs\/plan\/pending-work\.md/);
-    assert.match(result.message, /Implemented/);
+    const result = await runStateResult("stop", {
+      root: temp,
+      locale: "en-US",
+      payload: { cwd: temp, session_id: "session-current", turn_id: "turn-current" },
+    });
+    assert.equal(result.status, 0);
+    assert.deepEqual(result.hookOutput, { continue: true });
+    assert.match(result.message, /no active Cairn goal/i);
 
     const cli = spawnSync(process.execPath, [stateScript, "stop"], {
       cwd: root,
-      env: { ...process.env, HARNESS_REPO_ROOT: temp, LC_ALL: "en-US" },
+      input: JSON.stringify({ cwd: temp, session_id: "session-current", turn_id: "turn-current" }),
       encoding: "utf8",
     });
-    assert.equal(cli.status, 1);
-    assert.match(cli.stdout, /continue the next incomplete task/);
-  } finally {
-    await rm(temp, { recursive: true, force: true });
-  }
-});
-
-test("stop gate blocks unindexed plan work", async () => {
-  const temp = await mkdtemp(join(tmpdir(), "cairn-unindexed-plan-"));
-  try {
-    await runState("manual", { root: temp, locale: "en-US" });
-    await writeFile(join(temp, "docs", "plan", "unindexed-work.md"), [
-      "# Plan: Unindexed work",
-      "",
-      "## Evidence",
-      "",
-      "- Dry-run or check:",
-      "- Module acceptance: npm test passed",
-      "- Surface integration: npm pack --dry-run passed",
-      "",
-      "## Status",
-      "",
-      "- [x] Planned",
-      "- [ ] Implemented",
-      "- [ ] Reviewed",
-      "",
-    ].join("\n"));
-
-    const result = await runStateResult("stop", { root: temp, locale: "en-US" });
-    assert.equal(result.status, 1);
-    assert.match(result.message, /docs\/plan\/unindexed-work\.md/);
-    assert.match(result.message, /index: not linked in PLAN\.md Active Plans or Completed Plans/);
-    assert.match(result.message, /unchecked: Implemented/);
-  } finally {
-    await rm(temp, { recursive: true, force: true });
-  }
-});
-
-test("stop gate rechecks completed plan evidence", async () => {
-  const temp = await mkdtemp(join(tmpdir(), "cairn-completed-plan-"));
-  try {
-    await runState("manual", { root: temp, locale: "en-US" });
-    await writeFile(join(temp, "PLAN.md"), [
-      "# PLAN",
-      "",
-      "## Active Plans",
-      "",
-      "- Link detailed plans under `docs/plan/`.",
-      "",
-      "## Completed Plans",
-      "",
-      "- [Completed too early](docs/plan/completed-too-early.md)",
-      "",
-    ].join("\n"));
-    await writeFile(join(temp, "docs", "plan", "completed-too-early.md"), [
-      "# Plan: Completed too early",
-      "",
-      "## Evidence",
-      "",
-      "- Dry-run or check: npm run check passed",
-      "- Module acceptance:",
-      "- Surface integration: npm pack --dry-run passed",
-      "",
-      "## Status",
-      "",
-      "- [x] Planned",
-      "- [x] Implemented",
-      "- [ ] Reviewed",
-      "",
-    ].join("\n"));
-
-    const result = await runStateResult("stop", { root: temp, locale: "en-US" });
-    assert.equal(result.status, 1);
-    assert.match(result.message, /docs\/plan\/completed-too-early\.md/);
-    assert.match(result.message, /unchecked: Reviewed/);
-    assert.match(result.message, /empty evidence: Module acceptance/);
-  } finally {
-    await rm(temp, { recursive: true, force: true });
-  }
-});
-
-test("stop gate requires explicit test evidence for Heavy Path plans", async () => {
-  const temp = await mkdtemp(join(tmpdir(), "cairn-heavy-tests-"));
-  try {
-    await runState("manual", { root: temp, locale: "en-US" });
-    await writeFile(join(temp, "PLAN.md"), [
-      "# PLAN",
-      "",
-      "## Active Plans",
-      "",
-      "- [Heavy work](docs/plan/heavy-work.md)",
-      "",
-      "## Completed Plans",
-      "",
-    ].join("\n"));
-    await writeFile(join(temp, "docs", "plan", "heavy-work.md"), [
-      "# Plan: Heavy work",
-      "",
-      "## Complexity Triage",
-      "",
-      "- Selected path: Heavy Path.",
-      "",
-      "## Evidence",
-      "",
-      "- Dry-run or check: not applicable",
-      "- Module acceptance: node --check scripts/cairn-state.mjs passed",
-      "- Surface integration: npm pack --dry-run passed",
-      "",
-      "## Status",
-      "",
-      "- [x] Planned",
-      "- [x] Dry-run or check passed, or not applicable was recorded",
-      "- [x] Implemented",
-      "- [x] Module acceptance passed",
-      "- [x] Surface integration passed",
-      "- [x] Reviewed",
-      "",
-    ].join("\n"));
-
-    const blocked = await runStateResult("stop", { root: temp, locale: "en-US" });
-    assert.equal(blocked.status, 1);
-    assert.match(blocked.message, /missing tests: Heavy Path test evidence is missing/);
-
-    await writeFile(join(temp, "docs", "plan", "heavy-work.md"), [
-      "# Plan: Heavy work",
-      "",
-      "## Complexity Triage",
-      "",
-      "- Selected path: Heavy Path.",
-      "",
-      "## Evidence",
-      "",
-      "- Dry-run or check: not applicable",
-      "- Tests: npm test passed",
-      "- Module acceptance: node --check scripts/cairn-state.mjs passed",
-      "- Surface integration: npm pack --dry-run passed",
-      "",
-      "## Status",
-      "",
-      "- [x] Planned",
-      "- [x] Dry-run or check passed, or not applicable was recorded",
-      "- [x] Implemented",
-      "- [x] Module acceptance passed",
-      "- [x] Surface integration passed",
-      "- [x] Reviewed",
-      "",
-    ].join("\n"));
-
-    const passed = await runStateResult("stop", { root: temp, locale: "en-US" });
-    assert.equal(passed.status, 0);
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.deepEqual(JSON.parse(cli.stdout), { continue: true });
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
@@ -371,6 +212,12 @@ test("path segment filtering handles platform separators", () => {
   assert.equal(pathHasSegment(["nested", ".git", "config"].join("\\"), ".git"), true);
   assert.equal(pathHasSegment(["nested", "node_modules", "pkg"].join("/"), "node_modules"), true);
   assert.equal(pathHasSegment(["nested", "modules", "pkg"].join("/"), "node_modules"), false);
+});
+
+test("plugin copy filtering ignores excluded names outside the package root", () => {
+  assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\.codex-plugin"), true);
+  assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\node_modules"), false);
+  assert.equal(shouldCopyPluginPath("/tmp/node_modules/cairn-ai/.git"), false);
 });
 
 test("install doctor uninstall lifecycle uses isolated homes", async () => {

@@ -3,10 +3,16 @@ import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  RUNTIME_LOCATOR_SCHEMA_VERSION,
+  createRuntimeLocator,
+  resolvePluginRoot,
+  runtimeRequiredPaths,
+} from "./cairn-paths.mjs";
 
-const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const pluginRoot = resolvePluginRoot(import.meta.url);
 const homeRoot = process.env.HOME ?? process.env.USERPROFILE ?? homedir() ?? ".";
 const codexHome = resolve(process.env.CODEX_HOME ?? join(homeRoot, ".codex"));
 const claudeHome = resolve(process.env.CLAUDE_HOME ?? join(homeRoot, ".claude"));
@@ -18,6 +24,8 @@ const pluginName = "cairn";
 const marketplaceRoot = join(codexHome, "plugins", "cache", marketplaceName);
 const installedPluginRoot = join(marketplaceRoot, "plugins", pluginName);
 const marketplaceJsonPath = join(marketplaceRoot, ".agents", "plugins", "marketplace.json");
+const installedRuntimeLocatorPath = join(installedPluginRoot, ".cairn-runtime.json");
+const claudeRuntimeLocatorPath = join(claudeHome, "cairn", "runtime.json");
 
 if (isCliEntry()) {
   const command = process.argv[2] ?? "help";
@@ -28,7 +36,12 @@ if (isCliEntry()) {
 }
 
 async function install(mode) {
+  if (samePath(pluginRoot, installedPluginRoot)) {
+    throw new Error("Run install or upgrade from the Cairn package/global source, not from the installed cache.");
+  }
   await copyPlugin();
+  await writeRuntimeLocator(installedRuntimeLocatorPath);
+  await writeInstalledSkillLocators();
   await writeMarketplace();
   await installClaudeFiles();
   await installAntigravityFiles();
@@ -51,6 +64,11 @@ async function doctor() {
   const installedManifest = await readJson(join(installedPluginRoot, ".codex-plugin", "plugin.json"));
   checks.push(["installed hooks manifest field", installedManifest?.hooks === "./hooks/hooks.json"]);
   checks.push(["hooks file", await exists(join(installedPluginRoot, "hooks", "hooks.json"))]);
+  checks.push(["installed runtime locator", await validRuntimeLocator(installedRuntimeLocatorPath)]);
+  checks.push(["installed skill locators", (await Promise.all(skillNames().map((name) => validRuntimeLocator(installedSkillLocatorPath(name))))).every(Boolean)]);
+  checks.push(["installed CLI script", await exists(join(installedPluginRoot, "scripts", "cairn.mjs"))]);
+  checks.push(["installed plan template", await exists(join(installedPluginRoot, "templates", "work-plan.md"))]);
+  checks.push(["installed model guidance", await exists(join(installedPluginRoot, "docs", "model-guidance", "codex.md"))]);
   const config = await readText(configPath);
   checks.push(["config features.plugins", hasSetting(config, "features", "plugins", "true")]);
   checks.push(["config features.plugin_hooks", hasSetting(config, "features", "plugin_hooks", "true")]);
@@ -63,10 +81,15 @@ async function doctor() {
   checks.push(["trusted hook states", expectedStates.length > 0 && missingStates.length === 0]);
   checks.push(["Claude commands", await exists(join(claudeHome, "commands", "cairn-plan.md"))]);
   checks.push(["Claude agents", await exists(join(claudeHome, "agents", "cairn-explorer.md"))]);
+  checks.push(["Claude runtime locator", await validRuntimeLocator(claudeRuntimeLocatorPath)]);
   checks.push(["Antigravity skills", await exists(join(antigravityHome, "skills", "cairn-plan", "SKILL.md"))]);
   checks.push(["Antigravity workflows", await exists(join(antigravityHome, "workflows", "cairn-plan.md"))]);
+  checks.push(["Antigravity runtime locator", await validRuntimeLocator(antigravityRuntimeLocatorPath(antigravityHome))]);
+  checks.push(["Antigravity skill locators", (await Promise.all(skillNames().map((name) => validRuntimeLocator(antigravitySkillLocatorPath(antigravityHome, name))))).every(Boolean)]);
   checks.push(["Antigravity CLI skills", await exists(join(antigravityCliHome, "skills", "cairn-plan", "SKILL.md"))]);
   checks.push(["Antigravity CLI workflows", await exists(join(antigravityCliHome, "workflows", "cairn-plan.md"))]);
+  checks.push(["Antigravity CLI runtime locator", await validRuntimeLocator(antigravityRuntimeLocatorPath(antigravityCliHome))]);
+  checks.push(["Antigravity CLI skill locators", (await Promise.all(skillNames().map((name) => validRuntimeLocator(antigravitySkillLocatorPath(antigravityCliHome, name))))).every(Boolean)]);
   for (const [name, ok] of checks) console.log(`${ok ? "OK" : "FAIL"} ${name}`);
   if (checks.some(([, ok]) => !ok)) process.exitCode = 1;
 }
@@ -82,6 +105,7 @@ async function uninstall() {
   for (const name of ["architect", "planner", "builder", "reviewer", "explorer", "worker"]) {
     await rm(join(claudeHome, "agents", `cairn-${name}.md`), { force: true });
   }
+  await rm(join(claudeHome, "cairn"), { recursive: true, force: true });
   await uninstallAntigravityFiles();
   console.log(t("uninstallComplete"));
 }
@@ -91,7 +115,7 @@ async function copyPlugin() {
   await mkdir(dirname(installedPluginRoot), { recursive: true });
   await cp(pluginRoot, installedPluginRoot, {
     recursive: true,
-    filter: (source) => !pathHasSegment(relative(pluginRoot, source), ".git") && !pathHasSegment(relative(pluginRoot, source), "node_modules"),
+    filter: shouldCopyPluginPath,
   });
   const manifestPath = join(installedPluginRoot, ".codex-plugin", "plugin.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -117,11 +141,20 @@ async function writeMarketplace() {
 async function installClaudeFiles() {
   await mkdir(join(claudeHome, "commands"), { recursive: true });
   await mkdir(join(claudeHome, "agents"), { recursive: true });
+  await writeRuntimeLocator(claudeRuntimeLocatorPath);
   for (const name of commandNames()) {
-    await cp(join(pluginRoot, ".claude", "commands", `cairn-${name}.md`), join(claudeHome, "commands", `cairn-${name}.md`));
+    await renderMirrorFile(
+      join(installedPluginRoot, ".claude", "commands", `cairn-${name}.md`),
+      join(claudeHome, "commands", `cairn-${name}.md`),
+      claudeRuntimeLocatorPath,
+    );
   }
   for (const name of ["explorer", "worker"]) {
-    await cp(join(pluginRoot, ".claude", "agents", `${name}.md`), join(claudeHome, "agents", `cairn-${name}.md`));
+    await renderMirrorFile(
+      join(installedPluginRoot, ".claude", "agents", `${name}.md`),
+      join(claudeHome, "agents", `cairn-${name}.md`),
+      claudeRuntimeLocatorPath,
+    );
   }
 }
 
@@ -129,12 +162,24 @@ async function installAntigravityFiles() {
   for (const root of [antigravityHome, antigravityCliHome]) {
     await mkdir(join(root, "skills"), { recursive: true });
     await mkdir(join(root, "workflows"), { recursive: true });
+    await writeRuntimeLocator(antigravityRuntimeLocatorPath(root));
     for (const name of skillNames()) {
       await rm(join(root, "skills", name), { recursive: true, force: true });
-      await cp(join(pluginRoot, "skills", name), join(root, "skills", name), { recursive: true });
+      await cp(join(installedPluginRoot, "skills", name), join(root, "skills", name), { recursive: true });
+      await renderMirrorFile(
+        join(installedPluginRoot, "skills", name, "SKILL.md"),
+        join(root, "skills", name, "SKILL.md"),
+        antigravitySkillLocatorPath(root, name),
+        { includeLocatorNotice: true },
+      );
+      await writeRuntimeLocator(antigravitySkillLocatorPath(root, name));
     }
     for (const name of commandNames()) {
-      await cp(join(pluginRoot, ".agents", "workflows", `cairn-${name}.md`), join(root, "workflows", `cairn-${name}.md`));
+      await renderMirrorFile(
+        join(installedPluginRoot, ".agents", "workflows", `cairn-${name}.md`),
+        join(root, "workflows", `cairn-${name}.md`),
+        antigravityRuntimeLocatorPath(root),
+      );
     }
   }
 }
@@ -147,6 +192,7 @@ async function uninstallAntigravityFiles() {
     for (const name of commandNames()) {
       await rm(join(root, "workflows", `cairn-${name}.md`), { force: true });
     }
+    await rm(join(root, "cairn"), { recursive: true, force: true });
   }
 }
 
@@ -267,12 +313,99 @@ export function pathHasSegment(path, segment) {
   return path.split(/[\\/]+/).includes(segment);
 }
 
+export function shouldCopyPluginPath(source) {
+  const name = source.split(/[\\/]+/).at(-1);
+  return name !== ".git" && name !== "node_modules";
+}
+
+export function samePath(left, right) {
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return resolve(left) === resolve(right);
+  }
+}
+
 export function commandNames() {
   return ["install", "upgrade", "doctor", "uninstall", "memory", "plan", "work", "review", "toolcheck"];
 }
 
 export function skillNames() {
   return ["cairn-memory", "cairn-plan", "cairn-work", "cairn-review"];
+}
+
+export function renderInstalledMirror(content, {
+  runtimeRoot = installedPluginRoot,
+  locatorPath = installedRuntimeLocatorPath,
+  platform = process.platform,
+} = {}) {
+  const platformJoin = platform === "win32" ? win32.join : posix.join;
+  const quotedCli = quoteShellArg(platformJoin(runtimeRoot, "scripts", "cairn.mjs"), platform);
+  let rendered = content
+    .replaceAll("{{CAIRN_RUNTIME_LOCATOR_JSON}}", JSON.stringify(locatorPath))
+    .replace(/\bnode\s+scripts\/cairn\.mjs\b/g, `node ${quotedCli}`)
+    .replace(/\bnode\s+scripts\/([A-Za-z0-9._/-]+)/g, (_, path) => `node ${quoteShellArg(join(runtimeRoot, "scripts", path), platform)}`);
+
+  rendered = rendered.replace(
+    /(^|[\s`("'=])(commands|agents|templates|docs\/model-guidance)\/([A-Za-z0-9._<>/-]+)/gm,
+    (_, prefix, directory, suffix) => `${prefix}${platformJoin(runtimeRoot, directory, suffix)}`,
+  );
+  return rendered;
+}
+
+export function quoteShellArg(value, platform = process.platform) {
+  if (platform === "win32") return `"${value.replaceAll('"', '""')}"`;
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function antigravityRuntimeLocatorPath(root) {
+  return join(root, "cairn", "runtime.json");
+}
+
+function installedSkillLocatorPath(skillName) {
+  return join(installedPluginRoot, "skills", skillName, "references", "cairn-runtime.json");
+}
+
+function antigravitySkillLocatorPath(root, skillName) {
+  return join(root, "skills", skillName, "references", "cairn-runtime.json");
+}
+
+async function writeRuntimeLocator(path) {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(createRuntimeLocator(installedPluginRoot), null, 2)}\n`);
+}
+
+async function writeInstalledSkillLocators() {
+  await Promise.all(skillNames().map((name) => writeRuntimeLocator(installedSkillLocatorPath(name))));
+}
+
+async function validRuntimeLocator(path) {
+  try {
+    const locator = await readJson(path);
+    const expected = createRuntimeLocator(installedPluginRoot);
+    if (locator?.schemaVersion !== RUNTIME_LOCATOR_SCHEMA_VERSION) return false;
+    if (resolve(locator.pluginRoot ?? ".") !== resolve(installedPluginRoot)) return false;
+    for (const [name, expectedPath] of Object.entries(expected.entrypoints)) {
+      if (locator.entrypoints?.[name] !== expectedPath) return false;
+    }
+    for (const [name, expectedPath] of Object.entries(expected.resources)) {
+      if (locator.resources?.[name] !== expectedPath) return false;
+    }
+    const requiredPaths = runtimeRequiredPaths(locator);
+    if (requiredPaths.length === 0) return false;
+    return (await Promise.all(requiredPaths.map(exists))).every(Boolean);
+  } catch {
+    return false;
+  }
+}
+
+async function renderMirrorFile(source, destination, locatorPath, { includeLocatorNotice = false } = {}) {
+  const content = await readFile(source, "utf8");
+  const notice = includeLocatorNotice
+    ? `\n\n## Installed Cairn runtime\n\nRead the structured runtime locator at \`${JSON.stringify(locatorPath)}\`. Resolve Cairn scripts and static resources from its absolute paths, never from the target project.\n`
+    : "";
+  await mkdir(dirname(destination), { recursive: true });
+  await writeFile(destination, `${renderInstalledMirror(content, { runtimeRoot: installedPluginRoot, locatorPath }).trimEnd()}${notice}`);
 }
 
 function help() {

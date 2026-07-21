@@ -2,6 +2,8 @@
 
 Use the `cairn-review` skill.
 
+Read the installed Cairn runtime locator at `{{CAIRN_RUNTIME_LOCATOR_JSON}}`. Cairn scripts and policy resources must be resolved through that locator, not from the target project.
+
 Goal: review completed work against plan, memory, policy, and evidence.
 
 Procedure:

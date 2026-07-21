@@ -33,8 +33,8 @@ Cairn 在 execution policy 上刻意不同于 LazyCodex。它不采用 LazyCodex
 `cairn toolcheck` 会检查当前 repository 中的 JavaScript、TypeScript、Python、PHP、Java、Kotlin、Swift、Go 和 Rust stacks，然后检查匹配的 LSP 和 verification tools。
 
 ```sh
-cairn toolcheck
-cairn toolcheck --install
+cairn toolcheck --root .
+cairn toolcheck --install --yes --root .
 ```
 
 - `toolcheck` 报告 detected stacks 和 missing tools。
@@ -57,7 +57,7 @@ Cairn 只对 Claude-family 和 Codex-family models 应用 model-specific adjustm
 - Claude-family: 适合 long context、policy interpretation 和 plan/evidence review。
 - Codex-family: 适合 small implementation tasks、explicit file edits、command-based verification 和 bounded `worker` tasks。
 
-详细指南位于 `docs/model-guidance/README.md`、`docs/model-guidance/claude.md` 和 `docs/model-guidance/codex.md`。
+详细指南位于已安装插件的 `cairn://docs/model-guidance/README.md`、`cairn://docs/model-guidance/claude.md` 和 `cairn://docs/model-guidance/codex.md`。
 
 ## Repository Artifacts
 
@@ -65,7 +65,7 @@ harness 会在目标 repository root 创建并维护这些文件。
 
 - `MEMORY.md`: persistent domain knowledge 的短索引。
 - `docs/memory/*.md`: 按 domain 记录的详细 knowledge。
-- `docs/model-guidance/*.md`: Claude 和 Codex model adjustment guidance。
+- `.cairn/state.json`: 用于中断恢复和 scoped stop gate 的 git-ignored goal/task/receipt 状态。
 - `PLAN.md`: active 和 completed work topics 的短索引。
 - `docs/plan/*.md`: detailed execution plans。
 

@@ -4,6 +4,13 @@
 
 Describe the observable result.
 
+- Goal ID: `goal-<stable-id>`
+- Plan ID: `plan-<stable-id>`
+- Runtime resources: `cairn://` resources resolved by the installed Cairn version; do not record a user-specific absolute plugin path.
+- Completion criteria:
+- Required goal evidence: `finalReview`
+- Terminal state: `completed`, `paused`, `blocked`, or `cancelled` (an `active` goal is never complete).
+
 ## Whole Work
 
 - Outcome:
@@ -20,8 +27,8 @@ Describe the observable result.
 
 - Applied model family: Codex or Claude.
 - Referenced guidance:
-  - `docs/model-guidance/README.md`
-  - `docs/model-guidance/<claude-or-codex>.md`
+  - `cairn://docs/model-guidance/README.md`
+  - `cairn://docs/model-guidance/<claude-or-codex>.md`
 - Rationale:
 - Role-specific adjustment:
 - User-visible response and artifact locale: OS locale unless the user asks for another language.
@@ -61,7 +68,8 @@ Describe the observable result.
 - Required LSP/symbol tools:
 - Required typecheck/lint/verification tools:
 - Missing tools:
-- Install/bootstrap commands attempted:
+- Install approval: not requested, approved, denied, or not needed.
+- Install/bootstrap commands proposed or attempted:
 - Tool blockers:
 
 ## Execution Guardrails
@@ -75,6 +83,8 @@ Describe the observable result.
 
 ### Task 1: <module>
 
+- Task ID: `task-1`
+- Initial status: `pending` or `active`
 - Contract:
 - Sub-tasks, if needed:
 - Files:
@@ -83,6 +93,11 @@ Describe the observable result.
 - Dry-run or check command:
 - Module acceptance verification:
 - Surface integration verification:
+- Required receipts:
+  - `moduleAcceptance`: command, exit code 0, timestamp, goal ID, task ID, and plan ID.
+  - `surfaceIntegration`: command or QA artifact, exit code 0, timestamp, goal ID, task ID, and plan ID.
+- Assigned agent ID, if delegated:
+- Blocker: a concrete reason is required when status becomes `blocked`.
 
 ## Evidence
 
@@ -91,6 +106,7 @@ Describe the observable result.
 - Tests:
 - Module acceptance:
 - Surface integration:
+- Goal final review receipt:
 - Verification pass count:
 - Blocker after two failed passes:
 
@@ -102,3 +118,4 @@ Describe the observable result.
 - [ ] Module acceptance passed
 - [ ] Surface integration passed
 - [ ] Reviewed
+- [ ] Goal completed, or an explicit paused/blocked/cancelled reason was recorded

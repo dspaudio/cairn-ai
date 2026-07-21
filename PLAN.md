@@ -4,11 +4,12 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- Link detailed plans under `docs/plan/`.
+- [Cairn 0.2.0 설치본 런타임 릴리스](docs/plan/release-0.2.0-installed-runtime.md): 설치본 경로 독립성, 영속 목표 완료 게이트, 안전한 toolcheck 변경을 0.2.0으로 검증·병합·배포합니다.
 
 ## Completed Plans
 
 - Move completed topics here with evidence links.
+- [설치본 경로 독립성과 목표 완주 런타임](docs/plan/installed-runtime-goal-completion.md): 현재 lifecycle을 유지하면서 설치본 기준 리소스 locator, 저장소별 영속 목표/task/receipt, 범위가 제한된 Stop 게이트, 안전한 toolcheck를 구현했으며 `npm run check`와 실제 tarball 설치 E2E, `npm pack --dry-run`으로 검증했습니다.
 - [Release 0.1.11 locale artifacts](docs/plan/release-0.1.11-locale-artifacts.md): PR #29 merged to `dev`, PR #30 merged to `main`, and `cairn-ai@0.1.11` published to npm.
 - [Release 0.1.10 subagent lifecycle](docs/plan/release-0.1.10-subagent-lifecycle.md): PR #25 merged to `dev`, PR #26 merged to `main`, and `cairn-ai@0.1.10` published to npm.
 - [Cairn subagent close on completion](docs/plan/cairn-subagent-close-on-completion.md): required delegated subagents to provide a final report before leaving, then close/release after evidence capture, then have the orchestrator review the final report and evidence before completion; verified with `node --test test/lifecycle.test.mjs`, `npm run check`, and `npm --cache /private/tmp/cairn-npm-cache pack --dry-run`.

@@ -2,6 +2,8 @@
 
 Use the `cairn-memory` skill.
 
+Read the installed Cairn runtime locator at `{{CAIRN_RUNTIME_LOCATOR_JSON}}`. Cairn scripts and policy resources must be resolved through that locator, not from the target project.
+
 Goal: create or update repository memory without asking the user for discoverable facts.
 
 Procedure:
