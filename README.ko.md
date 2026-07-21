@@ -111,6 +111,8 @@ cairn toolcheck
 - `cairn-work`: 현재 `PLAN.md`의 다음 모듈 작업을 실행하고 두 검증 게이트를 확보합니다.
 - `cairn-review`: 계획, memory, 증거를 기준으로 완료된 작업을 검토합니다.
 
+모든 `UserPromptSubmit`에서 Cairn은 구현 또는 계속 실행 요청 자체가 goal 생성 권한이며 사용자가 “goal”을 직접 말할 필요가 없다는 모델 가시 지침을 주입합니다. 활성 goal이 있으면 전체 순서형 task roadmap, 각 상태, 현재 task도 함께 주입하므로 에이전트가 곁가지 질문에 답한 뒤 원래 작업으로 돌아갈 수 있습니다. 에이전트는 decision-complete plan 뒤 구현 전에 goal을 생성하거나 연결하고, 상담·설명·계획 전용 요청은 goal 없이 처리합니다.
+
 `install`과 `upgrade`는 `~/.codex/config.toml`을 수정하기 전에 `*.cairn-backup-*` 백업을 만들고 각 표면의 runtime locator를 갱신합니다. 소스 플러그인 manifest는 validator-friendly 상태를 유지하고, 설치된 cache copy에만 Codex hook 활성화를 위한 `hooks` field가 추가됩니다. 현재 custom lifecycle은 유지하며, upgrade는 교체 대상인 cache copy가 아니라 게시/전역 package에서 실행해야 합니다.
 
 Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `.claude/` 아래의 mirror command와 agent definition을 사용합니다. Antigravity는 `.agents/workflows`와 global skills mirror를 사용합니다.

@@ -25,7 +25,7 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence.
 - Detect required LSP, typecheck, lint, dry-run, and verification tools before implementation.
 - Missing required tools must be reported with a proposed install. Installation requires explicit user approval and a pinned/supported installer.
-- Bind active work to a persisted Cairn goal and stable task IDs. Continue through tasks until goal-level final review completes, or record an explicit pause, blocker, or cancellation.
+- Treat every implementation or continued-execution request as authorization to bind active work to a persisted Cairn goal and stable task IDs, even when the user does not mention a goal. Exclude consultation, explanation, and plan-only requests. Continue through tasks until goal-level final review completes, or record an explicit pause, blocker, or cancellation.
 - Treat missing, failed, skipped, stale, or placeholder evidence as failure. Task receipts must be bound to the current goal, task, and plan.
 - Every implementation task must pass module acceptance verification and surface integration verification.
 - Before mutating external state, run the closest available dry-run, check, plan, diff, validate, or equivalent command.

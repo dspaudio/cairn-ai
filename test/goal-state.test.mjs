@@ -149,9 +149,18 @@ test("receipts fail closed and task completion advances only after successful bo
 test("automatic context hooks do not initialize an uninitialized repository", async () => {
   await withTempRoot(async (root) => {
     const session = await runStateResult("session-start", { root, locale: "en-US", payload: { cwd: root, session_id: "s1", turn_id: "t1" } });
-    const prompt = await runStateResult("user-prompt-submit", { root, locale: "en-US", payload: { cwd: root, session_id: "s1", turn_id: "t1" } });
+    const prompt = await runStateResult("user-prompt-submit", { root, locale: "en-US", payload: { cwd: root, session_id: "s1", turn_id: "t1", prompt: "Implement the requested fix" } });
     assert.match(session.message, /read the project-root MEMORY/);
     assert.match(prompt.message, /read the project-root MEMORY/);
+    assert.equal(session.hookOutput.hookSpecificOutput.hookEventName, "SessionStart");
+    assert.equal(prompt.hookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /request itself as authorization/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /even when the user does not mention a goal/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /decision-complete plan.*before implementation/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /consultation, explanation, or plan-only requests/i);
+    const promptKo = await runStateResult("user-prompt-submit", { root, locale: "ko-KR", payload: { cwd: root, session_id: "s1", turn_id: "t2", prompt: "요청한 수정을 구현해줘" } });
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /사용자가 goal을 언급하지 않아도 이 요청 자체를 권한/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /상담·설명·계획 전용 요청에는 goal을 만들지 마세요/);
     await assert.rejects(access(join(root, "MEMORY.md")));
     await assert.rejects(access(join(root, ".cairn")));
   });
@@ -180,6 +189,42 @@ test("session-owned goals are isolated from other hook sessions", async () => {
       const foreign = await runStateResult(event, { root, locale: "en-US", payload: { cwd: root, session_id: "session-foreign", turn_id: "t2" } });
       assert.deepEqual(foreign.hookOutput, {}, `${event} must not expose or block an owner-bound goal`);
     }
+  });
+});
+
+test("active goal context includes the ordered task roadmap and side-question return point", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Roadmap goal",
+      planId: "docs/plan/roadmap.md",
+      ownerSessionId: "roadmap-session",
+      tasks: [
+        { id: "inspect", title: "Inspect the issue" },
+        { id: "implement", title: "Implement the fix" },
+        { id: "verify", title: "Verify the result" },
+      ],
+    });
+
+    const prompt = await runStateResult("user-prompt-submit", {
+      root,
+      locale: "en-US",
+      payload: { cwd: root, session_id: "roadmap-session", turn_id: "t1", prompt: "What is the status?" },
+    });
+    const context = prompt.hookOutput.hookSpecificOutput.additionalContext;
+    assert.match(context, /Work steps:\n1\. inspect \[active\] Inspect the issue/);
+    assert.match(context, /2\. implement \[pending\] Implement the fix/);
+    assert.match(context, /3\. verify \[pending\] Verify the result/);
+    assert.match(context, /After answering a side question, return to current task inspect/);
+
+    const promptKo = await runStateResult("user-prompt-submit", {
+      root,
+      locale: "ko-KR",
+      payload: { cwd: root, session_id: "roadmap-session", turn_id: "t2", prompt: "잠깐 상태를 알려줘" },
+    });
+    const contextKo = promptKo.hookOutput.hookSpecificOutput.additionalContext;
+    assert.match(contextKo, /작업 단계:\n1\. inspect \[active\] Inspect the issue/);
+    assert.match(contextKo, /곁가지 질문에 답한 뒤.*현재 task inspect로 돌아와/);
   });
 });
 

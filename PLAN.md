@@ -4,11 +4,14 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
+- [Cairn 0.2.1 goal 작업 컨텍스트 릴리스](docs/plan/release-0.2.1-goal-task-context.md): 자동 goal 생성 지침과 전체 task roadmap 컨텍스트를 검증하고 release → `dev` → `main` 병합 뒤 npm `latest`로 배포합니다.
 - [Cairn 0.2.0 설치본 런타임 릴리스](docs/plan/release-0.2.0-installed-runtime.md): 설치본 경로 독립성, 영속 목표 완료 게이트, 안전한 toolcheck 변경을 0.2.0으로 검증·병합·배포합니다.
 
 ## Completed Plans
 
 - Move completed topics here with evidence links.
+- [goal 작업 단계와 복귀 컨텍스트](docs/plan/goal-task-roadmap-context.md): 활성 goal의 전체 순서형 task roadmap, 각 상태, 현재 task와 곁가지 질문 뒤 복귀 지침을 영문·한국어 및 실제 tarball 설치 경로에서 검증했습니다.
+- [구현 요청의 자동 goal 설정 지침](docs/plan/automatic-goal-on-implementation-request.md): goal 미언급 구현/계속 실행 요청도 `UserPromptSubmit`의 모델 가시 지침으로 goal 생성 권한이 되며, 영문·한국어 hook과 실제 tarball 설치를 포함한 전체 34개 테스트 및 package dry-run으로 검증했습니다.
 - [설치본 경로 독립성과 목표 완주 런타임](docs/plan/installed-runtime-goal-completion.md): 현재 lifecycle을 유지하면서 설치본 기준 리소스 locator, 저장소별 영속 목표/task/receipt, 범위가 제한된 Stop 게이트, 안전한 toolcheck를 구현했으며 `npm run check`와 실제 tarball 설치 E2E, `npm pack --dry-run`으로 검증했습니다.
 - [Release 0.1.11 locale artifacts](docs/plan/release-0.1.11-locale-artifacts.md): PR #29 merged to `dev`, PR #30 merged to `main`, and `cairn-ai@0.1.11` published to npm.
 - [Release 0.1.10 subagent lifecycle](docs/plan/release-0.1.10-subagent-lifecycle.md): PR #25 merged to `dev`, PR #26 merged to `main`, and `cairn-ai@0.1.10` published to npm.

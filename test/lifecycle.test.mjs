@@ -267,6 +267,10 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(manifest.interface.defaultPrompt.join("\n"), /close or release the completed subagent.*review the final report and evidence/i);
     assert.match(manifest.interface.defaultPrompt.join("\n"), /If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence/i);
     assert.match(manifest.interface.defaultPrompt.join("\n"), /recursively delegate bounded sub-tasks to subagents/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /implementation or continued-execution requests.*request itself as authorization.*even when the user does not mention a goal/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /stable, ordered task steps.*full task roadmap and current task.*side question returns to the original work/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /decision-complete plan.*before implementation/i);
+    assert.match(manifest.interface.defaultPrompt.join("\n"), /consultation, explanation, or plan-only requests/i);
     assert.match(manifest.interface.defaultPrompt.join("\n"), /side question.*resume.*pause, stop, or switch tasks/i);
     const explorer = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "explorer.md"), "utf8");
     const worker = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "worker.md"), "utf8");

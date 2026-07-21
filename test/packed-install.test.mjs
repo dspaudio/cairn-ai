@@ -72,16 +72,46 @@ test("packed install remains self-contained after the npm package source is remo
     await assert.rejects(stat(join(project, "templates")));
     await assert.rejects(stat(join(project, "docs", "model-guidance")));
 
+    const promptHook = run(process.execPath, [join(installedRoot, "scripts", "cairn-state.mjs"), "user-prompt-submit"], {
+      cwd: unrelated,
+      env,
+      input: JSON.stringify({
+        cwd: nestedProject,
+        session_id: "packed-session",
+        turn_id: "packed-turn",
+        prompt: "Implement the requested fix",
+      }),
+    });
+    assert.equal(promptHook.status, 0, promptHook.stderr);
+    const promptHookOutput = JSON.parse(promptHook.stdout);
+    assert.equal(promptHookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /request itself as authorization/i);
+    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /even when the user does not mention a goal/i);
+
     const goal = run(process.execPath, [
       installedCli,
       "goal", "start",
       "--root", project,
       "--goal", "Packed install goal",
       "--plan", "docs/plan/packed.md",
-      "--tasks", "Packed task",
+      "--tasks", JSON.stringify([
+        { id: "packed-current", title: "Packed task" },
+        { id: "packed-next", title: "Verify packed roadmap" },
+      ]),
       "--session", "packed-session",
     ], { cwd: unrelated, env });
     assert.equal(goal.status, 0, goal.stderr);
+
+    const activePromptHook = run(process.execPath, [join(installedRoot, "scripts", "cairn-state.mjs"), "user-prompt-submit"], {
+      cwd: unrelated,
+      env,
+      input: JSON.stringify({ cwd: nestedProject, session_id: "packed-session", turn_id: "packed-turn-2", prompt: "What is the status?" }),
+    });
+    assert.equal(activePromptHook.status, 0, activePromptHook.stderr);
+    const activePromptOutput = JSON.parse(activePromptHook.stdout);
+    assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /1\. packed-current \[active\] Packed task/);
+    assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /2\. packed-next \[pending\] Verify packed roadmap/);
+    assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /return to current task packed-current/);
 
     const hook = run(process.execPath, [join(installedRoot, "scripts", "cairn-state.mjs"), "stop"], {
       cwd: unrelated,
