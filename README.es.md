@@ -33,8 +33,8 @@ El path seleccionado y su justificación se registran en `docs/plan/<topic>.md` 
 `cairn toolcheck` inspecciona el repositorio actual para stacks JavaScript, TypeScript, Python, PHP, Java, Kotlin, Swift, Go y Rust, y luego revisa los LSP y verification tools correspondientes.
 
 ```sh
-cairn toolcheck
-cairn toolcheck --install
+cairn toolcheck --root .
+cairn toolcheck --install --yes --root .
 ```
 
 - `toolcheck` reporta detected stacks y missing tools.
@@ -57,7 +57,7 @@ Cairn solo aplica ajustes específicos de modelo a modelos Claude-family y Codex
 - Claude-family: útil para long context, policy interpretation y plan/evidence review.
 - Codex-family: útil para small implementation tasks, explicit file edits, command-based verification y bounded `worker` tasks.
 
-La guía detallada vive en `docs/model-guidance/README.md`, `docs/model-guidance/claude.md` y `docs/model-guidance/codex.md`.
+La guía detallada vive en el plugin instalado y se referencia como `cairn://docs/model-guidance/README.md`, `cairn://docs/model-guidance/claude.md` y `cairn://docs/model-guidance/codex.md`.
 
 ## Repository Artifacts
 
@@ -65,7 +65,7 @@ El harness crea y mantiene estos archivos en la raíz del repositorio objetivo.
 
 - `MEMORY.md`: índice corto de conocimiento persistente del dominio.
 - `docs/memory/*.md`: conocimiento detallado por dominio.
-- `docs/model-guidance/*.md`: guía de ajuste de modelos Claude y Codex.
+- `.cairn/state.json`: estado git-ignored de goal, task y receipt para reanudación y stop gates acotados.
 - `PLAN.md`: índice corto de temas activos y completados.
 - `docs/plan/*.md`: planes de ejecución detallados.
 

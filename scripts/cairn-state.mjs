@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { evaluateStop, isGoalOwnedBySession, readGoalState } from "./cairn-goal.mjs";
+import { resolveRepoRoot } from "./cairn-paths.mjs";
 
 const memoryTemplate = `# MEMORY
 
@@ -68,7 +70,7 @@ This file is a short index of active and completed work plans.
 - Record the selected Light Path or Heavy Path and the checked Heavy Path signals in \`docs/plan/<topic>.md\`.
 - Split implementation into small module tasks.
 - Detect repository stack and required LSP/check tools before implementation.
-- Install or bootstrap missing required tools before declaring them unavailable.
+- Record missing required tools and suggested commands. Run only pinned, supported installation steps after explicit user approval.
 - Each task normally passes exactly two gates.
   - Module acceptance verification.
   - Surface integration verification.
@@ -99,7 +101,7 @@ const planTemplateKo = `# PLAN
 - 선택한 Light Path 또는 Heavy Path와 확인한 Heavy Path 신호를 \`docs/plan/<topic>.md\`에 기록합니다.
 - 구현은 작은 모듈 작업으로 나눕니다.
 - 구현 전에 저장소 스택과 필요한 LSP/check 도구를 감지합니다.
-- 필요한 도구가 없으면 사용할 수 없다고 판단하기 전에 설치 또는 부트스트랩을 시도합니다.
+- 필요한 도구가 없으면 누락 상태와 제안 명령을 기록합니다. 명시적 사용자 승인 뒤에만 고정된 지원 설치 단계를 실행합니다.
 - 각 작업은 보통 정확히 두 게이트를 통과합니다.
   - 모듈 수용 검증.
   - 표면 통합 검증.
@@ -112,182 +114,178 @@ const planTemplateKo = `# PLAN
 
 if (isCliEntry()) {
   const event = process.argv[2] ?? "manual";
-  const result = await runStateResult(event);
-  console.log(result.message);
+  const payload = await readHookInput();
+  const result = await runStateResult(event, { payload });
+  if (isHookEvent(event)) {
+    console.log(JSON.stringify(result.hookOutput ?? {}));
+  } else {
+    console.log(result.message);
+  }
   if (result.status !== 0) process.exitCode = result.status;
 }
 
-export async function runState(event = "manual", { root = process.env.HARNESS_REPO_ROOT ?? process.cwd(), locale = localeValue() } = {}) {
-  return (await runStateResult(event, { root, locale })).message;
+export async function runState(event = "manual", options = {}) {
+  return (await runStateResult(event, options)).message;
 }
 
-export async function runStateResult(event = "manual", { root = process.env.HARNESS_REPO_ROOT ?? process.cwd(), locale = localeValue() } = {}) {
-  const resolvedRoot = resolve(root);
+export async function runStateResult(event = "manual", {
+  root,
+  locale = localeValue(),
+  payload,
+} = {}) {
+  const resolvedRoot = resolveRoot(root, payload);
   const ko = locale.toLowerCase().startsWith("ko");
-  await mkdir(join(resolvedRoot, "docs", "memory"), { recursive: true });
-  await mkdir(join(resolvedRoot, "docs", "plan"), { recursive: true });
-  await writeIfMissing(join(resolvedRoot, "MEMORY.md"), ko ? memoryTemplateKo : memoryTemplate);
-  await writeIfMissing(join(resolvedRoot, "PLAN.md"), ko ? planTemplateKo : planTemplate);
 
-  if (event === "session-start" || event === "user-prompt-submit") {
+  if (event === "manual" || event === "init") {
+    await initializeProject(resolvedRoot, ko);
     return {
       status: 0,
       message: ko
-        ? "Cairn 컨텍스트: 모든 에이전트는 작업 시작 시 도메인 지식과 정책 색인인 프로젝트 루트 MEMORY.md를 먼저 읽어야 합니다."
-        : "Cairn context: every agent must start by reading the project-root MEMORY.md for domain knowledge and repository policy.",
+        ? "Cairn이 MEMORY.md, PLAN.md, docs/memory, docs/plan을 초기화했습니다."
+        : "Cairn initialized MEMORY.md, PLAN.md, docs/memory, and docs/plan.",
     };
   }
+
+  if (event === "session-start" || event === "user-prompt-submit") {
+    const state = await readGoalState({ root: resolvedRoot });
+    if (!isGoalOwnedBySession(state, payload?.session_id)) return { status: 0, message: "", hookOutput: {} };
+    return contextResult({ ko, state, event });
+  }
+
   if (event === "post-tool-use") {
     return {
       status: 0,
       message: ko
-        ? "Cairn 점검: 외부 상태 변경에는 dry-run/check 증거가 필요하고, 동작이 바뀌었다면 docs/plan 증거를 갱신하세요."
-        : "Cairn check: external-state changes need dry-run/check evidence; if behavior changed, update docs/plan evidence.",
+        ? "Cairn 점검: 외부 상태 변경에는 dry-run/check receipt가 필요합니다. 활성 목표가 있다면 현재 task에 성공 receipt를 기록하세요."
+        : "Cairn check: external-state changes need a dry-run/check receipt. When a goal is active, record a successful receipt for its current task.",
+      hookOutput: {},
     };
   }
+
   if (event === "stop" || event === "subagent-stop") {
-    const pending = await pendingPlanItems(resolvedRoot);
-    if (pending.length > 0) {
-      return {
-        status: 1,
-        message: stopBlockedMessage({ event, ko, pending }),
-      };
-    }
-    return ko
-      ? { status: 0, message: "Cairn 종료 게이트: 완료에는 docs/plan의 dry-run/check, 모듈 수용, 표면 통합 증거가 필요합니다." }
-      : { status: 0, message: "Cairn stop gate: completion requires dry-run/check, module acceptance, and surface integration evidence in docs/plan." };
+    const state = await readGoalState({ root: resolvedRoot });
+    if (!isGoalOwnedBySession(state, payload?.session_id)) return { status: 0, message: "", hookOutput: {} };
+    const gate = evaluateStop(state, {
+      subagent: event === "subagent-stop",
+      agentId: payload?.agent_id,
+    });
+    const hookOutput = stopHookOutput(gate, payload);
+    return {
+      status: 0,
+      message: gate.block ? continuationReason(gate.reason, payload) : stopAllowedMessage({ ko, state, event }),
+      hookOutput,
+    };
   }
+
   return {
     status: 0,
-    message: ko
-      ? "Cairn이 MEMORY.md, PLAN.md, docs/memory, docs/plan을 초기화했습니다."
-      : "Cairn initialized MEMORY.md, PLAN.md, docs/memory, and docs/plan.",
+    message: ko ? "Cairn: 지원하지 않는 상태 이벤트를 건너뛰었습니다." : "Cairn: skipped an unsupported state event.",
   };
+}
+
+async function initializeProject(root, ko) {
+  await mkdir(join(root, "docs", "memory"), { recursive: true });
+  await mkdir(join(root, "docs", "plan"), { recursive: true });
+  await writeIfMissing(join(root, "MEMORY.md"), ko ? memoryTemplateKo : memoryTemplate);
+  await writeIfMissing(join(root, "PLAN.md"), ko ? planTemplateKo : planTemplate);
 }
 
 async function writeIfMissing(path, content) {
   try {
     await readFile(path, "utf8");
-  } catch {
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
     await writeFile(path, content);
   }
 }
 
-async function pendingPlanItems(root) {
-  const planPath = join(root, "PLAN.md");
-  const plan = await readFile(planPath, "utf8");
-  const activePlans = markdownLinksToPlanFiles(section(plan, "Active Plans"));
-  const completedPlans = markdownLinksToPlanFiles(section(plan, "Completed Plans"));
-  const indexedPlans = new Map();
-  for (const relativePath of activePlans) indexedPlans.set(relativePath, "active");
-  for (const relativePath of completedPlans) {
-    if (!indexedPlans.has(relativePath)) indexedPlans.set(relativePath, "completed");
+function contextResult({ ko, state, event }) {
+  const base = ko
+    ? "Cairn 컨텍스트: 작업 전 프로젝트 루트 MEMORY.md를 읽으세요."
+    : "Cairn context: read the project-root MEMORY.md before working.";
+  if (!state || state.goal.status !== "active") return { status: 0, message: base, hookOutput: {} };
+  const task = state.tasks.find((item) => item.status === "active") ?? state.tasks.find((item) => item.status === "pending");
+  if (!task) {
+    const message = `${base} ${activeGoalCompletionMessage(ko, state)}`;
+    return {
+      status: 0,
+      message,
+      hookOutput: {
+        hookSpecificOutput: {
+          hookEventName: event === "session-start" ? "SessionStart" : "UserPromptSubmit",
+          additionalContext: message,
+        },
+      },
+    };
   }
-  for (const relativePath of await docsPlanFiles(root)) {
-    if (!indexedPlans.has(relativePath)) indexedPlans.set(relativePath, "unindexed");
-  }
-  const pending = [];
-
-  for (const [relativePath, indexState] of indexedPlans) {
-    const path = resolve(root, relativePath);
-    const pathFromRoot = relative(root, path);
-    if (pathFromRoot.startsWith("..") || isAbsolute(pathFromRoot)) continue;
-    const text = await readPlanFile(path);
-    if (text === null) {
-      pending.push({ path: relativePath, indexIssues: [`${indexState} plan file is missing`], unchecked: [], emptyEvidence: [] });
-      continue;
-    }
-    const indexIssues = indexState === "unindexed" ? ["not linked in PLAN.md Active Plans or Completed Plans"] : [];
-    const unchecked = [...text.matchAll(/^\s*-\s+\[\s\]\s+(.+)$/gm)].map((match) => match[1].trim());
-    const emptyEvidence = emptyEvidenceItems(text);
-    const missingHeavyPathTests = heavyPathMissingTests(text);
-    if (indexIssues.length > 0 || unchecked.length > 0 || emptyEvidence.length > 0 || missingHeavyPathTests.length > 0) {
-      pending.push({ path: relativePath, indexIssues, unchecked, emptyEvidence, missingHeavyPathTests });
-    }
-  }
-
-  return pending;
+  const continuation = ko
+    ? `활성 목표 "${state.goal.title}"의 현재 task는 ${task.id} (${task.title})입니다. 완료 전 성공 receipt를 기록하세요.`
+    : `Active goal "${state.goal.title}" current task: ${task.id} (${task.title}). Record a successful receipt before completing it.`;
+  return {
+    status: 0,
+    message: `${base} ${continuation}`,
+    hookOutput: {
+      hookSpecificOutput: {
+        hookEventName: event === "session-start" ? "SessionStart" : "UserPromptSubmit",
+        additionalContext: `${base} ${continuation}`,
+      },
+    },
+  };
 }
 
-async function docsPlanFiles(root) {
-  const entries = await readdir(join(root, "docs", "plan"), { withFileTypes: true });
-  return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .map((entry) => `docs/plan/${entry.name}`)
-    .sort();
+function continuationReason(reason, payload) {
+  const continuation = payload?.stop_hook_active ? " This turn was already continued; the active goal remains persisted for the next session." : "";
+  return `${reason}${continuation}`;
 }
 
-async function readPlanFile(path) {
+function stopHookOutput(gate, payload) {
+  if (!gate.block) return { continue: true };
+  const reason = continuationReason(gate.reason, payload);
+  if (payload?.stop_hook_active) {
+    return { continue: true, systemMessage: reason };
+  }
+  return { decision: "block", reason };
+}
+
+function stopAllowedMessage({ ko, state, event }) {
+  if (state?.goal?.status) {
+    return ko
+      ? `Cairn 종료 게이트: 목표 상태가 ${state.goal.status}이므로 종료를 허용합니다.`
+      : `Cairn stop gate: goal status is ${state.goal.status}; allowing stop.`;
+  }
+  return ko
+    ? `${event === "subagent-stop" ? "서브에이전트" : "작업"} 종료 게이트: 활성 Cairn 목표가 없어 종료를 허용합니다.`
+    : `${event === "subagent-stop" ? "Subagent" : "Turn"} stop gate: no active Cairn goal; allowing stop.`;
+}
+
+function activeGoalCompletionMessage(ko, state) {
+  return ko
+    ? `활성 목표 "${state.goal.title}"의 모든 task가 완료되었습니다. 완료 기준을 확인하고 명시적으로 complete 상태로 전이하세요.`
+    : `All tasks for active goal "${state.goal.title}" are complete. Verify criteria and explicitly transition the goal to completed.`;
+}
+
+function resolveRoot(root, payload) {
+  return resolveRepoRoot({
+    explicitRoot: root ?? null,
+    hookCwd: payload?.cwd ?? null,
+  });
+}
+
+async function readHookInput() {
+  if (process.stdin.isTTY) return undefined;
+  let input = "";
+  for await (const chunk of process.stdin) input += chunk;
+  if (input.trim().length === 0) return undefined;
   try {
-    return await readFile(path, "utf8");
-  } catch (error) {
-    if (error?.code === "ENOENT") return null;
-    throw error;
+    const value = JSON.parse(input);
+    return value && typeof value === "object" ? value : undefined;
+  } catch {
+    return undefined;
   }
 }
 
-function markdownLinksToPlanFiles(text) {
-  const paths = new Set();
-  const patterns = [
-    /\((docs\/plan\/[^)#\s]+\.md)\)/g,
-    /`(docs\/plan\/[^`]+\.md)`/g,
-    /\b(docs\/plan\/[^\s)`]+\.md)\b/g,
-  ];
-  for (const pattern of patterns) {
-    for (const match of text.matchAll(pattern)) {
-      const path = match[1].replace(/[.,;:]+$/, "");
-      if (!path.includes("<topic>")) paths.add(path);
-    }
-  }
-  return [...paths];
-}
-
-function emptyEvidenceItems(text) {
-  const evidence = section(text, "Evidence");
-  if (evidence.length === 0) return [];
-  const empty = [];
-  for (const match of evidence.matchAll(/^\s*-\s+([^:\n]+):\s*$/gm)) empty.push(match[1].trim());
-  return empty;
-}
-
-function heavyPathMissingTests(text) {
-  if (!/^\s*-\s+Selected path:\s*Heavy Path\.?\s*$/im.test(text)) return [];
-  const evidence = section(text, "Evidence");
-  const hasExplicitTestEvidence = [
-    /^\s*-\s+(Tests?|Test execution|Automated tests):\s*\S.+$/im,
-    /^\s*-\s+Module acceptance:\s+.*\b(npm test|node --test|pytest|phpunit|go test|cargo test|mvn test|gradle test|swift test|xcodebuild test)\b/im,
-  ].some((pattern) => pattern.test(evidence));
-  return hasExplicitTestEvidence ? [] : ["Heavy Path test evidence is missing"];
-}
-
-function section(text, title) {
-  const pattern = new RegExp(`^##\\s+${escapeRegExp(title)}\\s*$([\\s\\S]*?)(?=^##\\s+|(?![\\s\\S]))`, "m");
-  return text.match(pattern)?.[1]?.trim() ?? "";
-}
-
-function stopBlockedMessage({ event, ko, pending }) {
-  const itemText = pending.slice(0, 3).map(formatPendingItem).join("; ");
-  const suffix = pending.length > 3 ? `; +${pending.length - 3} more` : "";
-  if (ko) {
-    const subject = event === "subagent-stop" ? "서브에이전트 완료 신호" : "완료 신호";
-    return `Cairn 종료 게이트: ${subject}를 차단했습니다. 미완료 작업이 남아 있습니다. PLAN.md의 Active Plans를 다시 읽고 다음 미완료 task를 계속 진행하세요: ${itemText}${suffix}`;
-  }
-  const subject = event === "subagent-stop" ? "subagent completion signal" : "completion signal";
-  return `Cairn stop gate: blocked ${subject}. Incomplete work remains. Re-read PLAN.md Active Plans and continue the next incomplete task: ${itemText}${suffix}`;
-}
-
-function formatPendingItem(item) {
-  const reasons = [
-    ...(item.indexIssues ?? []).map((label) => `index: ${label}`),
-    ...item.unchecked.map((label) => `unchecked: ${label}`),
-    ...item.emptyEvidence.map((label) => `empty evidence: ${label}`),
-    ...(item.missingHeavyPathTests ?? []).map((label) => `missing tests: ${label}`),
-  ];
-  return `${item.path} (${reasons.slice(0, 3).join(", ")})`;
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function isHookEvent(event) {
+  return ["session-start", "user-prompt-submit", "post-tool-use", "stop", "subagent-stop"].includes(event);
 }
 
 function localeValue() {

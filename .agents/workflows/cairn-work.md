@@ -2,6 +2,8 @@
 
 Use the `cairn-work` skill.
 
+Read the installed Cairn runtime locator at `{{CAIRN_RUNTIME_LOCATOR_JSON}}`. Resolve Cairn scripts and policy resources through that locator; only work artifacts and state belong to the target project.
+
 Goal: execute the next incomplete module task in `PLAN.md` without bypassing the recorded complexity triage.
 
 Procedure:
@@ -10,7 +12,7 @@ Procedure:
 2. Read `PLAN.md`, the detailed plan, and relevant memory notes.
 3. Read the Codex or Claude model guidance recorded in the plan.
 4. Select one small module task.
-5. Confirm required tool readiness. If a required LSP/check tool is missing, run `node scripts/cairn.mjs toolcheck --install` or a repository-native install command before accepting a fallback.
+5. Confirm required tool readiness by invoking Node directly with the locator's absolute `entrypoints.cli`, `toolcheck`, and `--root` for the target repository. Follow the installed toolcheck policy before any explicitly approved installation attempt.
 6. Confirm the complexity triage and selected Light/Heavy Path recorded in the plan. If missing, update the plan before mutating files.
 7. For Light Path, keep the user-called/main agent in the orchestrator role and delegate implementation edits to one bounded `worker` whenever subagent tools are available, then run focused verification.
 8. For Heavy Path, follow the plan's staged implementation and review gates without role-mapping shortcuts.

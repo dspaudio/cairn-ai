@@ -17,14 +17,28 @@ Do not treat planning as optional for implementation work that is more than a na
 
 Plan from the whole work down. First understand the full requested outcome and affected surfaces, then classify the work into small executable tasks. If one task is still too broad to verify cleanly, split that task into sub-tasks.
 
+## Runtime Location
+
+Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's `scripts/`, `templates/`, commands, agents, and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never search the target repository for Cairn scripts, templates, or model guidance, and never derive the plugin root from the current working directory.
+
+Use logical resource IDs such as `cairn://templates/work-plan.md` and `cairn://docs/model-guidance/codex.md` in repository plans. Resolve those IDs through `pluginRoot` only while executing. Keep `repoRoot` separate and pass it explicitly as `--root <repoRoot>`.
+
+For an implementation request, activate the decision-complete plan with the installed CLI:
+
+```sh
+node "<pluginRoot>/scripts/cairn.mjs" goal start --root "<repoRoot>" --goal "<objective>" --plan "docs/plan/<topic>.md" --tasks '[{"id":"task-1","title":"<task>"}]' --criteria "<completion criterion>" --session "<current session_id>"
+```
+
+Use the current Codex hook `session_id` when it is available. If the surface does not expose a stable session ID, omit `--session` and record that the goal is repository-scoped.
+
 ## Procedure
 
-1. Run `node scripts/cairn-state.mjs manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
+1. Run `node "<pluginRoot>/scripts/cairn.mjs" init --root "<repoRoot>"` through the resolved runtime. If the runtime is unavailable, ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly and report that `cairn doctor` or `cairn upgrade` is required.
 2. Read the project-root `MEMORY.md` before repository exploration, tool selection, or delegation.
 3. Read only the relevant `docs/memory/*.md` files referenced by `MEMORY.md` or required by the current task.
-4. Based on the active or assigned model, read `docs/model-guidance/README.md` and only the relevant model guidance.
-5. Run `node scripts/cairn.mjs toolcheck` when available, or `scripts/cairn-toolcheck.mjs` directly, to identify repository stacks and required tools.
-6. If LSP, typecheck, lint, dry-run, or verification tools are missing, run `node scripts/cairn.mjs toolcheck --install` or the closest repository-native install command before treating the tool as unavailable.
+4. Based on the active or assigned model, read `cairn://docs/model-guidance/README.md` and only the relevant installed model guidance.
+5. Run `node "<pluginRoot>/scripts/cairn.mjs" toolcheck --root "<repoRoot>"` to identify repository stacks and required tools.
+6. Treat tool installation as a separate external-state change. Do not install during planning without explicit user approval. After approval, use `toolcheck --install --yes --root "<repoRoot>"` only for pinned/supported installers, or the approved repository-native command. Otherwise record the missing tool and proposed command as a blocker.
 7. Explore the repository with focused search and LSP/symbol tools after tool readiness is confirmed.
 8. Summarize the whole work and affected surfaces, then classify the plan into small executable tasks. Use sub-tasks only when a task needs further breakdown to be verifiable.
 9. Identify the closest available dry-run or check mode for every task that can mutate external state.
@@ -39,9 +53,10 @@ Plan from the whole work down. First understand the full requested outcome and a
    - If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence; do not stop before local implementation solely because subagent tools are unavailable.
    - Keep urgent non-implementation blocking work local when the next step depends immediately on the result.
    - Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, and tell workers they are not alone in the codebase and must not revert others' edits.
-12. Create `docs/plan/<topic>.md` from `templates/work-plan.md`.
+12. Create `docs/plan/<topic>.md` from `cairn://templates/work-plan.md` resolved through the installed runtime.
 13. Add a short index entry to `PLAN.md`.
-14. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
+14. Give every plan and task a stable ID and declare task-level and goal-level required evidence. When the user asked for implementation or continuing execution rather than a plan-only result, start or attach the repository Cairn goal after the plan is decision-complete. Do not create an active goal for consultation or planning-only requests.
+15. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Complexity Triage
 
@@ -111,6 +126,7 @@ Heavy Path flow: plan -> pre-implementation review -> bounded `worker` implement
 - Every plan must explicitly list Heavy Path signals checked, even when Light Path is selected.
 - Every plan must include applied model guidance and rationale.
 - Every plan must include tool readiness results: detected stack, required LSP/check tools, installed tools, and blockers.
+- Every executable plan must include a stable goal ID, stable task IDs, explicit terminal states, and fail-closed required evidence. A missing evidence section never means success.
 - Every implementation task must be small enough to verify with two checks.
 - Heavy Path tasks must include an explicit automated test command and a `Tests:` evidence line; Heavy Path completion cannot rely on generic verification wording without test evidence.
 - The default checks are module acceptance verification and surface integration verification.
@@ -122,13 +138,13 @@ Heavy Path flow: plan -> pre-implementation review -> bounded `worker` implement
 
 ## Tool Readiness Policy
 
-Do not skip LSP, typecheck, lint, dry-run, or verification because the tool is missing.
+Do not silently skip LSP, typecheck, lint, dry-run, or verification because the tool is missing. Tool installation still requires explicit user approval.
 
 - Detect the codebase stack from repository files before choosing tools.
 - Prefer repository-local installation through the existing package manager and lockfile.
 - Use ephemeral tool runners only when project-local installation is not appropriate.
 - Run the tool after installation and record the command result.
-- If installation is impossible, record the command tried, failure output summary, and blocker in `docs/plan/<topic>.md`.
+- If installation was not approved or is impossible, record the proposed or attempted command, failure output summary when applicable, and blocker in `docs/plan/<topic>.md`.
 - Treat "LSP server not installed" as an unresolved blocker until installation or an equivalent symbol-aware fallback has been attempted.
 
 ## Dry-Run Policy
@@ -147,7 +163,7 @@ Prefer repository-native dry-run and check modes before mutating external state.
 TASK: Produce <role> input needed for the <topic> plan.
 EXPECTED OUTCOME: Return concrete decisions, file paths, dependencies, risks, and evidence requirements.
 REQUIRED TOOLS: Read-only repository exploration, tool readiness checks, LSP/symbol tools, local command checks.
-MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Prefer repository evidence. Install or bootstrap missing required tools before declaring them unavailable. Identify assumptions. Treat the user-called/main agent as the orchestrator. Use `explorer` for read-only discovery and `worker` for actual implementation edits or verification when subagent tools are available, regardless of Light Path or Heavy Path. When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing the final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence. When subagent tools are available, allow recursive delegation of bounded sub-tasks. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work. Tell workers they are not alone in the codebase and must not revert others' edits. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Prefer repository evidence. Report missing tools and obtain explicit user approval before any installation. Identify assumptions. Treat the user-called/main agent as the orchestrator. Use `explorer` for read-only discovery and `worker` for actual implementation edits or verification when subagent tools are available, regardless of Light Path or Heavy Path. When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing the final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence. When subagent tools are available, allow recursive delegation of bounded sub-tasks. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work. Tell workers they are not alone in the codebase and must not revert others' edits. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
 MUST NOT DO: Edit production code. Ask the user. Expand scope. Delegate vague or unbounded work.
 CONTEXT: User request, MEMORY.md, relevant docs/memory notes, applied model guidance, repository root.
 ```
