@@ -109,6 +109,7 @@
 - 릴리스 준비 중 발견한 CLI 결함: receipt의 `--exit-code`를 camelCase 옵션으로만 읽던 문제를 수정하고 kebab-case 회귀 테스트를 추가함.
 - PR #33 첫 Windows CI에서 다른 드라이브의 Node PATH를 저장소 내부로 오판한 containment 결함과 세 건의 Windows 테스트 실행/경로 가정을 발견함. 플랫폼별 path API, `.cmd` shell 실행, cross-drive 회귀 검증으로 수정함.
 - PR #33 두 번째 Windows CI에서는 E2E 준비용 npm prefix의 공백이 `npm.cmd` shell 인자에서 분리되는 별도 fixture 결함만 남음. 실제 검증 대상인 Codex 설치 경로와 프로젝트 경로의 공백은 유지하고 npm prefix만 공백 없는 fixture 이름으로 분리함.
+- PR #33 세 번째 Windows CI에서는 설치된 npm 패키지 경로의 상위 `node_modules`까지 복사 제외 대상으로 해석해 플러그인 내용 전체가 누락됨. 복사 필터를 전체 상대 경로가 아닌 현재 항목 이름 기준으로 바꾸고, 상위 경로에 `node_modules`가 포함된 Windows 회귀 검증을 추가함.
 - 도구 준비: Node.js 정상, GitHub `dspaudio`, npm `wonkyoo.nam`, npm latest `0.1.11` 확인.
 - Tests: `npm test` 33/33 통과. pack과 publish dry-run의 prepack에서도 각각 33/33 통과.
 - 모듈 수용: `npm run check` 통과, `package.json`과 `.codex-plugin/plugin.json` 모두 `0.2.0` 확인.

@@ -54,6 +54,7 @@ test("packed install remains self-contained after the npm package source is remo
     assert.equal(npmInstall.status, 0, npmInstall.stderr);
     const packageRoot = join(prefix, "node_modules", "cairn-ai");
     const packageCli = join(packageRoot, "scripts", "cairn.mjs");
+    await stat(join(packageRoot, ".codex-plugin", "plugin.json"));
 
     const lifecycleInstall = run(process.execPath, [packageCli, "install"], { cwd: unrelated, env });
     assert.equal(lifecycleInstall.status, 0, lifecycleInstall.stderr);

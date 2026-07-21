@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, posix, relative, resolve, win32 } from "node:path";
+import { dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   RUNTIME_LOCATOR_SCHEMA_VERSION,
@@ -115,7 +115,7 @@ async function copyPlugin() {
   await mkdir(dirname(installedPluginRoot), { recursive: true });
   await cp(pluginRoot, installedPluginRoot, {
     recursive: true,
-    filter: (source) => !pathHasSegment(relative(pluginRoot, source), ".git") && !pathHasSegment(relative(pluginRoot, source), "node_modules"),
+    filter: shouldCopyPluginPath,
   });
   const manifestPath = join(installedPluginRoot, ".codex-plugin", "plugin.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -311,6 +311,11 @@ function append(config, block) {
 
 export function pathHasSegment(path, segment) {
   return path.split(/[\\/]+/).includes(segment);
+}
+
+export function shouldCopyPluginPath(source) {
+  const name = source.split(/[\\/]+/).at(-1);
+  return name !== ".git" && name !== "node_modules";
 }
 
 export function samePath(left, right) {

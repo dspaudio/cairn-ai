@@ -9,6 +9,7 @@ import {
   hookHash,
   pathHasSegment,
   removeCairnConfig,
+  shouldCopyPluginPath,
   splitSections,
   updateConfig,
 } from "../scripts/cairn-lifecycle.mjs";
@@ -211,6 +212,12 @@ test("path segment filtering handles platform separators", () => {
   assert.equal(pathHasSegment(["nested", ".git", "config"].join("\\"), ".git"), true);
   assert.equal(pathHasSegment(["nested", "node_modules", "pkg"].join("/"), "node_modules"), true);
   assert.equal(pathHasSegment(["nested", "modules", "pkg"].join("/"), "node_modules"), false);
+});
+
+test("plugin copy filtering ignores excluded names outside the package root", () => {
+  assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\.codex-plugin"), true);
+  assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\node_modules"), false);
+  assert.equal(shouldCopyPluginPath("/tmp/node_modules/cairn-ai/.git"), false);
 });
 
 test("install doctor uninstall lifecycle uses isolated homes", async () => {
