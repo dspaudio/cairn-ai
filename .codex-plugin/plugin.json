@@ -1,6 +1,6 @@
 {
   "name": "cairn",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity.",
   "author": {
     "name": "WkNam"
@@ -22,23 +22,17 @@
     ],
     "defaultPrompt": [
       "Use Cairn to create MEMORY.md and PLAN.md for this repository.",
-      "At the start of each task, every agent must read the project-root MEMORY.md for domain knowledge and repository policy before planning, implementation, review, or delegation.",
-      "Run cairn-toolcheck before planning implementation work.",
-      "Resolve Cairn scripts, templates, commands, agents, and model guidance from the installed plugin runtime locator; never search for those runtime files in the target repository. Keep the target repository root separate and pass it explicitly to Cairn commands.",
-      "Before non-trivial implementation, run cairn-plan for this task without asking me for discoverable facts.",
-      "When planning, first understand the whole work, then classify it into small executable tasks; if a task needs further breakdown, split it into sub-tasks.",
-      "The user-called/main agent is the orchestrator: plan, assign, verify, and record evidence; actual implementation edits must be delegated to worker subagents whenever subagent tools are available, on both Light Path and Heavy Path.",
-      "When the subagent tool provides a progress-reporting channel, subagents report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, the orchestrator relays observable events such as assignment, waiting, and final completion.",
-      "When a delegated subagent finishes, it must provide its final report before leaving; after the orchestrator captures the final report and evidence, the orchestrator must close or release the completed subagent, then review the final report and evidence before marking the work complete.",
-      "When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents; every child subagent must read MEMORY.md, keep scope, and preserve others' edits.",
-      "If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence; do not stop before local implementation solely because subagent tools are unavailable.",
-      "Record Light Path or Heavy Path complexity triage in docs/plan/<topic>.md before mutating files.",
-      "Run cairn-work from the current PLAN.md and pass dry-run/check, module acceptance, and surface integration gates.",
-      "For implementation or continued-execution requests, treat the request itself as authorization to persist one active Cairn goal with stable, ordered task steps, even when the user does not mention a goal. Create or attach it after the decision-complete plan and before implementation. Keep the full task roadmap and current task in hook context so a side question returns to the original work unless the user explicitly pauses, stops, or switches tasks. Do not create a goal for consultation, explanation, or plan-only requests. After a task passes its required bound receipts, advance immediately to the next task and continue until goal-level final review completes; active is never a completion state.",
-      "Missing, failed, skipped, stale, or placeholder evidence never completes a task. A worker may report only its assigned task; the main agent reviews the handoff and advances the goal.",
-      "If progress cannot continue, explicitly pause, block with a concrete reason, or cancel the Cairn goal instead of silently stopping. Do not repeatedly block a re-entered stop hook in the same turn.",
-      "Tool installation is an external-state change: report the proposal and obtain explicit user approval before using a pinned/supported installer.",
-      "If I ask a side question, status question, or narrow clarification while a plan or task is still active, answer it briefly and then resume the previous active work unless I explicitly ask you to pause, stop, or switch tasks."
+      "Every agent must read the project-root MEMORY.md before planning, implementation, review, or delegation. Keep MEMORY.md and PLAN.md as short indexes; open only current-task details.",
+      "Resolve Cairn runtime resources only through the installed locator, keep repoRoot separate, and run toolcheck before implementation planning. Tool installation requires explicit approval.",
+      "Run cairn-plan before non-trivial changes. Understand the whole work, split it into executable tasks/sub-tasks, record Light/Heavy Path triage, and finalize a decision-complete implementation plan before editing.",
+      "The user-called/main agent is the orchestrator. Delegate bounded implementation edits to worker subagents when allowed; otherwise the main agent implements and records takeover evidence.",
+      "With a progress-reporting channel, subagents report start, direction, periodic progress, and finish; relay those events immediately. Otherwise relay assignment, waiting, and final completion.",
+      "Delegated agents read MEMORY.md, preserve others' edits, return a final report, and may recursively delegate only bounded work. Capture evidence, close/release the agent, then review its report before completion.",
+      "Implementation/continue requests authorize an active Cairn goal even without the word goal. After MEMORY.md, write an initial plan with triage-plan active; before exploration call update_plan, then create_goal, then start/attach the repository goal. Triage finalizes the repository and UI plans before implementation. Keep roadmap/current-task recovery context; consultation, explanation, and plan-only requests stay goal-free.",
+      "Use a test contract first: spend reasoning on requirements, invariants, boundaries, and failure modes; design executable tests before implementation; make the minimum implementation that passes. Treat tool exit codes and machine summaries as authoritative, and expand context only for failing tests.",
+      "Missing, failed, skipped, stale, or placeholder evidence never completes work. Advance a UI step only after the matching repository task passes bound evidence; workers report only assigned tasks; active is not complete.",
+      "Use goal verify -- <argv>, quiet state mutations, and concise success summaries. Run focused tests and one final full check. Inspect package lifecycle scripts before packaging: run normal npm pack --dry-run by default; never skip content-producing or unknown scripts with --ignore-scripts, and use it only for absent or proven content-neutral scripts while evidence is fresh.",
+      "If blocked, pause/block/cancel explicitly. Answer side questions briefly, then resume the current task unless asked to pause, stop, or switch."
     ]
   }
 }

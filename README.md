@@ -81,7 +81,7 @@ The harness creates and maintains these files at the target repository root.
 - `docs/memory/*.md`: detailed knowledge by domain.
 - `PLAN.md`: short index of active and completed work topics.
 - `docs/plan/*.md`: detailed execution plans.
-- `.cairn/state.json`: git-ignored, versioned active goal/task/receipt state used for interruption recovery and scoped stop gates.
+- `.cairn/state.json`: git-ignored, versioned active goal/task/evidence-record state used for interruption recovery and scoped stop gates.
 
 Runtime scripts, templates, commands, agents, and model guidance stay in the installed plugin root. Runtime locator files let Codex, Claude Code, and Antigravity share that installed copy without copying Cairn internals into the target repository.
 
@@ -113,13 +113,15 @@ cairn toolcheck
 - `cairn doctor`: diagnoses Codex settings, installation, hook trust state, Claude Code mirror files, and Antigravity mirror files.
 - `cairn uninstall`: removes Cairn-added Codex settings, cache, Claude Code mirror files, and Antigravity mirror files.
 - `cairn toolcheck`: detects repository stacks and checks or installs required LSP and verification tools.
-- `cairn goal ...`: starts, inspects, pauses, resumes, blocks, cancels, and completes a persisted repository goal; task completion requires bound successful receipts.
+- `cairn goal ...`: starts, inspects, pauses, resumes, blocks, cancels, and completes a persisted repository goal; the default tool-bound policy records successful evidence by executing `goal verify -- <argv>`. The legacy `goal receipt` command imports declared evidence only.
 - `cairn-memory`: explores domain knowledge and updates `MEMORY.md`.
 - `cairn-plan`: creates a decision-complete plan under `docs/plan/`.
 - `cairn-work`: executes the next module task in the current `PLAN.md` with two verification gates.
 - `cairn-review`: reviews completed tasks against plan, memory, and evidence.
 
-On every `UserPromptSubmit`, Cairn injects model-visible guidance that an implementation or continued-execution request authorizes goal creation even if the user never says “goal.” An active goal also injects its full ordered task roadmap, task statuses, and current task so the agent can answer a side question and return to the original work. The agent creates or attaches the goal after a decision-complete plan and before implementation, while consultation, explanation, and plan-only requests remain goal-free.
+On every `UserPromptSubmit`, Cairn injects model-visible guidance that an implementation or continued-execution request authorizes goal creation even if the user never says “goal.” The agent first writes an initial repository plan with triage as the active task, then—before exploration or triage—shows the same roadmap through Codex `update_plan` and `create_goal` when available and starts the repository Cairn goal. Triage updates both plans to a decision-complete implementation revision before implementation begins. An active goal keeps the full ordered roadmap, statuses, and current task in hook context so a side question returns to the original work. Consultation, explanation, and plan-only requests remain goal-free.
+
+For token-efficient execution, Cairn puts reasoning into a focused executable test contract—requirements, invariants, boundaries, and failure modes—before implementation. Implementation receives the failing contract and bounded file scope, then makes the minimum passing change. Tool exit codes and machine summaries decide success; successful output stays concise and only failures expand context. Verification climbs from focused tests to one final full check. Before package verification, inspect lifecycle scripts and run normal `npm pack --dry-run` by default: content-producing or unknown scripts must never use `--ignore-scripts`; only absent or proven content-neutral scripts may use it while the full-check evidence remains fresh. Successful state mutations support `--quiet` so growing goal JSON does not consume the conversation budget.
 
 Install and upgrade create `*.cairn-backup-*` backups before modifying `~/.codex/config.toml`. They also write runtime locators for every surface. The source plugin manifest stays validator-friendly; only the installed cache copy gets a `hooks` field to activate Codex hooks. The current custom lifecycle remains in use; lifecycle upgrade should run from the published/global package, not from the cached copy that it replaces.
 

@@ -48,5 +48,5 @@ CONTEXT: docs/plan/<topic>.md, MEMORY.md, relevant docs/memory notes, changed fi
 - Dry-run or check evidence is present when required, or the plan records why no dry-run exists.
 - Failed gates followed the bounded loop policy and did not continue past two verification passes without a recorded blocker.
 - Review evidence exists in `docs/plan/<topic>.md`.
-- Goal-level final review evidence is stored as a successful structured receipt before the goal is marked `completed`.
+- Goal-level final review evidence is stored as a successful structured evidence record before the goal is marked `completed`.
 - The next agent can understand verification without rereading the full conversation.

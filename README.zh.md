@@ -65,11 +65,13 @@ harness 会在目标 repository root 创建并维护这些文件。
 
 - `MEMORY.md`: persistent domain knowledge 的短索引。
 - `docs/memory/*.md`: 按 domain 记录的详细 knowledge。
-- `.cairn/state.json`: 用于中断恢复和 scoped stop gate 的 git-ignored goal/task/receipt 状态。
+- `.cairn/state.json`: 用于中断恢复和 scoped stop gate 的 git-ignored goal/task/evidence-record 状态。
 - `PLAN.md`: active 和 completed work topics 的短索引。
 - `docs/plan/*.md`: detailed execution plans。
 
 root files 保持简短，细节移到 `docs/` 下，让 agents 只读取当前任务需要的 context。
+
+为节省 token，先把需求、不变量、边界和失败模式写成 test contract。以 `goal verify -- <argv>` 的 tool exit code 为判定依据，成功时保持简短，只在失败时扩展 context。检查 package lifecycle，并默认运行正常的 `npm pack --dry-run`。content-producing 或未知 script 不得使用 `--ignore-scripts`；只有 script 不存在或已证明为 content-neutral，且 full-check evidence 仍然新鲜时才可使用。
 
 ## Commands
 
