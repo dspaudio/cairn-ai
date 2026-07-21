@@ -2,9 +2,9 @@
 
 ## 계획 단계
 
-- 현재 단계: `0.2.2` 산출물 준비·검증 완료. `dev` 대상 PR 생성 전입니다.
+- 현재 단계: 완료. dev/main 병합과 npm 게시·registry 확인까지 끝났습니다.
 - UI 동기화: Codex UI plan과 goal을 먼저 생성했습니다.
-- 다음 전환: `task-release-triage`의 tool-bound evidence를 기록한 뒤 `task-release-prepare`로 전환합니다.
+- 최종 동기화: 모든 repository task의 tool-bound evidence를 확인한 뒤 UI plan과 goal을 완료합니다.
 
 ## 목표
 
@@ -123,13 +123,16 @@
 - [x] 초기 repository plan 작성
 - [x] 릴리스 트리아지와 decision-complete 갱신
 - [x] 0.2.2 준비·검증
-- [ ] dev PR 병합
-- [ ] main PR 병합
-- [ ] npm 게시·최종 확인
+- [x] dev PR 병합
+- [x] main PR 병합
+- [x] npm 게시·최종 확인
 
 ## 실행 증거
 
 - Tests: npm 10.9.8로 `npm run check` 통과. Cairn tool-bound 결과는 61줄, digest `sha256:70d18cc7603a8b43d49199e36e6c94e3c190d71d518ab2411d55b9a39fe35c54`입니다.
 - Module acceptance: `package.json`과 `.codex-plugin/plugin.json`이 모두 `0.2.2`이고 `git diff --check`가 통과했습니다.
 - Surface integration: 정상 `prepack`을 포함한 `npm pack --dry-run --json`과 `npm publish --dry-run --access public --tag latest`가 각각 성공했습니다. 결과 digest는 `sha256:00c99c5126c26e066a12701b0f83d19af13aa68630278f246c3f9a1c84966e79`, `sha256:c84b324b98f3df18f76ff2ce9cdbda08ddbe3250169fb9c56fd7446fceb40643`입니다.
-- 검증 실패와 blocker: 없음.
+- PR #39: head `b7690b1da0eabcb2be8f0ee9c4ff74bdecb71360`에서 Ubuntu·Windows CI 성공을 확인한 뒤 `dev`에 merge commit `a7496e52ccd786c6453dd6a416d2a9124c21122f`로 병합했습니다. fetch 후 release commit 포함 관계와 `origin/dev` head 일치를 확인했습니다.
+- PR #40: `dev` head `a7496e52ccd786c6453dd6a416d2a9124c21122f`에서 새 CI run #65의 Ubuntu·Windows 성공을 확인한 뒤 `main`에 merge commit `521782bf37dd0ab269a14caf7b19660c33243018`로 병합했습니다. fetch 후 dev merge commit 포함 관계와 `origin/main` head 일치를 확인했습니다.
+- npm: `origin/main@521782bf37dd0ab269a14caf7b19660c33243018`의 clean detached worktree에서 47/47 테스트, 62-file publish dry-run을 재확인하고 `cairn-ai@0.2.2`를 `latest`로 게시했습니다. registry가 version/latest `0.2.2`, tarball `https://registry.npmjs.org/cairn-ai/-/cairn-ai-0.2.2.tgz`, shasum `063ad38c3e4212c6880088ee4bc3560a35926044`를 반환했습니다.
+- 검증 실패와 blocker: 최초 실제 publish는 샌드박스 DNS `ENOTFOUND`로 종료됐습니다. 동일 main SHA에서 네트워크 권한을 명시적으로 승인받아 한 번 재실행했고 성공했습니다. 코드·패키지 검증 실패나 잔여 blocker는 없습니다.
