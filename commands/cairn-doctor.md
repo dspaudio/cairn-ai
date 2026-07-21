@@ -2,13 +2,7 @@
 
 Goal: diagnose Cairn installation status.
 
-Run:
-
-```sh
-node scripts/cairn.mjs doctor
-```
-
-With the published package:
+Run from the published or global package:
 
 ```sh
 bunx cairn-ai@latest doctor
@@ -26,3 +20,4 @@ Checks:
 - hook trust state.
 - Claude Code commands and agents mirror files.
 - Antigravity IDE/CLI skills and workflows mirror files.
+- Installed runtime locators and their referenced scripts, templates, and model guidance.

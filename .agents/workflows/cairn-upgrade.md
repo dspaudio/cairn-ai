@@ -8,10 +8,6 @@ Run:
 bunx cairn-ai@latest upgrade
 ```
 
-When running from local source:
-
-```sh
-node scripts/cairn.mjs upgrade
-```
+Upgrade must run from the package/global source because the cached plugin is replaced. Do not invoke upgrade from a cached plugin locator.
 
 After upgrade, check status with the `cairn-doctor` workflow.

@@ -15,6 +15,8 @@ Every review run and every delegated review agent must read the project-root `ME
 
 When subagent tools are available, each agent may recursively delegate bounded review sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
 
+Resolve any `cairn://...` resource through `references/cairn-runtime.json` next to this `SKILL.md` (or this skill's `../..` source root during development). Never look for Cairn runtime resources in the target repository.
+
 ## Procedure
 
 1. Read the completed task in `docs/plan/<topic>.md`.
@@ -46,4 +48,5 @@ CONTEXT: docs/plan/<topic>.md, MEMORY.md, relevant docs/memory notes, changed fi
 - Dry-run or check evidence is present when required, or the plan records why no dry-run exists.
 - Failed gates followed the bounded loop policy and did not continue past two verification passes without a recorded blocker.
 - Review evidence exists in `docs/plan/<topic>.md`.
+- Goal-level final review evidence is stored as a successful structured receipt before the goal is marked `completed`.
 - The next agent can understand verification without rereading the full conversation.

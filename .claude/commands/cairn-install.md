@@ -2,11 +2,7 @@
 
 Install Cairn into Codex, Claude Code, and Antigravity.
 
-```sh
-node scripts/cairn.mjs install
-```
-
-Published package:
+Installation must run from the package/global source because the cached installation is the destination. Do not copy runtime files into the target project and do not invoke install from the cached plugin locator.
 
 ```sh
 bunx cairn-ai@latest install

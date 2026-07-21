@@ -45,12 +45,14 @@ When a delegated subagent finishes, it provides a final report before leaving. A
 `cairn toolcheck` inspects the current repository for JavaScript, TypeScript, Python, PHP, Java, Kotlin, Swift, Go, and Rust stacks, then checks the matching LSP and verification tools.
 
 ```sh
-cairn toolcheck
-cairn toolcheck --install
+cairn toolcheck --root .
+# After explicit approval only:
+cairn toolcheck --install --yes --root .
 ```
 
 - `toolcheck` reports detected stacks and missing tools.
-- `toolcheck --install` attempts the closest project-local or repository-native install path, such as package-manager dev dependencies, Composer dev dependencies, `uv`, Java LSP bootstrap, `go install`, or `rustup component add`.
+- Default checks are read-only, bounded by a timeout, and do not execute repository-local wrappers merely to discover them.
+- `toolcheck --install` requires both `--yes` and explicit user approval. Unpinned or checksum-free installers are unavailable rather than silently downloading `latest`.
 - Cairn plans record detected stack, required tools, install commands, and blockers.
 - A missing LSP server is not a valid reason to skip precise codebase exploration until installation or an equivalent symbol-aware fallback has been attempted.
 
@@ -69,7 +71,7 @@ Cairn only applies model-specific adjustment to Claude-family and Codex-family m
 - Claude-family: useful for long context, policy interpretation, and plan/evidence review.
 - Codex-family: useful for small implementation tasks, explicit file edits, command-based verification, and bounded `worker` tasks.
 
-Detailed guidance lives in `docs/model-guidance/README.md`, `docs/model-guidance/claude.md`, and `docs/model-guidance/codex.md`.
+Detailed guidance lives in the installed plugin and is referenced as `cairn://docs/model-guidance/README.md`, `cairn://docs/model-guidance/claude.md`, and `cairn://docs/model-guidance/codex.md`.
 
 ## Repository Artifacts
 
@@ -77,11 +79,11 @@ The harness creates and maintains these files at the target repository root.
 
 - `MEMORY.md`: short index of persistent domain knowledge.
 - `docs/memory/*.md`: detailed knowledge by domain.
-- `docs/model-guidance/*.md`: Claude and Codex model adjustment guidance.
 - `PLAN.md`: short index of active and completed work topics.
 - `docs/plan/*.md`: detailed execution plans.
+- `.cairn/state.json`: git-ignored, versioned active goal/task/receipt state used for interruption recovery and scoped stop gates.
 
-Root files stay short and details move under `docs/`, so agents only read the context they need.
+Runtime scripts, templates, commands, agents, and model guidance stay in the installed plugin root. Runtime locator files let Codex, Claude Code, and Antigravity share that installed copy without copying Cairn internals into the target repository.
 
 ## Commands
 
@@ -111,12 +113,13 @@ cairn toolcheck
 - `cairn doctor`: diagnoses Codex settings, installation, hook trust state, Claude Code mirror files, and Antigravity mirror files.
 - `cairn uninstall`: removes Cairn-added Codex settings, cache, Claude Code mirror files, and Antigravity mirror files.
 - `cairn toolcheck`: detects repository stacks and checks or installs required LSP and verification tools.
+- `cairn goal ...`: starts, inspects, pauses, resumes, blocks, cancels, and completes a persisted repository goal; task completion requires bound successful receipts.
 - `cairn-memory`: explores domain knowledge and updates `MEMORY.md`.
 - `cairn-plan`: creates a decision-complete plan under `docs/plan/`.
 - `cairn-work`: executes the next module task in the current `PLAN.md` with two verification gates.
 - `cairn-review`: reviews completed tasks against plan, memory, and evidence.
 
-Install and upgrade create `*.cairn-backup-*` backups before modifying `~/.codex/config.toml`. The source plugin manifest stays validator-friendly; only the installed cache copy gets a `hooks` field to activate Codex hooks.
+Install and upgrade create `*.cairn-backup-*` backups before modifying `~/.codex/config.toml`. They also write runtime locators for every surface. The source plugin manifest stays validator-friendly; only the installed cache copy gets a `hooks` field to activate Codex hooks. The current custom lifecycle remains in use; lifecycle upgrade should run from the published/global package, not from the cached copy that it replaces.
 
 Codex uses `skills/` and `commands/`. Claude Code uses mirrored commands and agent definitions under `.claude/`. Antigravity uses `.agents/workflows` and global skills mirrors.
 

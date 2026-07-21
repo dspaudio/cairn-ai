@@ -15,9 +15,15 @@ Every delegated agent must read the project-root `MEMORY.md` before doing its as
 
 When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
 
+## Runtime Location
+
+Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's `scripts/`, `templates/`, commands, agents, and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never look for Cairn runtime files in the target repository or derive the plugin root from the current working directory.
+
+Keep the target repository root separate. Pass it explicitly with `--root <repoRoot>` when invoking the installed runtime. Only repository artifacts such as `MEMORY.md`, `PLAN.md`, `docs/memory/`, `docs/plan/`, and `.cairn/` belong there.
+
 ## Procedure
 
-1. Run `node scripts/cairn-state.mjs manual` if it exists. Otherwise ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly.
+1. Run `node "<pluginRoot>/scripts/cairn.mjs" init --root "<repoRoot>"` through the resolved Cairn runtime. If the runtime is unavailable, ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly and report that `cairn doctor` or `cairn upgrade` is required.
 2. Explore the repository before asking the user.
 3. Delegate when it materially improves speed or quality instead of asking the user.
    - `explorer`: read-only domain discovery, boundaries, invariants, policies, contradictions, and stale facts when available.

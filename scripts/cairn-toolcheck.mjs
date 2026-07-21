@@ -1,58 +1,140 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
+import { accessSync, constants, realpathSync, statSync } from "node:fs";
+import { lstat, readdir } from "node:fs/promises";
+import { delimiter, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-if (isCliEntry()) {
-  const root = process.cwd();
-  const install = process.argv.includes("--install");
-  const json = process.argv.includes("--json");
-  const report = await createReport({ root, install });
+export const DEFAULT_TIMEOUT_MS = 10_000;
 
-  if (json) {
-    console.log(JSON.stringify(report, null, 2));
-  } else {
-    console.log(`Cairn toolcheck: ${report.root}`);
-    console.log(`Detected stacks: ${report.detected.length > 0 ? report.detected.join(", ") : "none"}`);
-    for (const result of report.results) {
-      const prefix = result.ok ? "OK" : "MISSING";
-      const installedText = result.installed ? " installed" : "";
-      console.log(`${prefix}${installedText} ${result.name} - ${result.reason}`);
-      if (!result.ok && result.installCommand) console.log(`  install: ${result.installCommand}`);
+if (isCliEntry()) {
+  try {
+    const options = parseCliArgs(process.argv.slice(2));
+    const report = await createReport(options);
+
+    if (options.json) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      printReport(report);
+    }
+
+    if (report.install.refused || report.results.some((result) => !result.ok)) process.exitCode = 1;
+  } catch (error) {
+    console.error(`Cairn toolcheck error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 2;
+  }
+}
+
+export function parseCliArgs(args, cwd = process.cwd()) {
+  let root = cwd;
+  let install = false;
+  let yes = false;
+  let json = false;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "--install") install = true;
+    else if (argument === "--yes") yes = true;
+    else if (argument === "--json") json = true;
+    else if (argument === "--root") {
+      const value = args[index + 1];
+      if (!value || value.startsWith("--")) throw new Error("--root requires a path");
+      root = value;
+      index += 1;
+    } else if (argument.startsWith("--root=")) {
+      const value = argument.slice("--root=".length);
+      if (!value) throw new Error("--root requires a path");
+      root = value;
     }
   }
 
-  if (report.results.some((result) => !result.ok)) process.exitCode = 1;
+  return { root: resolve(cwd, root), install, yes, json };
 }
 
-export async function createReport({ root = process.cwd(), install = false, runner = run } = {}) {
-  const entries = await collectEntries(root);
+export async function createReport({
+  root = process.cwd(),
+  install = false,
+  yes = false,
+  runner = run,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  localChecker = localExecutableAvailable,
+} = {}) {
+  const resolvedRoot = resolve(root);
+  const entries = await collectEntries(resolvedRoot);
   const detected = detectStacks(entries);
-  const requirements = buildRequirements(detected, entries, (command, args) => commandOk(command, args, root, runner));
+  const requirements = buildRequirements(detected, entries);
   const results = [];
+  const installRefused = install && !yes;
 
   for (const requirement of requirements) {
-    let ok = commandOk(requirement.command, requirement.args, root, runner);
+    let check = inspectCommand(requirement, {
+      root: resolvedRoot,
+      runner,
+      timeoutMs,
+      localChecker,
+    });
     let installed = false;
-    let installResult = null;
-    if (!ok && install && requirement.install) {
-      installResult = runner(requirement.install.command, requirement.install.args);
-      installed = installResult.status === 0;
-      ok = commandOk(requirement.command, requirement.args, root, runner);
+    let installDiagnostic = null;
+    let installRefusal = null;
+
+    if (!check.ok && install) {
+      if (!yes) {
+        installRefusal = "explicit-confirmation-required";
+      } else if (!requirement.install) {
+        installRefusal = "installer-unavailable";
+      } else {
+        installDiagnostic = execute(requirement.install.command, requirement.install.args, {
+          root: resolvedRoot,
+          runner,
+          timeoutMs,
+        });
+        installed = installDiagnostic.status === 0;
+        if (installed) {
+          check = inspectCommand(requirement, {
+            root: resolvedRoot,
+            runner,
+            timeoutMs,
+            localChecker,
+          });
+        }
+      }
     }
+
     results.push({
       name: requirement.name,
       reason: requirement.reason,
-      ok,
+      ok: check.ok,
+      availability: check.availability,
+      source: check.source,
+      candidate: check.candidate,
+      check: check.diagnostic,
       installed,
-      installCommand: requirement.install ? [requirement.install.command, ...requirement.install.args].join(" ") : null,
-      installStatus: installResult?.status ?? null,
+      installCommand: requirement.install ? formatCommand(requirement.install) : null,
+      installStatus: installDiagnostic?.status ?? null,
+      install: {
+        available: Boolean(requirement.install),
+        unavailableReason: requirement.installUnavailableReason ?? null,
+        requested: install,
+        attempted: Boolean(installDiagnostic),
+        refusal: installRefusal,
+        diagnostic: installDiagnostic,
+      },
     });
   }
 
-  return { root, detected, results };
+  return {
+    schemaVersion: 1,
+    root: resolvedRoot,
+    timeoutMs,
+    detected,
+    install: {
+      requested: install,
+      confirmed: install && yes,
+      refused: installRefused,
+      refusalReason: installRefused ? "--install requires the additional --yes confirmation flag" : null,
+    },
+    results,
+  };
 }
 
 export async function collectEntries(base) {
@@ -63,7 +145,8 @@ export async function collectEntries(base) {
       const path = join(dir, entry);
       const relativePath = normalizePath(relative(base, path));
       if (relativePath === "test/fixtures" || relativePath.startsWith("test/fixtures/")) continue;
-      const info = await stat(path);
+      const info = await lstat(path);
+      if (info.isSymbolicLink()) continue;
       if (info.isDirectory()) await walk(path);
       else output.push(relativePath);
     }
@@ -86,36 +169,30 @@ export function detectStacks(paths) {
   return [...stacks];
 }
 
-export function buildRequirements(stacks, entries = [], commandAvailable = commandOk, platform = process.platform) {
+export function buildRequirements(stacks, entries = [], _commandAvailable = commandOk, platform = process.platform) {
   const requirements = [];
   if (stacks.includes("javascript")) {
     requirements.push(req("node", ["--version"], "JavaScript runtime for package scripts and CLI checks"));
   }
   if (stacks.includes("typescript")) {
-    const pm = packageManager(entries);
-    requirements.push(req("typescript-language-server", ["--version"], "TypeScript LSP server", installDev(pm, ["typescript", "typescript-language-server"])));
-    requirements.push(req("tsc", ["--version"], "TypeScript compiler verification", installDev(pm, ["typescript"])));
+    requirements.push(unsafeReq("typescript-language-server", ["--version"], "TypeScript LSP server", "automatic package installation is disabled without pinned package versions"));
+    requirements.push(unsafeReq("tsc", ["--version"], "TypeScript compiler verification", "automatic package installation is disabled without pinned package versions"));
   }
   if (stacks.includes("python")) {
-    const uv = commandAvailable("uv", ["--version"]);
-    const project = entries.includes("pyproject.toml");
-    const basedpyrightInstall = pythonInstall(uv, project, "basedpyright", platform);
-    const ruffInstall = pythonInstall(uv, project, "ruff", platform);
-    requirements.push(req("basedpyright", ["--version"], "Python LSP/type checker", basedpyrightInstall));
-    requirements.push(req("ruff", ["--version"], "Python lint and format checker", ruffInstall));
+    requirements.push(unsafeReq("basedpyright", ["--version"], "Python LSP/type checker", "automatic Python package installation is disabled without pinned package versions"));
+    requirements.push(unsafeReq("ruff", ["--version"], "Python lint and format checker", "automatic Python package installation is disabled without pinned package versions"));
   }
   if (stacks.includes("php")) {
     const composerProject = entries.includes("composer.json");
-    const composerTools = ["phpactor/phpactor", "phpstan/phpstan", "friendsofphp/php-cs-fixer"];
     requirements.push(req("php", ["--version"], "PHP runtime for Composer scripts and CLI checks"));
     if (composerProject) requirements.push(req("composer", ["--version"], "PHP package manager for project-local tool installation"));
-    requirements.push(req("phpactor", ["--version"], "PHP LSP server", composerProject ? composerInstall(composerTools) : null));
-    requirements.push(req("phpstan", ["--version"], "PHP static analysis verification", composerProject ? composerInstall(composerTools) : null));
-    requirements.push(req("php-cs-fixer", ["--version"], "PHP formatting verification", composerProject ? composerInstall(composerTools) : null));
+    requirements.push(unsafeReq("phpactor", ["--version"], "PHP LSP server", "automatic Composer package installation is disabled without pinned package versions"));
+    requirements.push(unsafeReq("phpstan", ["--version"], "PHP static analysis verification", "automatic Composer package installation is disabled without pinned package versions"));
+    requirements.push(unsafeReq("php-cs-fixer", ["--version"], "PHP formatting verification", "automatic Composer package installation is disabled without pinned package versions"));
   }
   if (stacks.includes("java")) {
     addJvmRequirements(requirements);
-    requirements.push(req("jdtls", ["--version"], "Java LSP server", jdtlsInstall(platform)));
+    requirements.push(unsafeReq("jdtls", ["--version"], "Java LSP server", "checksum-free JDTLS latest downloads are disabled"));
     addJvmBuildToolRequirements(requirements, entries);
   }
   if (stacks.includes("kotlin")) {
@@ -132,12 +209,12 @@ export function buildRequirements(stacks, entries = [], commandAvailable = comma
     }
   }
   if (stacks.includes("go")) {
-    requirements.push(req("gopls", ["version"], "Go LSP server", { command: "go", args: ["install", "golang.org/x/tools/gopls@latest"] }));
-    requirements.push(req("golangci-lint", ["--version"], "Go lint verification", { command: "go", args: ["install", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"] }));
+    requirements.push(unsafeReq("gopls", ["version"], "Go LSP server", "unpinned go install targets are disabled"));
+    requirements.push(unsafeReq("golangci-lint", ["--version"], "Go lint verification", "unpinned go install targets are disabled"));
   }
   if (stacks.includes("rust")) {
-    requirements.push(req("rust-analyzer", ["--version"], "Rust LSP server", { command: "rustup", args: ["component", "add", "rust-analyzer"] }));
-    requirements.push(req("cargo", ["clippy", "--version"], "Rust clippy verification", { command: "rustup", args: ["component", "add", "clippy"] }));
+    requirements.push(unsafeReq("rust-analyzer", ["--version"], "Rust LSP server", "automatic rustup changes are disabled without a pinned toolchain manifest"));
+    requirements.push(unsafeReq("cargo", ["clippy", "--version"], "Rust clippy verification", "automatic rustup changes are disabled without a pinned toolchain manifest"));
   }
   return requirements;
 }
@@ -152,12 +229,12 @@ export function addJvmRequirements(requirements) {
 }
 
 export function addJvmBuildToolRequirements(requirements, entries = []) {
-  if (entries.includes("gradlew.bat")) pushUnique(requirements, req("gradlew.bat", ["--version"], "Gradle wrapper availability"));
-  else if (entries.includes("gradlew")) pushUnique(requirements, req("./gradlew", ["--version"], "Gradle wrapper availability"));
+  if (entries.includes("gradlew.bat")) pushUnique(requirements, req("gradlew.bat", ["--version"], "Gradle wrapper availability", null, { localOnly: true }));
+  else if (entries.includes("gradlew")) pushUnique(requirements, req("./gradlew", ["--version"], "Gradle wrapper availability", null, { localOnly: true }));
   else if (entries.includes("build.gradle") || entries.includes("build.gradle.kts")) pushUnique(requirements, req("gradle", ["--version"], "Gradle availability"));
-  if (entries.includes("mvnw.cmd")) pushUnique(requirements, req("mvnw.cmd", ["--version"], "Maven wrapper availability"));
-  else if (entries.includes("mvnw.bat")) pushUnique(requirements, req("mvnw.bat", ["--version"], "Maven wrapper availability"));
-  else if (entries.includes("mvnw")) pushUnique(requirements, req("./mvnw", ["--version"], "Maven wrapper availability"));
+  if (entries.includes("mvnw.cmd")) pushUnique(requirements, req("mvnw.cmd", ["--version"], "Maven wrapper availability", null, { localOnly: true }));
+  else if (entries.includes("mvnw.bat")) pushUnique(requirements, req("mvnw.bat", ["--version"], "Maven wrapper availability", null, { localOnly: true }));
+  else if (entries.includes("mvnw")) pushUnique(requirements, req("./mvnw", ["--version"], "Maven wrapper availability", null, { localOnly: true }));
   else if (entries.includes("pom.xml")) pushUnique(requirements, req("mvn", ["--version"], "Maven availability"));
 }
 
@@ -165,6 +242,8 @@ export function pushUnique(requirements, requirement) {
   if (!requirements.some((candidate) => candidate.name === requirement.name)) requirements.push(requirement);
 }
 
+// Kept for API compatibility. Callers may show these commands, but buildRequirements
+// no longer attaches an unpinned command to an automatically executable requirement.
 export function composerInstall(packages) {
   return { command: "composer", args: ["require", "--dev", ...packages] };
 }
@@ -176,19 +255,24 @@ export function pythonInstall(uv, project, tool, platform = process.platform) {
   return { command: "python3", args: ["-m", "pip", "install", "--user", tool] };
 }
 
-export function jdtlsInstall(platform = process.platform) {
-  const url = "https://download.eclipse.org/jdtls/milestones/latest/jdt-language-server-latest.tar.gz";
-  if (platform === "win32") {
-    return {
-      command: "powershell",
-      args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", `New-Item -ItemType Directory -Force .cairn/tools | Out-Null; Invoke-WebRequest -Uri ${url} -OutFile .cairn/tools/jdtls.tar.gz; tar -xzf .cairn/tools/jdtls.tar.gz -C .cairn/tools`],
-    };
-  }
-  return { command: "bash", args: ["-lc", `mkdir -p .cairn/tools && curl -L ${url} | tar -xz -C .cairn/tools`] };
+export function jdtlsInstall(_platform = process.platform) {
+  return null;
 }
 
-export function req(command, args, reason, installCommand = null) {
-  return { name: command, command, args, reason, install: installCommand };
+export function req(command, args, reason, installCommand = null, options = {}) {
+  return {
+    name: command,
+    command,
+    args,
+    reason,
+    install: installCommand,
+    installUnavailableReason: options.installUnavailableReason ?? null,
+    localOnly: options.localOnly ?? false,
+  };
+}
+
+export function unsafeReq(command, args, reason, installUnavailableReason) {
+  return req(command, args, reason, null, { installUnavailableReason });
 }
 
 export function packageManager(entries = []) {
@@ -205,32 +289,180 @@ export function installDev(pm, packages) {
   return { command: "npm", args: ["install", "--save-dev", ...packages] };
 }
 
+export function inspectCommand(requirement, {
+  root = process.cwd(),
+  runner = run,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  localChecker = localExecutableAvailable,
+} = {}) {
+  const candidates = commandCandidates(requirement.command, root);
+  const localOnly = requirement.localOnly || isRepositoryCommand(requirement.command, root);
+
+  if (!localOnly) {
+    const diagnostic = execute(requirement.command, requirement.args, { root, runner, timeoutMs });
+    if (diagnostic.status === 0) {
+      return {
+        ok: true,
+        availability: "verified",
+        source: "system",
+        candidate: requirement.command,
+        diagnostic,
+      };
+    }
+
+    for (const candidate of candidates.slice(1)) {
+      if (localChecker(candidate)) {
+        return {
+          ok: true,
+          availability: "discovered",
+          source: "repository",
+          candidate,
+          diagnostic,
+        };
+      }
+    }
+
+    return {
+      ok: false,
+      availability: diagnostic.timedOut ? "timeout" : "missing",
+      source: null,
+      candidate: null,
+      diagnostic,
+    };
+  }
+
+  for (const candidate of repositoryCandidates(requirement.command, root)) {
+    if (localChecker(candidate)) {
+      return {
+        ok: true,
+        availability: "discovered",
+        source: "repository",
+        candidate,
+        diagnostic: null,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    availability: "missing",
+    source: null,
+    candidate: null,
+    diagnostic: null,
+  };
+}
+
 export function commandOk(command, args, root = process.cwd(), runner = run) {
-  return commandCandidates(command, root).some((candidate) => runner(candidate, args).status === 0);
+  return inspectCommand(req(command, args, "tool availability"), { root, runner }).ok;
 }
 
 export function commandCandidates(command, root = process.cwd(), platform = process.platform) {
-  const candidates = [
-    command,
-    join(root, "node_modules", ".bin", command),
-    join(root, "vendor", "bin", command),
-    join(root, ".cairn", "tools", "bin", command),
-  ];
-  if (platform !== "win32") return candidates;
+  const candidates = isRepositoryCommand(command, root)
+    ? repositoryCandidates(command, root)
+    : [
+        command,
+        join(root, "node_modules", ".bin", command),
+        join(root, "vendor", "bin", command),
+        join(root, ".cairn", "tools", "bin", command),
+      ];
+  if (platform !== "win32") return [...new Set(candidates)];
   const extensions = [".cmd", ".bat", ".exe"];
-  return candidates.flatMap((candidate) => hasWindowsExecutableExtension(candidate) ? [candidate] : [candidate, ...extensions.map((extension) => `${candidate}${extension}`)]);
+  return [...new Set(candidates.flatMap((candidate) => hasWindowsExecutableExtension(candidate) ? [candidate] : [candidate, ...extensions.map((extension) => `${candidate}${extension}`)]))];
 }
 
-export function run(command, args) {
-  return spawnSync(command, args, {
+export function localExecutableAvailable(command, platform = process.platform) {
+  try {
+    const info = statSync(command);
+    if (!info.isFile()) return false;
+    accessSync(command, platform === "win32" ? constants.F_OK : constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function run(command, args, { cwd = process.cwd(), timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+  const startedAt = Date.now();
+  const result = spawnSync(command, args, {
+    cwd,
     stdio: "ignore",
     encoding: "utf8",
     shell: shouldUseShell(command),
+    timeout: timeoutMs,
+    env: safeEnvironment(cwd),
   });
+  return { ...result, durationMs: Date.now() - startedAt };
 }
 
 export function shouldUseShell(command, platform = process.platform) {
   return platform === "win32" && /\.(cmd|bat)$/i.test(command);
+}
+
+function execute(command, args, { root, runner, timeoutMs }) {
+  const startedAt = Date.now();
+  try {
+    const result = runner(command, args, { cwd: root, timeoutMs });
+    return {
+      status: Number.isInteger(result?.status) ? result.status : null,
+      signal: result?.signal ?? null,
+      errorCode: result?.error?.code ?? null,
+      timedOut: result?.error?.code === "ETIMEDOUT",
+      durationMs: Number.isFinite(result?.durationMs) ? result.durationMs : Date.now() - startedAt,
+    };
+  } catch (error) {
+    return {
+      status: null,
+      signal: null,
+      errorCode: error && typeof error === "object" && "code" in error ? String(error.code) : "RUNNER_ERROR",
+      timedOut: false,
+      durationMs: Date.now() - startedAt,
+    };
+  }
+}
+
+function repositoryCandidates(command, root) {
+  const normalizedCommand = command.replace(/^\.\//, "");
+  const direct = isAbsolute(command) ? command : resolve(root, normalizedCommand);
+  return [...new Set([direct])];
+}
+
+function isRepositoryCommand(command, root) {
+  if (/^(?:\.\.?[\\/])/.test(command)) return true;
+  if (/^(?:gradlew|gradlew\.bat|mvnw|mvnw\.cmd|mvnw\.bat)$/i.test(command)) return true;
+  return isAbsolute(command) && isWithin(root, command);
+}
+
+function isWithin(root, candidate) {
+  const path = relative(resolve(root), resolve(candidate));
+  return path === "" || (!path.startsWith(`..${sep}`) && path !== "..");
+}
+
+function safeEnvironment(root) {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const safePath = (process.env[pathKey] ?? "")
+    .split(delimiter)
+    .filter(Boolean)
+    .filter((entry) => isAbsolute(entry) && !isWithin(root, entry))
+    .join(delimiter);
+  return { ...process.env, [pathKey]: safePath };
+}
+
+function printReport(report) {
+  console.log(`Cairn toolcheck: ${report.root}`);
+  console.log(`Detected stacks: ${report.detected.length > 0 ? report.detected.join(", ") : "none"}`);
+  if (report.install.refused) console.log(`INSTALL REFUSED - ${report.install.refusalReason}`);
+  for (const result of report.results) {
+    const prefix = result.ok ? result.availability === "discovered" ? "DISCOVERED" : "OK" : "MISSING";
+    const installedText = result.installed ? " installed" : "";
+    console.log(`${prefix}${installedText} ${result.name} - ${result.reason}`);
+    if (result.check?.timedOut) console.log(`  check timed out after ${result.check.durationMs}ms`);
+    if (!result.ok && result.install.unavailableReason) console.log(`  install unavailable: ${result.install.unavailableReason}`);
+    else if (!result.ok && result.installCommand) console.log(`  install: ${result.installCommand}`);
+  }
+}
+
+function formatCommand(command) {
+  return [command.command, ...command.args].join(" ");
 }
 
 function isCliEntry() {

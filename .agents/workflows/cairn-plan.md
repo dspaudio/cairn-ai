@@ -2,15 +2,17 @@
 
 Use the `cairn-plan` skill.
 
+Read the installed Cairn runtime locator at `{{CAIRN_RUNTIME_LOCATOR_JSON}}`. Resolve Cairn scripts, model guidance, templates, commands, and agents through that locator; only repository state such as `MEMORY.md`, `PLAN.md`, and `docs/plan/` belongs to the target project.
+
 Goal: leave a decision-complete plan for the current task in files before non-trivial implementation.
 
 Procedure:
 
 1. Every agent must read the project-root `MEMORY.md` for domain knowledge and repository policy before repository exploration, tool selection, work, or delegation.
 2. Read relevant `docs/memory/*.md`.
-3. If the active or assigned model is Claude-family, read `docs/model-guidance/claude.md`; if Codex-family, read `docs/model-guidance/codex.md`.
-4. Run `node scripts/cairn.mjs toolcheck` when available.
-5. If required LSP/check tools are missing, run `node scripts/cairn.mjs toolcheck --install` or a repository-native install command before accepting a fallback.
+3. If the active or assigned model is Claude-family, read `claude.md` under the locator's `resources.modelGuidance`; if Codex-family, read `codex.md` there.
+4. Invoke Node directly with the locator's absolute `entrypoints.cli`, `toolcheck`, and `--root` for the target repository.
+5. If required LSP/check tools are missing, follow the installed toolcheck policy before any explicitly approved installation attempt.
 6. Explore before asking the user.
 7. Understand the whole work and affected surfaces first, then classify it into small executable tasks. If a task is still too broad to verify cleanly, split it into sub-tasks.
 8. Run complexity triage before applying agent, plugin, or delegated workflow guidance, and record it before mutating files.
