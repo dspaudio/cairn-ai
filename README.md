@@ -119,6 +119,8 @@ cairn toolcheck
 - `cairn-work`: executes the next module task in the current `PLAN.md` with two verification gates.
 - `cairn-review`: reviews completed tasks against plan, memory, and evidence.
 
+On every `UserPromptSubmit`, Cairn injects model-visible guidance that an implementation or continued-execution request authorizes goal creation even if the user never says “goal.” An active goal also injects its full ordered task roadmap, task statuses, and current task so the agent can answer a side question and return to the original work. The agent creates or attaches the goal after a decision-complete plan and before implementation, while consultation, explanation, and plan-only requests remain goal-free.
+
 Install and upgrade create `*.cairn-backup-*` backups before modifying `~/.codex/config.toml`. They also write runtime locators for every surface. The source plugin manifest stays validator-friendly; only the installed cache copy gets a `hooks` field to activate Codex hooks. The current custom lifecycle remains in use; lifecycle upgrade should run from the published/global package, not from the cached copy that it replaces.
 
 Codex uses `skills/` and `commands/`. Claude Code uses mirrored commands and agent definitions under `.claude/`. Antigravity uses `.agents/workflows` and global skills mirrors.

@@ -203,31 +203,44 @@ function contextResult({ ko, state, event }) {
   const base = ko
     ? "Cairn 컨텍스트: 작업 전 프로젝트 루트 MEMORY.md를 읽으세요."
     : "Cairn context: read the project-root MEMORY.md before working.";
-  if (!state || state.goal.status !== "active") return { status: 0, message: base, hookOutput: {} };
+  const goalPolicy = event === "user-prompt-submit"
+    ? (ko
+      ? "현재 사용자 prompt가 구현 또는 계속 실행을 요청한다면, 사용자가 goal을 언급하지 않아도 이 요청 자체를 권한으로 간주하세요. decision-complete plan에 순서가 있는 stable task 단계를 정의한 뒤 구현 전에 활성 Cairn goal을 생성하거나 연결하고, 완료·일시정지·차단·취소 상태가 될 때까지 계속 진행하세요. 상담·설명·계획 전용 요청에는 goal을 만들지 마세요."
+      : "If the current user prompt requests implementation or continued execution, treat the request itself as authorization even when the user does not mention a goal. Define stable, ordered task steps in a decision-complete plan, then create or attach an active Cairn goal before implementation and continue until it is completed, paused, blocked, or cancelled. Do not create a goal for consultation, explanation, or plan-only requests.")
+    : "";
+  const initialContext = [base, goalPolicy].filter(Boolean).join(" ");
+  if (!state || state.goal.status !== "active") return contextHookResult({ event, message: initialContext });
   const task = state.tasks.find((item) => item.status === "active") ?? state.tasks.find((item) => item.status === "pending");
   if (!task) {
-    const message = `${base} ${activeGoalCompletionMessage(ko, state)}`;
-    return {
-      status: 0,
-      message,
-      hookOutput: {
-        hookSpecificOutput: {
-          hookEventName: event === "session-start" ? "SessionStart" : "UserPromptSubmit",
-          additionalContext: message,
-        },
-      },
-    };
+    return contextHookResult({
+      event,
+      message: [initialContext, taskRoadmap(ko, state), activeGoalCompletionMessage(ko, state)].join("\n"),
+    });
   }
   const continuation = ko
     ? `활성 목표 "${state.goal.title}"의 현재 task는 ${task.id} (${task.title})입니다. 완료 전 성공 receipt를 기록하세요.`
     : `Active goal "${state.goal.title}" current task: ${task.id} (${task.title}). Record a successful receipt before completing it.`;
+  const resume = event === "user-prompt-submit"
+    ? (ko
+      ? `곁가지 질문에 답한 뒤 사용자가 명시적으로 일시정지·중단·전환을 요청하지 않았다면 현재 task ${task.id}로 돌아와 계속 진행하세요.`
+      : `After answering a side question, return to current task ${task.id} and continue unless the user explicitly asks to pause, stop, or switch tasks.`)
+    : "";
+  return contextHookResult({ event, message: [initialContext, taskRoadmap(ko, state), continuation, resume].filter(Boolean).join("\n") });
+}
+
+function taskRoadmap(ko, state) {
+  const steps = state.tasks.map((task, index) => `${index + 1}. ${task.id} [${task.status}] ${task.title}`);
+  return `${ko ? "작업 단계" : "Work steps"}:\n${steps.join("\n")}`;
+}
+
+function contextHookResult({ event, message }) {
   return {
     status: 0,
-    message: `${base} ${continuation}`,
+    message,
     hookOutput: {
       hookSpecificOutput: {
         hookEventName: event === "session-start" ? "SessionStart" : "UserPromptSubmit",
-        additionalContext: `${base} ${continuation}`,
+        additionalContext: message,
       },
     },
   };

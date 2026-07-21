@@ -1,6 +1,6 @@
 {
   "name": "cairn",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity.",
   "author": {
     "name": "WkNam"
@@ -34,7 +34,7 @@
       "If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence; do not stop before local implementation solely because subagent tools are unavailable.",
       "Record Light Path or Heavy Path complexity triage in docs/plan/<topic>.md before mutating files.",
       "Run cairn-work from the current PLAN.md and pass dry-run/check, module acceptance, and surface integration gates.",
-      "For implementation requests, persist one active Cairn goal with stable task IDs. After a task passes its required bound receipts, advance immediately to the next task and continue until goal-level final review completes; active is never a completion state.",
+      "For implementation or continued-execution requests, treat the request itself as authorization to persist one active Cairn goal with stable, ordered task steps, even when the user does not mention a goal. Create or attach it after the decision-complete plan and before implementation. Keep the full task roadmap and current task in hook context so a side question returns to the original work unless the user explicitly pauses, stops, or switches tasks. Do not create a goal for consultation, explanation, or plan-only requests. After a task passes its required bound receipts, advance immediately to the next task and continue until goal-level final review completes; active is never a completion state.",
       "Missing, failed, skipped, stale, or placeholder evidence never completes a task. A worker may report only its assigned task; the main agent reviews the handoff and advances the goal.",
       "If progress cannot continue, explicitly pause, block with a concrete reason, or cancel the Cairn goal instead of silently stopping. Do not repeatedly block a re-entered stop hook in the same turn.",
       "Tool installation is an external-state change: report the proposal and obtain explicit user approval before using a pinned/supported installer.",
