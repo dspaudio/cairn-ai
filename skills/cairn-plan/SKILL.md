@@ -23,7 +23,7 @@ Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to t
 
 Use logical resource IDs such as `cairn://templates/work-plan.md` and `cairn://docs/model-guidance/codex.md` in repository plans. Resolve those IDs through `pluginRoot` only while executing. Keep `repoRoot` separate and pass it explicitly as `--root <repoRoot>`.
 
-For an implementation request, activate the decision-complete plan with the installed CLI:
+For an implementation or continued-execution request, treat the request itself as authorization to define stable, ordered task steps and activate the decision-complete plan with the installed CLI, even when the user does not mention a goal:
 
 ```sh
 node "<pluginRoot>/scripts/cairn.mjs" goal start --root "<repoRoot>" --goal "<objective>" --plan "docs/plan/<topic>.md" --tasks '[{"id":"task-1","title":"<task>"}]' --criteria "<completion criterion>" --session "<current session_id>"
@@ -55,7 +55,7 @@ Use the current Codex hook `session_id` when it is available. If the surface doe
    - Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, and tell workers they are not alone in the codebase and must not revert others' edits.
 12. Create `docs/plan/<topic>.md` from `cairn://templates/work-plan.md` resolved through the installed runtime.
 13. Add a short index entry to `PLAN.md`.
-14. Give every plan and task a stable ID and declare task-level and goal-level required evidence. When the user asked for implementation or continuing execution rather than a plan-only result, start or attach the repository Cairn goal after the plan is decision-complete. Do not create an active goal for consultation or planning-only requests.
+14. Give every plan and ordered task step a stable ID and declare task-level and goal-level required evidence. When the user asked for implementation or continuing execution rather than a consultation, explanation, or plan-only result, treat that request as authorization and start or attach the repository Cairn goal after the plan is decision-complete, even if the user never mentioned a goal. The task order must be sufficient for hook context to show the roadmap and restore the current task after side questions.
 15. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Complexity Triage

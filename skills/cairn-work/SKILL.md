@@ -19,7 +19,7 @@ When the subagent tool provides a progress-reporting channel, subagents report s
 
 Delegated subagents must provide a final report before leaving. After the orchestrator captures the final report and evidence, it must close or release the completed subagent, then review the final report and evidence before marking the work complete.
 
-If the user asks a side question, status question, or narrow clarification while the selected task is still active, answer it briefly and then resume the previous active work unless the user explicitly asks to pause, stop, or switch tasks.
+If the user asks a side question, status question, or narrow clarification while the selected task is still active, use the active goal's ordered task roadmap to preserve position, answer briefly, and then resume the current task unless the user explicitly asks to pause, stop, or switch tasks.
 
 When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
 
