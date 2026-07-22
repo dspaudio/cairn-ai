@@ -11,7 +11,7 @@ Cairn은 Codex, Claude Code, Antigravity를 위한 토큰 효율적인 멀티에
 
 외부 상태를 변경할 수 있는 작업은 실행 전에 가장 가까운 dry-run 또는 check 모드를 기록하고 실행합니다. 검증은 제한됩니다. 기본적으로 각 작업은 두 번의 검증 패스를 가지며, 이후에는 반복 루프를 계속하지 않고 blocker를 기록하거나 작업을 sub-task로 나눕니다.
 
-Cairn은 도구 준비 상태도 작업의 일부로 다룹니다. LSP, typecheck, lint, dry-run, 검증 도구를 저장소 스택 기준으로 확인하고, 필수 도구가 없으면 fallback을 받아들이기 전에 프로젝트 로컬 또는 저장소 네이티브 설치를 시도합니다.
+Cairn은 도구 준비 상태도 작업의 일부로 다룹니다. LSP, typecheck, lint, dry-run, 검증 도구를 저장소 스택 기준으로 확인합니다. 누락 도구는 명시적 승인과 고정된 지원 installer가 모두 있을 때만 설치하고, 그렇지 않으면 blocker로 보고합니다.
 
 ## LazyCodex Attribution
 
@@ -44,7 +44,7 @@ cairn toolcheck --install --yes --root .
 
 - `toolcheck`는 감지된 스택과 누락 도구를 보고합니다.
 - 기본 검사는 읽기 전용이고 timeout으로 제한되며, 저장소 로컬 wrapper를 단순 탐지를 위해 실행하지 않습니다.
-- `toolcheck --install`은 사용자의 명시적 승인과 `--yes`를 모두 요구합니다. 버전이 고정되지 않았거나 checksum이 없는 installer는 `latest`를 내려받는 대신 사용할 수 없는 것으로 보고합니다.
+- `toolcheck --install`은 사용자의 명시적 승인과 `--yes`를 모두 요구합니다. 버전이 고정되지 않았거나 checksum이 없는 installer는 `latest`를 내려받는 대신 canonical `installer-unavailable` 거부 결과로 보고합니다.
 - Cairn 계획은 감지된 스택, 필요한 도구, 설치 명령, blocker를 기록합니다.
 - LSP server가 없다는 사실만으로 정밀한 코드베이스 탐색을 건너뛸 수 없습니다. 설치 또는 동등한 symbol-aware fallback을 먼저 시도해야 합니다.
 
@@ -100,11 +100,11 @@ cairn uninstall
 cairn toolcheck
 ```
 
-- `cairn install`: Codex marketplace cache에 플러그인을 설치하고 Codex multi-agent 설정, hook trust state, Claude Code mirror 파일, Antigravity skills/workflows를 설정합니다.
-- `cairn upgrade`: 현재 소스에서 설치, Codex multi-agent 설정, hook trust state, Claude Code mirror 파일, Antigravity skills/workflows를 갱신합니다.
-- `cairn doctor`: Codex 설정, 설치, hook trust state, Claude Code mirror 파일, Antigravity mirror 파일을 진단합니다.
-- `cairn uninstall`: Cairn이 추가한 Codex 설정, cache, Claude Code mirror 파일, Antigravity mirror 파일을 제거합니다.
-- `cairn toolcheck`: 저장소 스택을 감지하고 필요한 LSP와 검증 도구를 확인하거나 설치합니다.
+- `cairn install`: custom marketplace source, versioned Codex runtime cache, Cairn-owned config section, Claude Code mirror, 현재 Antigravity IDE/CLI skill 표면을 transaction으로 설치합니다.
+- `cairn upgrade`: ownership manifest의 installed digest와 현재 값이 같은 항목만 교체하며, staged validation과 역순 rollback을 적용합니다.
+- `cairn doctor`: ownership manifest, managed digest, 유효 Codex feature, 실제 plugin installed/enabled/version, mirror/runtime locator를 수정 없이 진단합니다.
+- `cairn uninstall`: 수정되지 않은 ownership manifest 항목만 제거·복원하고, modified/unmanaged target은 conflict로 보존하며 실패 시 rollback합니다.
+- `cairn toolcheck`: 저장소 스택과 필요한 LSP·검증 도구를 확인하며, 승인된 지원 installer만 실행합니다.
 - `cairn goal ...`: 저장소의 영속 goal을 시작·조회·일시정지·재개·차단·취소·완료합니다. 기본 tool-bound 정책은 `goal verify -- <argv>`가 명령을 직접 실행해 성공 증거를 기록합니다. `goal receipt`는 기존 선언 증거를 가져오는 호환 명령입니다.
 - `cairn-memory`: 도메인 지식을 탐색하고 `MEMORY.md`를 갱신합니다.
 - `cairn-plan`: `docs/plan/` 아래에 decision-complete plan을 만듭니다.
@@ -115,7 +115,7 @@ cairn toolcheck
 
 토큰 효율 실행에서는 구현보다 먼저 요구사항·불변식·경계·실패 모드로 집중 실행 test contract를 설계하는 데 추론을 배분합니다. 구현에는 실패 계약과 제한된 파일 범위만 전달하고 통과에 필요한 최소 변경을 요구합니다. 성공 여부는 도구 exit code와 기계적 요약으로 판정하며 성공 출력은 축약하고 실패할 때만 컨텍스트를 확장합니다. package 검증 전 lifecycle script를 검사하고 기본적으로 정상 `npm pack --dry-run`을 실행합니다. content-producing 또는 미분류 script에는 `--ignore-scripts`를 사용하면 안 되며, script가 없거나 content-neutral임을 입증했고 전체 검사 증거가 여전히 유효할 때만 사용할 수 있습니다. 성공한 상태 변경은 `--quiet`를 지원하므로 커지는 goal JSON이 대화 토큰을 소모하지 않습니다.
 
-`install`과 `upgrade`는 `~/.codex/config.toml`을 수정하기 전에 `*.cairn-backup-*` 백업을 만들고 각 표면의 runtime locator를 갱신합니다. 소스 플러그인 manifest는 validator-friendly 상태를 유지하고, 설치된 cache copy에만 Codex hook 활성화를 위한 `hooks` field가 추가됩니다. 현재 custom lifecycle은 유지하며, upgrade는 교체 대상인 cache copy가 아니라 게시/전역 package에서 실행해야 합니다.
+`install`과 `upgrade`는 custom marketplace lifecycle을 유지하며 `codex plugin add`를 호출하지 않습니다. candidate를 staging에서 검증한 뒤 commit하고, 모든 managed destination과 digest를 ownership manifest에 기록하며 실패 시 완료된 phase를 역순 rollback합니다. 수정되지 않은 지원 legacy 설치만 release-integrity 검증 뒤 인수하고, 수정되거나 알 수 없는 artifact는 보존한 채 거부합니다. Cairn-owned TOML section만 편집하고 public feature/agent 설정은 강제하지 않습니다. lifecycle command는 교체 대상 cache copy가 아니라 게시/전역 package에서 실행해야 합니다.
 
 Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `.claude/` 아래의 mirror command와 agent definition을 사용합니다. Antigravity는 `.agents/workflows`와 global skills mirror를 사용합니다.
 
@@ -123,8 +123,8 @@ Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `.claude/` 
 
 Antigravity는 `/workflow-name`으로 호출되는 `SKILL.md` 기반 Agent Skills와 Workflows를 지원합니다. Cairn은 해당 표면에 다음 경로를 설치합니다.
 
-- Antigravity IDE: `~/.agents/skills/cairn-*`, `~/.agents/workflows/cairn-*.md`.
-- Antigravity CLI: `~/.gemini/antigravity-cli/skills/cairn-*`, `~/.gemini/antigravity-cli/workflows/cairn-*.md`.
+- Antigravity IDE: `~/.gemini/config/skills/cairn-*/SKILL.md`.
+- Antigravity CLI: flat `~/.gemini/antigravity-cli/skills/cairn-*.md` skill 파일.
 
 Codex 전용 hooks는 Antigravity로 포팅하지 않습니다. 대신 같은 planning, memory, complexity triage, two-gate verification 절차가 Skills와 Workflows를 통해 실행됩니다. 경로를 바꾸려면 `ANTIGRAVITY_HOME` 또는 `ANTIGRAVITY_CLI_HOME`을 설정하세요.
 

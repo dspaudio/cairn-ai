@@ -11,6 +11,7 @@ const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 test("packed install remains self-contained after the npm package source is removed", async () => {
   const temp = await mkdtemp(join(tmpdir(), "cairn-packed-install-"));
   const packDirectory = join(temp, "pack");
+  const npmCache = join(temp, "npm-cache");
   const prefix = join(temp, "npm-prefix");
   const project = join(temp, "target project");
   const nestedProject = join(project, "packages", "app");
@@ -23,6 +24,7 @@ test("packed install remains self-contained after the npm package source is remo
     ANTIGRAVITY_CLI_HOME: join(temp, "Antigravity CLI Home"),
     HOME: join(temp, "Home"),
     CODEX_CONFIG_PATH: join(temp, "config.toml"),
+    npm_config_cache: npmCache,
   };
   delete env.npm_config_dry_run;
   delete env.NPM_CONFIG_DRY_RUN;
@@ -54,14 +56,23 @@ test("packed install remains self-contained after the npm package source is remo
     assert.equal(npmInstall.status, 0, npmInstall.stderr);
     const packageRoot = join(prefix, "node_modules", "cairn-ai");
     const packageCli = join(packageRoot, "scripts", "cairn.mjs");
+    const packageBin = join(prefix, "node_modules", ".bin", process.platform === "win32" ? "cairn.cmd" : "cairn");
     await stat(join(packageRoot, ".codex-plugin", "plugin.json"));
+    await stat(packageBin);
 
-    const lifecycleInstall = run(process.execPath, [packageCli, "install"], { cwd: unrelated, env });
+    const lifecycleInstall = run(packageBin, ["install"], { cwd: unrelated, env });
     assert.equal(lifecycleInstall.status, 0, lifecycleInstall.stderr);
 
-    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn");
+    const marketplaceSource = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn");
+    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.3");
     const installedCli = join(installedRoot, "scripts", "cairn.mjs");
-    await stat(join(installedRoot, ".cairn-runtime.json"));
+    await stat(join(marketplaceSource, ".codex-plugin", "plugin.json"));
+    const installedManifest = JSON.parse(await readFile(join(installedRoot, ".codex-plugin", "plugin.json"), "utf8"));
+    assert.equal(installedManifest.hooks, "./hooks/hooks.json");
+    const installedLocator = JSON.parse(await readFile(join(installedRoot, ".cairn-runtime.json"), "utf8"));
+    assert.equal(installedLocator.pluginRoot, installedRoot);
+    assert.equal(installedLocator.entrypoints.cli, installedCli);
+    assert.equal(installedLocator.resources.modelGuidance, join(installedRoot, "docs", "model-guidance"));
     await rm(packageRoot, { recursive: true, force: true });
 
     const init = run(process.execPath, [installedCli, "init", "--root", project], { cwd: unrelated, env });

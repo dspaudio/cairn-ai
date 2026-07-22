@@ -10,13 +10,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: [18, current]
     runs-on: ${{ matrix.os }}
+    env:
+      npm_config_cache: ${{ runner.temp }}/npm-cache
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
       - run: npm run check
       - run: node scripts/cairn.mjs
       - run: node scripts/cairn.mjs toolcheck --json

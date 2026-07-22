@@ -2,9 +2,10 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, readlinkSync, realpathSync, readdirSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { readFile, rename, rm } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { assertNoSymlinkComponents, safeMkdir, safeWriteFile, withStateLock } from "./cairn-safe-fs.mjs";
 
 export const GOAL_STATE_VERSION = 2;
 export const GOAL_STATUSES = new Set(["active", "paused", "blocked", "cancelled", "completed"]);
@@ -34,7 +35,9 @@ export function goalStatePath(root = process.cwd()) {
 
 export async function readGoalState({ root = process.cwd() } = {}) {
   try {
-    const text = await readFile(goalStatePath(root), "utf8");
+    const path = goalStatePath(root);
+    await assertNoSymlinkComponents(root, path);
+    const text = await readFile(path, "utf8");
     return validateState(migrateState(JSON.parse(text)));
   } catch (error) {
     if (error?.code === "ENOENT") return null;
@@ -48,44 +51,51 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
   const normalizedPlanId = requiredText(planId, "planId");
   if (!Array.isArray(tasks) || tasks.length === 0) throw new Error("tasks must contain at least one task");
 
-  const existing = await readGoalState({ root });
-  if (existing && !terminalGoalStatuses.has(existing.goal.status)) {
-    throw new Error(`An active Cairn goal already exists (${existing.goal.id}); pause, block, cancel, or complete it first`);
-  }
+  return withStateLock(root, async () => {
+    const existing = await readGoalState({ root });
+    if (existing && !terminalGoalStatuses.has(existing.goal.status)) {
+      throw new Error(`An active Cairn goal already exists (${existing.goal.id}); pause, block, cancel, or complete it first`);
+    }
 
-  const now = timestamp();
-  const goalId = `goal-${randomUUID()}`;
-  const normalizedTasks = tasks.map((task, index) => normalizeTask(task, index, index === 0 ? "active" : "pending"));
-  const state = {
-    schemaVersion: GOAL_STATE_VERSION,
-    revision: 1,
-    goal: {
-      id: goalId,
-      title: normalizedGoal,
-      planId: normalizedPlanId,
-      status: "active",
-      completionCriteria: normalizeCriteria(completionCriteria),
-      requiredEvidence: normalizeCriteria(requiredEvidence),
-      evidencePolicy: validEvidencePolicy(evidencePolicy),
-      ownerSessionId: optionalText(ownerSessionId, "ownerSessionId"),
-      blocker: null,
-      createdAt: now,
-      updatedAt: now,
-    },
-    tasks: normalizedTasks,
-    receipts: [],
-  };
-  await writeGoalState({ root, state });
-  return state;
+    const now = timestamp();
+    const goalId = `goal-${randomUUID()}`;
+    const normalizedTasks = tasks.map((task, index) => normalizeTask(task, index, index === 0 ? "active" : "pending"));
+    const state = {
+      schemaVersion: GOAL_STATE_VERSION,
+      revision: 1,
+      goal: {
+        id: goalId,
+        title: normalizedGoal,
+        planId: normalizedPlanId,
+        status: "active",
+        completionCriteria: normalizeCriteria(completionCriteria),
+        requiredEvidence: normalizeCriteria(requiredEvidence),
+        evidencePolicy: validEvidencePolicy(evidencePolicy),
+        ownerSessionId: optionalText(ownerSessionId, "ownerSessionId"),
+        blocker: null,
+        createdAt: now,
+        updatedAt: now,
+      },
+      tasks: normalizedTasks,
+      receipts: [],
+    };
+    await writeGoalStateUnlocked({ root, state });
+    return state;
+  });
 }
 
 export async function writeGoalState({ root = process.cwd(), state } = {}) {
+  return withStateLock(root, () => writeGoalStateUnlocked({ root, state }));
+}
+
+async function writeGoalStateUnlocked({ root = process.cwd(), state } = {}) {
   const validated = validateState(state);
   const path = goalStatePath(root);
-  await mkdir(dirname(path), { recursive: true });
+  await safeMkdir(root, ".cairn");
+  await assertNoSymlinkComponents(root, path);
   const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temporaryPath, `${JSON.stringify(validated, null, 2)}\n`, "utf8");
+    await safeWriteFile(root, temporaryPath, `${JSON.stringify(validated, null, 2)}\n`, "utf8");
     await rename(temporaryPath, path);
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => {});
@@ -175,6 +185,8 @@ async function recordEvidence({
   summary,
   workspaceFingerprint: fingerprint,
   watchPaths = [],
+  expectedIdentity,
+  expectedFingerprint,
 } = {}) {
   const normalizedScope = validReceiptScope(scope);
   const normalizedTaskId = normalizedScope === "task" ? requiredText(taskId, "taskId") : undefined;
@@ -189,6 +201,16 @@ async function recordEvidence({
   return mutateGoal(root, (state) => {
     assertGoalMutable(state);
     const task = normalizedScope === "task" ? taskById(state, normalizedTaskId) : null;
+    if (expectedIdentity && (
+      state.goal.id !== expectedIdentity.goalId
+      || state.goal.planId !== expectedIdentity.planId
+    )) throw new Error("Goal identity changed during verification; evidence was not recorded");
+    if (expectedIdentity && normalizedScope === "task" && (
+      task?.id !== expectedIdentity.taskId || task?.status !== expectedIdentity.taskStatus
+    )) throw new Error("Verification task changed during verification; evidence was not recorded");
+    if (expectedFingerprint && workspaceFingerprint(root, watchPaths) !== expectedFingerprint) {
+      throw new Error("Watched workspace changed during verification; evidence was not recorded");
+    }
     if (goalId !== undefined && goalId !== state.goal.id) throw new Error("evidence goalId does not match the active goal");
     if (planId !== undefined && planId !== state.goal.planId) throw new Error("evidence planId does not match the active goal");
     const receipt = {
@@ -219,6 +241,7 @@ export async function verifyAndRecord({
   argv,
   watchPaths = [],
   runner = spawnSync,
+  timeoutMs = 600_000,
 } = {}) {
   const normalizedArgv = validArgv(argv);
   const normalizedWatchPaths = normalizeWatchPaths(root, watchPaths);
@@ -228,13 +251,23 @@ export async function verifyAndRecord({
   if (!initialState) throw new Error("No Cairn goal state exists; start a goal first");
   assertGoalMutable(initialState);
   const normalizedTaskId = normalizedScope === "task" ? requiredText(taskId, "taskId") : undefined;
-  if (normalizedScope === "task") taskById(initialState, normalizedTaskId);
+  const initialTask = normalizedScope === "task" ? taskById(initialState, normalizedTaskId) : null;
+  if (initialTask && initialTask.status !== "active") throw new Error(`Verification task must be active: ${initialTask.id}`);
+  const identity = {
+    goalId: initialState.goal.id,
+    planId: initialState.goal.planId,
+    taskId: normalizedTaskId,
+    taskStatus: initialTask?.status,
+  };
+  const initialFingerprint = workspaceFingerprint(root, normalizedWatchPaths);
   const result = runner(normalizedArgv[0], normalizedArgv.slice(1), {
     cwd: resolve(root),
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
     shell: false,
+    timeout: validTimeout(timeoutMs),
   });
+  if (result.error?.code === "ETIMEDOUT") throw new Error(`Verification timed out after ${timeoutMs}ms`);
   if (result.error) throw new Error(`Verification could not start: ${result.error.message}`);
   const exitCode = Number.isInteger(result.status) ? result.status : 1;
   const output = combinedOutput(result.stdout, result.stderr);
@@ -245,6 +278,14 @@ export async function verifyAndRecord({
 
   const outputDigest = sha256(output);
   const fingerprint = workspaceFingerprint(root, normalizedWatchPaths);
+  if (fingerprint !== initialFingerprint) throw new Error("Watched workspace changed during verification; evidence was not recorded");
+  const postState = await readGoalState({ root });
+  if (!postState || postState.goal.id !== identity.goalId || postState.goal.planId !== identity.planId) {
+    throw new Error("Goal identity changed during verification; evidence was not recorded");
+  }
+  if (normalizedScope === "task" && taskById(postState, normalizedTaskId).status !== identity.taskStatus) {
+    throw new Error("Verification task is no longer active; evidence was not recorded");
+  }
   const command = normalizedArgv.map((value) => JSON.stringify(value)).join(" ");
   const state = await recordEvidence({
     root,
@@ -259,6 +300,10 @@ export async function verifyAndRecord({
     summary: successSummary(output),
     workspaceFingerprint: fingerprint,
     watchPaths: normalizedWatchPaths,
+    goalId: identity.goalId,
+    planId: identity.planId,
+    expectedIdentity: identity,
+    expectedFingerprint: fingerprint,
   });
   return { state, evidence: state.receipts.at(-1) };
 }
@@ -312,7 +357,7 @@ export function evaluateStop(state, { subagent = false, agentId } = {}) {
 export async function handleGoalCli(args = process.argv.slice(2), { stdout = console.log } = {}) {
   const [firstCommand = "help", ...remaining] = args;
   const [command = "help", ...rest] = firstCommand === "goal" ? remaining : [firstCommand, ...remaining];
-  const { options, positional, passthrough } = parseArgs(rest);
+  const { options, positional, passthrough } = parseArgs(rest, command);
   const root = options.root ?? process.cwd();
   const emit = options.quiet ? () => {} : stdout;
   if (command === "start") {
@@ -360,7 +405,7 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
       command: options.command,
       exitCode: numberOption(options.exitCode ?? options["exit-code"] ?? options.exit),
       timestamp: options.timestamp,
-      goalId: options.goalId,
+      goalId: options.goalId ?? options["goal-id"],
       planId: options.plan,
     });
     emit(JSON.stringify(state));
@@ -374,6 +419,7 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
       scope: options.scope,
       watchPaths: splitValues(options.watch),
       argv: passthrough,
+      timeoutMs: options["timeout-ms"] === undefined ? 600_000 : positiveIntegerOption(options["timeout-ms"], "timeout-ms"),
     });
     emit(JSON.stringify({
       id: result.evidence.id,
@@ -398,12 +444,14 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
 }
 
 async function mutateGoal(root, mutate) {
-  const state = await readGoalState({ root });
-  if (!state) throw new Error("No Cairn goal state exists; start a goal first");
-  const next = await mutate(structuredClone(state));
-  next.revision += 1;
-  await writeGoalState({ root, state: next });
-  return next;
+  return withStateLock(root, async () => {
+    const state = await readGoalState({ root });
+    if (!state) throw new Error("No Cairn goal state exists; start a goal first");
+    const next = await mutate(structuredClone(state));
+    next.revision += 1;
+    await writeGoalStateUnlocked({ root, state: next });
+    return next;
+  });
 }
 
 function normalizeTask(task, index, defaultStatus) {
@@ -786,11 +834,13 @@ function timestamp() {
   return new Date().toISOString();
 }
 
-function parseArgs(args) {
+function parseArgs(args, command) {
   const options = {};
   const positional = [];
   const passthrough = [];
   const booleanOptions = new Set(["quiet"]);
+  const allowed = allowedOptions(command);
+  const seenCanonicalOptions = new Set();
   for (let index = 0; index < args.length; index += 1) {
     const value = args[index];
     if (value === "--") {
@@ -805,11 +855,52 @@ function parseArgs(args) {
     const equalsIndex = option.indexOf("=");
     const key = equalsIndex === -1 ? option : option.slice(0, equalsIndex);
     const inline = equalsIndex === -1 ? undefined : option.slice(equalsIndex + 1);
-    if (inline !== undefined) options[key] = booleanOptions.has(key) ? inline !== "false" : inline;
+    if (!allowed.has(key)) throw new Error(`Unknown option for ${command}: --${key}`);
+    const canonicalKey = canonicalOptionKey(key);
+    if (seenCanonicalOptions.has(canonicalKey)) throw new Error(`--${canonicalKey} may only be provided once`);
+    seenCanonicalOptions.add(canonicalKey);
+    if (inline !== undefined) {
+      if (!booleanOptions.has(key) && inline.length === 0) throw new Error(`--${key} requires a value`);
+      if (booleanOptions.has(key) && !["true", "false"].includes(inline)) throw new Error(`--${key} must be true or false`);
+      options[key] = booleanOptions.has(key) ? inline !== "false" : inline;
+    }
     else if (booleanOptions.has(key)) options[key] = true;
-    else options[key] = args[++index];
+    else {
+      const next = args[index + 1];
+      if (next === undefined || next === "--" || next.startsWith("--")) throw new Error(`--${key} requires a value`);
+      options[key] = next;
+      index += 1;
+    }
   }
   return { options, positional, passthrough };
+}
+
+function canonicalOptionKey(key) {
+  return {
+    exitCode: "exit-code",
+    exit: "exit-code",
+    goalId: "goal-id",
+    evidencePolicy: "evidence-policy",
+  }[key] ?? key;
+}
+
+function allowedOptions(command) {
+  const common = ["root", "quiet"];
+  const byCommand = {
+    start: ["goal", "plan", "tasks", "criteria", "requiredEvidence", "session", "evidencePolicy", "evidence-policy"],
+    status: [],
+    task: ["task", "status", "reason"],
+    assign: ["task", "agent"],
+    receipt: ["task", "kind", "scope", "command", "exitCode", "exit-code", "exit", "timestamp", "goalId", "goal-id", "plan"],
+    verify: ["task", "kind", "scope", "watch", "timeout-ms"],
+    pause: [],
+    resume: [],
+    block: ["reason"],
+    cancel: [],
+    complete: [],
+    help: [],
+  };
+  return new Set([...common, ...(byCommand[command] ?? [])]);
 }
 
 function parseTasks(value) {
@@ -835,6 +926,19 @@ function numberOption(value) {
   const result = Number(value);
   if (!Number.isInteger(result)) throw new Error("exitCode must be an integer");
   return result;
+}
+
+function positiveIntegerOption(value, label) {
+  const result = Number(value);
+  if (!Number.isSafeInteger(result) || result <= 0 || result > 3_600_000) {
+    throw new Error(`${label} must be an integer between 1 and 3600000`);
+  }
+  return result;
+}
+
+function validTimeout(value) {
+  if (!Number.isSafeInteger(value) || value <= 0) throw new Error("timeoutMs must be a positive integer");
+  return value;
 }
 
 function isCliEntry() {
