@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { evaluateStop, isGoalOwnedBySession, readGoalState } from "./cairn-goal.mjs";
 import { resolveRepoRoot } from "./cairn-paths.mjs";
+import { assertNoSymlinkComponents, safeMkdir, safeWriteFile } from "./cairn-safe-fs.mjs";
 
 const memoryTemplate = `# MEMORY
 
@@ -162,12 +163,18 @@ export async function runStateResult(event = "manual", {
   }
 
   if (event === "post-tool-use") {
+    const message = ko
+      ? "Cairn 점검: 외부 상태 변경에는 dry-run/check 증거 기록이 필요합니다. 활성 목표가 있다면 현재 task에 성공 증거를 기록하세요."
+      : "Cairn check: external-state changes need dry-run/check evidence. When a goal is active, record successful evidence for its current task.";
     return {
       status: 0,
-      message: ko
-        ? "Cairn 점검: 외부 상태 변경에는 dry-run/check 증거 기록이 필요합니다. 활성 목표가 있다면 현재 task에 성공 증거를 기록하세요."
-        : "Cairn check: external-state changes need dry-run/check evidence. When a goal is active, record successful evidence for its current task.",
-      hookOutput: {},
+      message,
+      hookOutput: {
+        hookSpecificOutput: {
+          hookEventName: "PostToolUse",
+          additionalContext: message,
+        },
+      },
     };
   }
 
@@ -193,18 +200,24 @@ export async function runStateResult(event = "manual", {
 }
 
 async function initializeProject(root, ko) {
-  await mkdir(join(root, "docs", "memory"), { recursive: true });
-  await mkdir(join(root, "docs", "plan"), { recursive: true });
-  await writeIfMissing(join(root, "MEMORY.md"), ko ? memoryTemplateKo : memoryTemplate);
-  await writeIfMissing(join(root, "PLAN.md"), ko ? planTemplateKo : planTemplate);
+  await safeMkdir(root, "docs/memory");
+  await safeMkdir(root, "docs/plan");
+  await writeIfMissing(root, join(root, "MEMORY.md"), ko ? memoryTemplateKo : memoryTemplate);
+  await writeIfMissing(root, join(root, "PLAN.md"), ko ? planTemplateKo : planTemplate);
 }
 
-async function writeIfMissing(path, content) {
+async function writeIfMissing(root, path, content) {
+  await assertNoSymlinkComponents(root, path);
   try {
     await readFile(path, "utf8");
   } catch (error) {
     if (error?.code !== "ENOENT") throw error;
-    await writeFile(path, content);
+    try {
+      await safeWriteFile(root, path, content, { encoding: "utf8", flag: "wx" });
+    } catch (writeError) {
+      if (writeError?.code !== "EEXIST") throw writeError;
+      await assertNoSymlinkComponents(root, path, { allowMissing: false });
+    }
   }
 }
 

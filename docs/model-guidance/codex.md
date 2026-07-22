@@ -42,7 +42,7 @@ Codex-family models are strong at small implementation tasks, explicit tool use,
 ### Implementation
 
 - Invest Codex reasoning in executable test design first, then hand the bounded failing contract to implementation and require the minimum passing patch.
-- Run verification through `goal verify -- ...`. On success, retain exact argv, tool exit code, pass count, output digest, and watched-workspace fingerprint. Expand diagnostics only for the failing test and its related file/symbol scope; reject stale evidence after related changes.
+- Run verification through `goal verify -- ...`. Its default timeout is 600,000 ms (10 minutes), capped at 3,600,000 ms (1 hour). On success, retain exact argv, tool exit code, pass count, output digest, and watched-workspace fingerprint; commit evidence only when the starting goal/task identity and pre/post watched fingerprint match. Choose the watch set and command at the semantic boundary that proves the claim. Expand diagnostics only for the failing test and its related file/symbol scope; reject stale evidence after related changes.
 - If acting as the user-called/main agent, orchestrate the work and delegate actual implementation edits to `worker` whenever subagent tools are available, regardless of Light Path or Heavy Path.
 - If acting as the user-called/main agent, immediately relay received subagent status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion.
 - If acting as the user-called/main agent, close or release completed subagents after capturing their final report and evidence, then review the final report and evidence before marking the work complete.

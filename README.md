@@ -19,7 +19,7 @@ The core idea is to keep useful agent-harness behavior: hooks, persistent state,
 
 Before a task mutates external state, Cairn records and runs the closest available dry-run or check mode. Verification is bounded: each task gets two verification passes by default, then the agent records a blocker or splits it into sub-tasks instead of continuing an open-ended loop.
 
-Cairn also treats tool readiness as part of the work. LSP, typecheck, lint, dry-run, and verification tools are checked against the repository stack. If a required tool is missing, Cairn attempts project-local or repository-native installation before accepting a fallback.
+Cairn also treats tool readiness as part of the work. LSP, typecheck, lint, dry-run, and verification tools are checked against the repository stack. A missing tool is installed only after explicit approval and only when a pinned, supported installer exists; otherwise Cairn reports a blocker.
 
 ## LazyCodex Attribution
 
@@ -52,7 +52,7 @@ cairn toolcheck --install --yes --root .
 
 - `toolcheck` reports detected stacks and missing tools.
 - Default checks are read-only, bounded by a timeout, and do not execute repository-local wrappers merely to discover them.
-- `toolcheck --install` requires both `--yes` and explicit user approval. Unpinned or checksum-free installers are unavailable rather than silently downloading `latest`.
+- `toolcheck --install` requires both `--yes` and explicit user approval. Unpinned or checksum-free installers return the canonical `installer-unavailable` refusal rather than silently downloading `latest`.
 - Cairn plans record detected stack, required tools, install commands, and blockers.
 - A missing LSP server is not a valid reason to skip precise codebase exploration until installation or an equivalent symbol-aware fallback has been attempted.
 
@@ -108,11 +108,11 @@ cairn uninstall
 cairn toolcheck
 ```
 
-- `cairn install`: installs the plugin into the Codex marketplace cache and configures Codex multi-agent settings, hook trust state, Claude Code mirror files, and Antigravity skills/workflows.
-- `cairn upgrade`: updates the installation, Codex multi-agent settings, hook trust state, Claude Code mirror files, and Antigravity skills/workflows from the current source.
-- `cairn doctor`: diagnoses Codex settings, installation, hook trust state, Claude Code mirror files, and Antigravity mirror files.
-- `cairn uninstall`: removes Cairn-added Codex settings, cache, Claude Code mirror files, and Antigravity mirror files.
-- `cairn toolcheck`: detects repository stacks and checks or installs required LSP and verification tools.
+- `cairn install`: transactionally installs the custom marketplace source, versioned Codex runtime cache, Cairn-owned config sections, Claude Code mirrors, and current Antigravity IDE/CLI skill surfaces.
+- `cairn upgrade`: replaces only ownership-manifest entries whose installed digests still match, with staged validation and reverse-order rollback on failure.
+- `cairn doctor`: validates the ownership manifest, managed digests, effective Codex features, actual installed/enabled/version plugin state, and mirror/runtime locators without repairing them.
+- `cairn uninstall`: removes or restores only ownership-manifest entries that remain unmodified; modified or unmanaged targets are preserved as conflicts and failures roll back.
+- `cairn toolcheck`: detects repository stacks and checks required LSP and verification tools; installation runs only for an approved supported installer.
 - `cairn goal ...`: starts, inspects, pauses, resumes, blocks, cancels, and completes a persisted repository goal; the default tool-bound policy records successful evidence by executing `goal verify -- <argv>`. The legacy `goal receipt` command imports declared evidence only.
 - `cairn-memory`: explores domain knowledge and updates `MEMORY.md`.
 - `cairn-plan`: creates a decision-complete plan under `docs/plan/`.
@@ -123,7 +123,7 @@ On every `UserPromptSubmit`, Cairn injects model-visible guidance that an implem
 
 For token-efficient execution, Cairn puts reasoning into a focused executable test contract—requirements, invariants, boundaries, and failure modes—before implementation. Implementation receives the failing contract and bounded file scope, then makes the minimum passing change. Tool exit codes and machine summaries decide success; successful output stays concise and only failures expand context. Verification climbs from focused tests to one final full check. Before package verification, inspect lifecycle scripts and run normal `npm pack --dry-run` by default: content-producing or unknown scripts must never use `--ignore-scripts`; only absent or proven content-neutral scripts may use it while the full-check evidence remains fresh. Successful state mutations support `--quiet` so growing goal JSON does not consume the conversation budget.
 
-Install and upgrade create `*.cairn-backup-*` backups before modifying `~/.codex/config.toml`. They also write runtime locators for every surface. The source plugin manifest stays validator-friendly; only the installed cache copy gets a `hooks` field to activate Codex hooks. The current custom lifecycle remains in use; lifecycle upgrade should run from the published/global package, not from the cached copy that it replaces.
+Install and upgrade keep the custom marketplace lifecycle; they do not invoke `codex plugin add`. Candidates are staged and validated before commit, every managed destination and digest is recorded in an ownership manifest, and committed phases roll back in reverse order on failure. An exact unmodified supported legacy installation can be adopted after release-integrity validation; modified or unknown artifacts are preserved and rejected. Cairn edits only its own TOML sections and never forces public feature or agent settings. The source plugin manifest stays validator-friendly; only the installed cache copy gets a `hooks` field. Lifecycle commands must run from the published/global package, not from the cached copy that they replace.
 
 Codex uses `skills/` and `commands/`. Claude Code uses mirrored commands and agent definitions under `.claude/`. Antigravity uses `.agents/workflows` and global skills mirrors.
 
@@ -131,8 +131,8 @@ Codex uses `skills/` and `commands/`. Claude Code uses mirrored commands and age
 
 Antigravity supports `SKILL.md`-based Agent Skills and Workflows invoked as `/workflow-name`. Cairn installs these paths for that surface.
 
-- Antigravity IDE: `~/.agents/skills/cairn-*`, `~/.agents/workflows/cairn-*.md`.
-- Antigravity CLI: `~/.gemini/antigravity-cli/skills/cairn-*`, `~/.gemini/antigravity-cli/workflows/cairn-*.md`.
+- Antigravity IDE: `~/.gemini/config/skills/cairn-*/SKILL.md`.
+- Antigravity CLI: flat `~/.gemini/antigravity-cli/skills/cairn-*.md` skill files.
 
 Codex-only hooks are not ported to Antigravity. Instead, the same planning, memory, complexity triage, and two-gate verification procedures run through Skills and Workflows. Set `ANTIGRAVITY_HOME` or `ANTIGRAVITY_CLI_HOME` to override paths.
 

@@ -4,11 +4,16 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- [Cairn 0.2.0 설치본 런타임 릴리스](docs/plan/release-0.2.0-installed-runtime.md): 설치본 경로 독립성, 영속 목표 완료 게이트, 안전한 toolcheck 변경을 0.2.0으로 검증·병합·배포합니다.
+- [Cairn 0.2.3 릴리스](docs/plan/release-0.2.3.md): dev/main PR 승격, npm 배포, npm 설치본 재설치와 실제 upgrade smoke를 수행합니다.
+
+## Superseded Plans
+
+- [Cairn 0.2.0 설치본 런타임 릴리스](docs/plan/release-0.2.0-installed-runtime.md): 후속 0.2.1·0.2.2 릴리스로 대체된 미완료 릴리스 계획입니다. 활성 작업으로 취급하지 않습니다.
 
 ## Completed Plans
 
 - Move completed topics here with evidence links.
+- [Cairn 하네스 신뢰성 개선](docs/plan/harness-reliability-remediation.md): 상태 lock·검증 결속, custom lifecycle transaction과 교차 버전 rollback, 호스트 호환성, toolcheck·문서 계약을 보강하고 104개 전체 테스트와 64-file package dry-run으로 검증했습니다. 공식 plugin 설치 경로 전환은 제외했습니다.
 - [Cairn 0.2.2 릴리스](docs/plan/release-0.2.2.md): PR #39를 `dev`, PR #40을 `main`에 CI 통과 후 병합하고 `cairn-ai@0.2.2`를 npm `latest`로 게시했습니다.
 - [토큰 효율 방법론 검토 findings 전체 수정](docs/plan/fix-token-methodology-review-findings.md): inline 값 보존, 직접 실행된 tool-bound evidence와 stale fingerprint, lifecycle 분류 기반 package 검증, 700자 bounded roadmap, 8개 locale·증거 용어·상태 일관성을 실패 테스트부터 수정하고 전체 검사와 package dry-run으로 검증했습니다.
 - [토큰 효율과 신뢰성을 함께 보장하는 Cairn 방법론](docs/plan/token-efficient-reliable-harness.md): 테스트 계약 우선·최소 구현·도구 결과 권위·실패 시에만 컨텍스트 확장·신선한 증거 재사용을 하네스에 반영했고, default prompt 2,549자, idle hook 277자, 3-task active hook 434자와 전체 39/39 테스트, 62-file package content 검증으로 확인했습니다.
