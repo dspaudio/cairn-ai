@@ -138,19 +138,22 @@
 
 ## Evidence
 
-- Tool readiness: Node/npm/git/GitHub app/npm auth 확인. `gh` CLI 토큰 만료는 app 경로로 대체.
-- Dry runs: pending.
-- GitHub PRs: pending.
-- npm publish and install smoke: pending.
-- Goal final review: pending.
+- Tool readiness: Node 26.5.0, 릴리스용 npm 10.9.8, git push credential, GitHub app, npm 계정 `wonkyoo.nam`을 확인했습니다. 만료된 `gh` CLI 토큰 대신 GitHub app의 PR/merge/check 경로를 사용했습니다.
+- Local/package gates: 최종 `npm run check` 106/106, `git diff --check`, clean main `npm pack --json`, 동일 tarball `npm publish --dry-run`이 성공했습니다.
+- Windows portability gates: CI에서 발견한 filtered copy, transient lock, PATHEXT, CRLF, lifecycle lock budget 문제를 각각 bounded 수정·focused test·독립 리뷰로 닫았습니다. 최종 release head `2c2ff7c9ed82bbf0a137d943492ad53aa6d20f99`의 CI run 74가 3 OS × Node 18/current 6/6 성공했습니다.
+- GitHub PRs: release→dev [#43](https://github.com/dspaudio/cairn-ai/pull/43)은 merge commit `9c78b05338b5f7755831a4b66dc4c651658736d7`, dev→main [#44](https://github.com/dspaudio/cairn-ai/pull/44)는 merge commit `fad37a01796f4f5372d3ef4b0e43c0801ed63ecc`입니다. PR #44의 CI run 75도 동일 6/6 성공했습니다.
+- npm publish: clean main `fad37a01796f4f5372d3ef4b0e43c0801ed63ecc`에서 만든 `cairn-ai-0.2.3.tgz` 99,146 bytes를 dry-run과 실제 publish에 동일하게 사용했습니다. Registry `latest=0.2.3`, shasum `e6d28e34a90fb976e5869b0d077ac9edb6bce0e1`, integrity `sha512-wVzDuChtHuejPkYdSYjdVcvR19P6pOd/IXtX7DGywp5KYZBVR/k22EQmc7HcziW0raK6V6nkjlHv5tPf/l5oRw==`가 고정 tarball과 일치합니다.
+- Isolated smoke: registry 0.2.2를 격리 prefix에 설치해 legacy tree를 만든 뒤 같은 prefix를 registry 0.2.3으로 재설치했습니다. `cairn upgrade`가 ownership 0.2.3과 44개 target을 만들고 이전 runtime을 제거했으며 `cairn doctor`가 전 항목 성공했습니다.
+- User-home apply: `/opt/homebrew` global package를 npm 0.2.3으로 재설치한 뒤 실제 legacy home을 transactionally upgrade했습니다. package/source/runtime/ownership이 모두 0.2.3이고 이전 runtime은 없으며 `cairn doctor` 전 항목이 성공했습니다. 적용 전 backup은 `/private/tmp/cairn-actual-backup-023.x3MH30/pre-upgrade.tgz`에 만들고 SHA-256 `f16c8b31d9c0364c7142207626c1c03b7d78d49e1a73fbaf2f10b9b731c6da9f`를 확인했습니다.
+- Goal final review: 독립 리뷰가 GitHub, npm registry, 격리 smoke, 실제 설치본, backup과 tool-bound receipt를 대조했으며 correctness·scope·evidence finding 없이 승인했습니다.
 
 ## Status
 
 - [x] Initial triage plan created
 - [x] Planned
-- [ ] Release prepared
-- [ ] dev PR merged
-- [ ] main PR merged
-- [ ] npm 0.2.3 published
-- [ ] npm reinstall and upgrade smoke passed
-- [ ] Reviewed and completed
+- [x] Release prepared
+- [x] dev PR merged
+- [x] main PR merged
+- [x] npm 0.2.3 published
+- [x] npm reinstall and upgrade smoke passed
+- [x] Reviewed and completed
