@@ -6,6 +6,7 @@ import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createRuntimeLocator } from "../scripts/cairn-paths.mjs";
 import {
+  DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS,
   parseCodexFeatureList,
   removeCairnConfig,
   renderInstalledMirror,
@@ -64,6 +65,7 @@ test("install creates custom source, versioned runtime, ownership, and current A
 });
 
 test("four parallel installs serialize safely and leave a healthy installation", async () => {
+  assert.ok(DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS >= 60_000, "default lock wait must cover serialized Windows lifecycle operations");
   await withHome(async ({ env, paths }) => {
     const results = await Promise.all(Array.from({ length: 4 }, () => runAsync("install", env)));
     for (const result of results) assert.equal(result.status, 0, result.stderr);

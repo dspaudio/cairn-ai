@@ -40,6 +40,7 @@ const releaseVersion = sourceManifest.version;
 const versionedPluginRoot = join(marketplaceRoot, pluginName, releaseVersion);
 const installedRuntimeLocatorPath = join(versionedPluginRoot, ".cairn-runtime.json");
 const phases = ["codex", "claude", "antigravity", "config", "cleanup"];
+export const DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS = 60_000;
 
 if (isCliEntry()) {
   try {
@@ -324,7 +325,7 @@ async function createTransaction() {
 }
 
 async function withLifecycleLock(operation, {
-  timeoutMs = Number(process.env.CAIRN_LIFECYCLE_LOCK_TIMEOUT_MS ?? 15_000),
+  timeoutMs = Number(process.env.CAIRN_LIFECYCLE_LOCK_TIMEOUT_MS ?? DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS),
   retryMs = 25,
   malformedStaleMs = 30_000,
 } = {}) {
