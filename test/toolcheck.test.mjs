@@ -190,6 +190,7 @@ test("createReport is read-only by default", async () => {
   const calls = [];
   const report = await createReport({
     root: join(fixtures, "javascript"),
+    platform: "linux",
     runner(command, args, options) {
       calls.push({ command, args, options });
       return { status: command === "node" ? 0 : 1, durationMs: 3 };
@@ -214,6 +215,7 @@ test("--install is refused without the additional confirmation", async () => {
   const report = await createReport({
     root: join(fixtures, "javascript"),
     install: true,
+    platform: "linux",
     runner(command, args) {
       calls.push([command, ...args].join(" "));
       return { status: 1 };
@@ -235,6 +237,7 @@ test("--install --yes never runs an unavailable built-in installer", async () =>
     root: join(fixtures, "javascript"),
     install: true,
     yes: true,
+    platform: "linux",
     runner(command, args) {
       calls.push([command, ...args].join(" "));
       return { status: 1 };
