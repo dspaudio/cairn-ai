@@ -8,15 +8,17 @@ Run from the published or global package:
 bunx cairn-ai@latest doctor
 ```
 
+The doctor validates the custom marketplace installation and ownership manifest without repairing it. Diagnostics are read-only; rollback is performed only by lifecycle transaction recovery.
+
 Checks:
 
 - Source plugin manifest.
 - Codex cached installation.
 - Marketplace file.
 - Hook manifest link in the installed copy.
-- `features.plugins`, `features.plugin_hooks`, `features.multi_agent`.
-- `agents.max_depth`.
-- `cairn@cairn` plugin enabled.
+- ownership manifest presence and managed destination digests.
+- `cairn@cairn` installed/enabled/version from the actual Codex CLI.
+- effective Codex plugin/hook/multi-agent feature state (reported, never forced).
 - hook trust state.
 - Claude Code commands and agents mirror files.
 - Antigravity IDE/CLI skills and workflows mirror files.

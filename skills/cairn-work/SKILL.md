@@ -41,6 +41,8 @@ node "<pluginRoot>/scripts/cairn.mjs" goal complete --quiet --root "<repoRoot>"
 
 `goal verify` executes the argv after `--` without a shell and records its exit code, bounded tool output, output digest, and watched-workspace fingerprint. The legacy `goal receipt` command imports declared evidence for compatibility; declared evidence does not satisfy a default tool-bound goal.
 
+Verification defaults to 600,000 ms (10 minutes), accepts a shorter `--timeout-ms`, and is capped at 3,600,000 ms (1 hour). The external command never holds the state lock. A receipt is committed only when the starting goal/task identity and the pre/post watched fingerprint still match. Choose the watch set and verification command at the semantic boundary that proves the claimed behavior.
+
 Use `goal pause`, `goal block --reason "<concrete blocker>"`, or `goal cancel` when that is the truthful state. A task can be blocked with `goal task --task "<task-id>" --status blocked --reason "<concrete blocker>"`.
 
 ## Token-Efficient Test Contract

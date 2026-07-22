@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { main } from "../scripts/cairn.mjs";
 import { quoteShellArg, renderInstalledMirror } from "../scripts/cairn-lifecycle.mjs";
@@ -73,12 +73,13 @@ test("installed mirrors resolve Cairn resources through runtime locators", async
   const env = isolatedEnvironment(temp);
   const project = join(temp, "target project");
   const unrelatedCwd = join(temp, "unrelated cwd");
-  const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn");
+  const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.3");
   const claudeLocatorPath = join(env.CLAUDE_HOME, "cairn", "runtime.json");
 
   try {
     await mkdir(project, { recursive: true });
     await mkdir(unrelatedCwd, { recursive: true });
+    await mkdir(dirname(env.CODEX_CONFIG_PATH), { recursive: true });
     await writeFile(env.CODEX_CONFIG_PATH, "[profiles.default]\nmodel = \"gpt-5\"\n");
 
     const install = runLifecycle("install", env);
@@ -91,11 +92,11 @@ test("installed mirrors resolve Cairn resources through runtime locators", async
       assertRuntimeLocator(await readJson(join(installedRoot, "skills", skill, "references", "cairn-runtime.json")), installedRoot);
     }
 
-    for (const surfaceRoot of [env.ANTIGRAVITY_HOME, env.ANTIGRAVITY_CLI_HOME]) {
-      assertRuntimeLocator(await readJson(join(surfaceRoot, "cairn", "runtime.json")), installedRoot);
-      for (const skill of ["cairn-memory", "cairn-plan", "cairn-work", "cairn-review"]) {
-        assertRuntimeLocator(await readJson(join(surfaceRoot, "skills", skill, "references", "cairn-runtime.json")), installedRoot);
-      }
+    assertRuntimeLocator(await readJson(join(env.ANTIGRAVITY_HOME, "cairn", "runtime.json")), installedRoot);
+    assertRuntimeLocator(await readJson(join(env.ANTIGRAVITY_CLI_HOME, "cairn", "runtime.json")), installedRoot);
+    for (const skill of ["cairn-memory", "cairn-plan", "cairn-work", "cairn-review"]) {
+      assertRuntimeLocator(await readJson(join(env.ANTIGRAVITY_HOME, "skills", skill, "references", "cairn-runtime.json")), installedRoot);
+      await stat(join(env.ANTIGRAVITY_CLI_HOME, "skills", `${skill}.md`));
     }
 
     const mirrorFiles = [
@@ -142,8 +143,9 @@ test("installed mirrors resolve Cairn resources through runtime locators", async
     assert.equal(goalState.goal.ownerSessionId, "installed-session");
 
     const doctor = runLifecycle("doctor", env);
-    assert.equal(doctor.status, 0, doctor.stdout + doctor.stderr);
-    assert.doesNotMatch(doctor.stdout, /^FAIL/m);
+    assert.equal(doctor.status, hostToolsAvailable() ? 0 : 1, doctor.stdout + doctor.stderr);
+    if (hostToolsAvailable()) assert.doesNotMatch(doctor.stdout, /^FAIL/m);
+    else assert.match(doctor.stdout, /^FAIL (?:Codex|Antigravity)/m);
 
     const staleLocator = { ...(await readJson(claudeLocatorPath)), pluginRoot: project };
     await writeFile(claudeLocatorPath, `${JSON.stringify(staleLocator, null, 2)}\n`);
@@ -170,7 +172,7 @@ function isolatedEnvironment(temp) {
     ANTIGRAVITY_HOME: join(temp, "Antigravity Home"),
     ANTIGRAVITY_CLI_HOME: join(temp, "Antigravity CLI Home"),
     HOME: join(temp, "Home"),
-    CODEX_CONFIG_PATH: join(temp, "config.toml"),
+    CODEX_CONFIG_PATH: join(temp, "Codex Home", "config.toml"),
   };
 }
 
@@ -180,6 +182,15 @@ function runLifecycle(command, env) {
     env,
     encoding: "utf8",
   });
+}
+
+function hostToolsAvailable() {
+  return commandAvailable("codex") && commandAvailable("agy");
+}
+
+function commandAvailable(command) {
+  const result = spawnSync(command, ["--version"], { encoding: "utf8" });
+  return result.error === undefined && result.status === 0;
 }
 
 async function readJson(path) {

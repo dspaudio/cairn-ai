@@ -8,13 +8,13 @@ Run from the published or global package, not from the installed cache copy:
 bunx cairn-ai@latest upgrade
 ```
 
-The current custom lifecycle remains in use. The cached plugin root is a replacement target and must not upgrade itself.
+The current custom marketplace lifecycle remains in use. The cached plugin root is a replacement target and must not upgrade itself.
 
 Actions:
 
-- Replace the Cairn installation in the Codex cache.
-- Recompute hook trust state and update settings.
-- Overwrite Claude Code mirror files with the latest content.
-- Overwrite Antigravity IDE/CLI skills and workflows mirror files with the latest content.
+- Replace only files tracked by the ownership manifest whose current digest still matches the installed digest.
+- Recompute Cairn-owned hook trust state without rewriting public feature or agent settings.
+- Replace owned Claude Code and Antigravity mirror files with the latest content.
 - Refresh runtime locators for every installed surface.
-- Create `*.cairn-backup-*` backups before changing settings.
+- Stage and validate all candidates before commit; rollback committed phases in reverse order on failure.
+- Preserve and report a conflict for modified, unmanaged, or invalid legacy artifacts.

@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { message } from "../scripts/cairn.mjs";
 import {
@@ -43,10 +43,10 @@ test("updateConfig replaces Cairn sections and preserves unrelated TOML", () => 
 
   const output = updateConfig(input, [{ key: "cairn@cairn:hooks/hooks.json:stop:0:0", trustedHash: "sha256:new" }]);
 
-  assert.match(output, /\[features\]\nplugins = true\nother = true/);
-  assert.match(output, /plugin_hooks = true/);
-  assert.match(output, /multi_agent = true/);
-  assert.match(output, /\[agents\]\nmax_depth = 2/);
+  assert.match(output, /\[features\]\nplugins = false\nother = true/);
+  assert.doesNotMatch(output, /plugin_hooks =/);
+  assert.doesNotMatch(output, /multi_agent =/);
+  assert.doesNotMatch(output, /\[agents\]/);
   assert.match(output, /\[profiles\.default\]\nmodel = "gpt-5"/);
   assert.match(output, /\[marketplaces\.cairn\]/);
   assert.match(output, /\[plugins\."cairn@cairn"\]\nenabled = true/);
@@ -222,6 +222,7 @@ test("path segment filtering handles platform separators", () => {
 
 test("plugin copy filtering ignores excluded names outside the package root", () => {
   assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\.codex-plugin"), true);
+  assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\hooks\\hooks.json"), true);
   assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\node_modules"), false);
   assert.equal(shouldCopyPluginPath("/tmp/node_modules/cairn-ai/.git"), false);
 });
@@ -235,10 +236,11 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     ANTIGRAVITY_HOME: join(temp, "agents"),
     ANTIGRAVITY_CLI_HOME: join(temp, "antigravity-cli"),
     HOME: join(temp, "home"),
-    CODEX_CONFIG_PATH: join(temp, "config.toml"),
+    CODEX_CONFIG_PATH: join(temp, "codex", "config.toml"),
   };
 
   try {
+    await mkdir(dirname(env.CODEX_CONFIG_PATH), { recursive: true });
     await writeFile(env.CODEX_CONFIG_PATH, "[profiles.default]\nmodel = \"gpt-5\"\n");
 
     const install = runLifecycle("install", env);
@@ -246,19 +248,18 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(install.stdout, /Cairn install complete|Cairn 설치 완료/);
 
     const doctor = runLifecycle("doctor", env);
-    assert.equal(doctor.status, 0, doctor.stdout + doctor.stderr);
-    assert.doesNotMatch(doctor.stdout, /^FAIL/m);
+    assert.equal(doctor.status, hostToolsAvailable() ? 0 : 1, doctor.stdout + doctor.stderr);
+    if (hostToolsAvailable()) assert.doesNotMatch(doctor.stdout, /^FAIL/m);
+    else assert.match(doctor.stdout, /^FAIL (?:Codex|Antigravity)/m);
 
     const config = await readFile(env.CODEX_CONFIG_PATH, "utf8");
     assert.match(config, /\[profiles\.default\]/);
-    assert.match(config, /\[features\][\s\S]*plugins = true/);
-    assert.match(config, /\[features\][\s\S]*plugin_hooks = true/);
-    assert.match(config, /\[features\][\s\S]*multi_agent = true/);
-    assert.match(config, /\[agents\][\s\S]*max_depth = 2/);
+    assert.doesNotMatch(config, /\[features\]/);
+    assert.doesNotMatch(config, /\[agents\]/);
     assert.match(config, /\[marketplaces\.cairn\]/);
     assert.match(config, /\[hooks\.state\."cairn@cairn:hooks\/hooks\.json:stop:0:0"\]/);
 
-    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", ".codex-plugin", "plugin.json");
+    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.3", ".codex-plugin", "plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(manifest.hooks, "./hooks/hooks.json");
     assert.match(manifest.interface.defaultPrompt.join("\n"), /every agent must read the project-root MEMORY\.md/i);
@@ -299,7 +300,8 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(removedConfig, /\[profiles\.default\]/);
     assert.doesNotMatch(removedConfig, /marketplaces\.cairn/);
 
-    await assert.rejects(stat(join(env.CODEX_HOME, "plugins", "cache", "cairn")));
+    await assert.rejects(stat(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn")));
+    await assert.rejects(stat(join(env.CODEX_HOME, "plugins", "cache", "cairn", ".cairn", "lifecycle.json")));
     await assert.rejects(stat(join(env.CLAUDE_HOME, "commands", "cairn-plan.md")));
     await assert.rejects(stat(join(env.ANTIGRAVITY_HOME, "skills", "cairn-plan")));
   } finally {
@@ -313,4 +315,13 @@ function runLifecycle(command, env) {
     env,
     encoding: "utf8",
   });
+}
+
+function hostToolsAvailable() {
+  return commandAvailable("codex") && commandAvailable("agy");
+}
+
+function commandAvailable(command) {
+  const result = spawnSync(command, ["--version"], { encoding: "utf8" });
+  return result.error === undefined && result.status === 0;
 }

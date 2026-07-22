@@ -11,7 +11,7 @@ Cairn 的核心思路是保留有用的 agent harness 行为：hooks、persisten
 
 在 task 修改外部状态之前，Cairn 会记录并运行最接近的 dry-run 或 check mode。verification 是有边界的：默认每个 task 有两次 verification pass，然后 agent 会记录 blocker 或拆分 task，而不是继续开放式循环。
 
-Cairn 也把 tool readiness 视为工作的一部分。它会根据 repository stack 检查 LSP、typecheck、lint、dry-run 和 verification tools。如果缺少必要工具，Cairn 会先尝试 project-local 或 repository-native installation，再接受 fallback。
+Cairn 也把 tool readiness 视为工作的一部分。它会根据 repository stack 检查 LSP、typecheck、lint、dry-run 和 verification tools。只有在获得明确批准且存在固定版本的受支持 installer 时才安装，否则报告 blocker。
 
 ## LazyCodex Attribution
 
@@ -38,7 +38,7 @@ cairn toolcheck --install --yes --root .
 ```
 
 - `toolcheck` 报告 detected stacks 和 missing tools。
-- `toolcheck --install` 尝试最接近的 project-local 或 repository-native install path，例如 package-manager dev dependencies、Composer dev dependencies、`uv`、Java LSP bootstrap、`go install` 或 `rustup component add`。
+- `toolcheck --install` 要求明确批准和 `--yes`；不受支持的 installer 不会执行，并返回 canonical `installer-unavailable`。
 - Cairn plans 会记录 detected stack、required tools、install commands 和 blockers。
 - 缺少 LSP server 不能作为跳过 precise codebase exploration 的理由，除非已尝试 installation 或等价的 symbol-aware fallback。
 
@@ -96,17 +96,17 @@ cairn uninstall
 cairn toolcheck
 ```
 
-- `cairn install`: 将 plugin 安装到 Codex marketplace cache，并配置 hook trust state、Claude Code mirror files 和 Antigravity skills/workflows。
-- `cairn upgrade`: 从当前 source 更新 installation、hook trust state、Claude Code mirror files 和 Antigravity skills/workflows。
-- `cairn doctor`: 诊断 Codex settings、installation、hook trust state、Claude Code mirror files 和 Antigravity mirror files。
-- `cairn uninstall`: 移除 Cairn 添加的 Codex settings、cache、Claude Code mirror files 和 Antigravity mirror files。
-- `cairn toolcheck`: 检测 repository stacks，并检查或安装 required LSP 和 verification tools。
+- `cairn install`: 以事务方式安装 custom marketplace source、versioned runtime、Cairn-owned config sections 和当前 host mirrors。
+- `cairn upgrade`: staged validation 后只替换 ownership manifest 中未修改的 entry，失败时 rollback。
+- `cairn doctor`: 只读验证 ownership digests、effective Codex features、真实 plugin status 和 runtime locators。
+- `cairn uninstall`: 只删除未修改的 managed entry；modified 或 unmanaged target 会 preserve 并报告 conflict。
+- `cairn toolcheck`: 检测 repository stacks 和 required tools；只执行已批准的 supported installer，否则返回 `installer-unavailable`。
 - `cairn-memory`: 探索 domain knowledge 并更新 `MEMORY.md`。
 - `cairn-plan`: 在 `docs/plan/` 下创建 decision-complete plan。
 - `cairn-work`: 执行当前 `PLAN.md` 中的下一个 module task，并收集两个 verification gates。
 - `cairn-review`: 根据 plan、memory 和 evidence review completed tasks。
 
-`install` 和 `upgrade` 在修改 `~/.codex/config.toml` 前会创建 `*.cairn-backup-*` backups。source plugin manifest 保持 validator-friendly；只有 installed cache copy 会添加启用 Codex hooks 的 `hooks` field。
+custom marketplace lifecycle 将 source 与 versioned runtime 分离。每次 commit 前执行 staged validation，ownership manifest 绑定全部 managed digests，失败时执行 reverse-order rollback。modified 或 unmanaged artifacts 会 preserve 并报告 conflict。Cairn 只修改自身 TOML sections，不强制 public feature/agent settings。
 
 Codex 使用 `skills/` 和 `commands/`。Claude Code 使用 `.claude/` 下的 mirrored commands 和 agent definitions。Antigravity 使用 `.agents/workflows` 和 global skills mirrors。
 
@@ -114,8 +114,8 @@ Codex 使用 `skills/` 和 `commands/`。Claude Code 使用 `.claude/` 下的 mi
 
 Antigravity 支持通过 `/workflow-name` 调用的 `SKILL.md` based Agent Skills and Workflows。Cairn 会为该 surface 安装这些 paths。
 
-- Antigravity IDE: `~/.agents/skills/cairn-*`, `~/.agents/workflows/cairn-*.md`.
-- Antigravity CLI: `~/.gemini/antigravity-cli/skills/cairn-*`, `~/.gemini/antigravity-cli/workflows/cairn-*.md`.
+- Antigravity IDE: `~/.gemini/config/skills/cairn-*/SKILL.md`。
+- Antigravity CLI: `~/.gemini/antigravity-cli/skills/cairn-*.md` 下的扁平 skill 文件。
 
 Codex-only hooks 不会移植到 Antigravity。相同的 planning、memory、complexity triage 和 two-gate verification procedures 会通过 Skills 和 Workflows 运行。设置 `ANTIGRAVITY_HOME` 或 `ANTIGRAVITY_CLI_HOME` 可以覆盖 paths。
 

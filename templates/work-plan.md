@@ -84,6 +84,8 @@ Describe the observable result.
 - Token budget: high reasoning for plan/triage/test design; bounded minimum implementation; concise tool-derived verification summaries.
 - Verification ladder: focused tests, one final full check, then package dry-run if no files changed. Inspect lifecycle scripts first; run normal `npm pack --dry-run` by default. Content-producing or unknown scripts must never use `--ignore-scripts`; only absent or proven content-neutral scripts may use it while evidence remains fresh.
 - Evidence freshness: relevant changes after verification make affected evidence stale.
+- Verification execution: `goal verify` defaults to 600,000 ms (10 minutes), is capped at 3,600,000 ms (1 hour), and records only when the starting goal/task identity and pre/post watched fingerprint match.
+- Evidence boundary: choose the semantic boundary whose watch set and command prove the claimed behavior.
 - Dry-run or check mode before external-state mutation:
 - No dry-run available, if applicable:
 - Verification loop budget: two passes per task by default.
