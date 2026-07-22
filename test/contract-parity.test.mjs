@@ -45,6 +45,9 @@ test("work contracts document bounded verification and semantic evidence boundar
 
 test("package and CI contracts include every runtime artifact and supported node/os matrix", async () => {
   const packageJson = JSON.parse(await read("package.json"));
+  const pluginJson = JSON.parse(await read(".codex-plugin/plugin.json"));
+  assert.equal(packageJson.version, "0.2.3");
+  assert.equal(pluginJson.version, packageJson.version);
   assert.match(packageJson.scripts.check, /cairn-safe-fs\.mjs/);
   assert.match(packageJson.scripts.check, /release-integrity-0\.2\.2\.json/);
   assert.equal(packageJson.scripts.prepack, "npm run check");
@@ -54,7 +57,12 @@ test("package and CI contracts include every runtime artifact and supported node
   assert.match(ci, /ubuntu-latest/);
   assert.match(ci, /windows-latest/);
   assert.match(ci, /macos-latest/);
-  assert.match(ci, /npm_config_cache|NPM_CONFIG_CACHE/);
+  assert.match(ci, /uses: actions\/checkout@v4[\s\S]*?with:\s*\n\s+fetch-depth:\s*0/);
+  assert.doesNotMatch(ci, /runs-on:[^\n]*\n\s+env:/);
+  const runSteps = [...ci.matchAll(/^\s+- run: .+$/gm)];
+  const stepCaches = [...ci.matchAll(/^\s+- run: .+\n\s+env:\n\s+npm_config_cache: \$\{\{ runner\.temp \}\}\/npm-cache$/gm)];
+  assert.ok(runSteps.length > 0);
+  assert.equal(stepCaches.length, runSteps.length);
   assert.match(ci, /npm pack --dry-run/);
 });
 
