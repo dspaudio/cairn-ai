@@ -52,7 +52,7 @@ test("package and CI contracts include every runtime artifact and supported node
   assert.match(packageJson.scripts.check, /release-integrity-0\.2\.2\.json/);
   assert.equal(packageJson.scripts.prepack, "npm run check");
 
-  const ci = await read(".github/workflows/ci.yml");
+  const ci = (await read(".github/workflows/ci.yml")).replace(/\r\n?/g, "\n");
   assert.match(ci, /node-version:\s*\[18,\s*(?:current|22|26)\]/);
   assert.match(ci, /ubuntu-latest/);
   assert.match(ci, /windows-latest/);

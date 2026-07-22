@@ -58,11 +58,12 @@ export async function createReport({
   runner = run,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   localChecker = localExecutableAvailable,
+  platform = process.platform,
 } = {}) {
   const resolvedRoot = resolve(root);
   const entries = await collectEntries(resolvedRoot);
   const detected = detectStacks(entries);
-  const requirements = buildRequirements(detected, entries);
+  const requirements = buildRequirements(detected, entries, commandOk, platform);
   const results = [];
   const installRefused = install && !yes;
 
@@ -72,6 +73,7 @@ export async function createReport({
       runner,
       timeoutMs,
       localChecker,
+      platform,
     });
     let installed = false;
     let installDiagnostic = null;
@@ -95,6 +97,7 @@ export async function createReport({
             runner,
             timeoutMs,
             localChecker,
+            platform,
           });
         }
       }
@@ -301,20 +304,24 @@ export function inspectCommand(requirement, {
   runner = run,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   localChecker = localExecutableAvailable,
+  platform = process.platform,
 } = {}) {
-  const candidates = commandCandidates(requirement.command, root);
+  const candidates = commandCandidates(requirement.command, root, platform);
   const localOnly = requirement.localOnly || isRepositoryCommand(requirement.command, root);
 
   if (!localOnly) {
-    const diagnostic = execute(requirement.command, requirement.args, { root, runner, timeoutMs });
-    if (diagnostic.status === 0) {
-      return {
-        ok: true,
-        availability: "verified",
-        source: "system",
-        candidate: requirement.command,
-        diagnostic,
-      };
+    let diagnostic = null;
+    for (const candidate of systemCommandCandidates(requirement.command, platform)) {
+      diagnostic = execute(candidate, requirement.args, { root, runner, timeoutMs });
+      if (diagnostic.status === 0) {
+        return {
+          ok: true,
+          availability: "verified",
+          source: "system",
+          candidate,
+          diagnostic,
+        };
+      }
     }
 
     for (const candidate of candidates.slice(1)) {
@@ -331,7 +338,7 @@ export function inspectCommand(requirement, {
 
     return {
       ok: false,
-      availability: diagnostic.timedOut ? "timeout" : "missing",
+      availability: diagnostic?.timedOut ? "timeout" : "missing",
       source: null,
       candidate: null,
       diagnostic,
@@ -375,6 +382,11 @@ export function commandCandidates(command, root = process.cwd(), platform = proc
   if (platform !== "win32") return [...new Set(candidates)];
   const extensions = [".cmd", ".bat", ".exe"];
   return [...new Set(candidates.flatMap((candidate) => hasWindowsExecutableExtension(candidate) ? [candidate] : [candidate, ...extensions.map((extension) => `${candidate}${extension}`)]))];
+}
+
+export function systemCommandCandidates(command, platform = process.platform) {
+  if (platform !== "win32" || hasWindowsExecutableExtension(command) || isAbsolute(command)) return [command];
+  return [command, `${command}.cmd`, `${command}.bat`, `${command}.exe`];
 }
 
 export function localExecutableAvailable(command, platform = process.platform) {

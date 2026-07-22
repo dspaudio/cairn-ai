@@ -222,6 +222,7 @@ test("path segment filtering handles platform separators", () => {
 
 test("plugin copy filtering ignores excluded names outside the package root", () => {
   assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\.codex-plugin"), true);
+  assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\hooks\\hooks.json"), true);
   assert.equal(shouldCopyPluginPath("C:\\npm-prefix\\node_modules\\cairn-ai\\node_modules"), false);
   assert.equal(shouldCopyPluginPath("/tmp/node_modules/cairn-ai/.git"), false);
 });

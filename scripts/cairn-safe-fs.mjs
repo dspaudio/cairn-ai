@@ -7,6 +7,7 @@ const LOCK_SCHEMA_VERSION = 1;
 const DEFAULT_LOCK_TIMEOUT_MS = 5_000;
 const DEFAULT_RETRY_MS = 25;
 const DEFAULT_MALFORMED_STALE_MS = 30_000;
+const TRANSIENT_LOCK_ERROR_CODES = new Set(["EACCES", "EBUSY", "EPERM"]);
 
 export function stateLockPath(root = process.cwd()) {
   return safePath(root, ".cairn/state.lock");
@@ -101,10 +102,21 @@ export async function withStateLock(root, operation, {
       await testHooks.afterLockWritten?.({ lockPath, owner: structuredClone(owner) });
       if (await confirmsLockOwnership(lockPath, owner.nonce)) break;
     } catch (error) {
-      if (error?.code !== "EEXIST") throw error;
-      if (await confirmsLockOwnership(lockPath, owner.nonce)) break;
-      const reclaimed = await reclaimStaleLock(workspaceRoot, lockPath, malformedStaleMs, testHooks);
-      if (reclaimed) continue;
+      if (isTransientLockError(error)) {
+        // Windows can briefly deny a lock file that another process is closing.
+        // Retry within the deadline; permission errors are not evidence of staleness.
+      } else if (error?.code === "EEXIST") {
+        try {
+          await testHooks.beforeContendedLockConfirmation?.({ lockPath });
+          if (await confirmsLockOwnership(lockPath, owner.nonce)) break;
+          const reclaimed = await reclaimStaleLock(workspaceRoot, lockPath, malformedStaleMs, testHooks);
+          if (reclaimed) continue;
+        } catch (inspectionError) {
+          if (!isTransientLockError(inspectionError)) throw inspectionError;
+        }
+      } else {
+        throw error;
+      }
     }
     if (Date.now() >= deadline) throw new Error(`Timed out waiting for Cairn state lock after ${timeoutMs}ms`);
     await delay(Math.min(retryMs, Math.max(1, deadline - Date.now())));
@@ -175,12 +187,22 @@ async function confirmsLockOwnership(lockPath, nonce) {
 }
 
 async function releaseOwnedLock(lockPath, nonce) {
-  try {
-    const record = parseLockRecord(await readFile(lockPath, "utf8"));
-    if (record?.nonce === nonce) await rm(lockPath);
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      const record = parseLockRecord(await readFile(lockPath, "utf8"));
+      if (record?.nonce !== nonce) return;
+      await rm(lockPath);
+      return;
+    } catch (error) {
+      if (error?.code === "ENOENT") return;
+      if (!isTransientLockError(error) || attempt === 7) throw error;
+      await delay(10 * (attempt + 1));
+    }
   }
+}
+
+function isTransientLockError(error) {
+  return TRANSIENT_LOCK_ERROR_CODES.has(error?.code);
 }
 
 function parseLockRecord(text) {

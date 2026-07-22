@@ -3,10 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import {
-  cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, writeFile,
+  copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, writeFile,
 } from "node:fs/promises";
 import { homedir, hostname, tmpdir } from "node:os";
-import { basename, dirname, join, posix, relative, resolve, sep, win32 } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep, win32 } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   RUNTIME_LOCATOR_SCHEMA_VERSION,
@@ -280,13 +280,30 @@ async function legacyMigrationTargets() {
 }
 
 async function copyPluginCandidate(destination, runtimeRoot) {
-  await cp(pluginRoot, destination, { recursive: true, filter: shouldCopyPluginPath });
+  await copyPluginTree(pluginRoot, destination);
   const manifestPath = join(destination, ".codex-plugin", "plugin.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.hooks = "./hooks/hooks.json";
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   await writeLocator(join(destination, ".cairn-runtime.json"), runtimeRoot);
   for (const name of skillNames()) await writeLocator(join(destination, "skills", name, "references", "cairn-runtime.json"), runtimeRoot);
+}
+
+async function copyPluginTree(source, destination) {
+  if (!shouldCopyPluginPath(source)) return;
+  const info = await lstat(source);
+  if (info.isSymbolicLink() || (!info.isDirectory() && !info.isFile())) {
+    throw new Error(`Plugin source must contain only regular files and directories: ${source}`);
+  }
+  if (info.isFile()) {
+    await mkdir(dirname(destination), { recursive: true });
+    await copyFile(source, destination);
+    return;
+  }
+  await mkdir(destination, { recursive: true });
+  const entries = await readdir(source);
+  entries.sort();
+  for (const entry of entries) await copyPluginTree(join(source, entry), join(destination, entry));
 }
 
 async function createTransaction() {
@@ -982,7 +999,11 @@ export function shouldCopyPluginPath(source) {
   const name = source.split(/[\\/]+/).at(-1);
   if ([".git", "node_modules", ".cairn"].includes(name)) return false;
   if (sep === "/" && source.includes("\\")) return true;
-  const path = relative(pluginRoot, source).split(sep).join("/");
+  const relativePath = relative(pluginRoot, source);
+  // Windows fs.cp filters can surface an absolute path when source and pluginRoot
+  // use different drive/callback representations. Excluded basenames remain denied.
+  if (isAbsolute(relativePath)) return true;
+  const path = relativePath.split(sep).join("/");
   if (path === "") return true;
   if (path.startsWith("../") || path === "..") return true;
   if (/^(package\.json|LICENSE|README(?:\.[^.]+)?\.md)$/.test(path)) return true;

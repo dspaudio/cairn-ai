@@ -72,6 +72,45 @@ test("state lock recovers only eligible stale owners and releases after exceptio
   });
 });
 
+test("state lock retries transient errors during contended confirmation and stale reclaim", async () => {
+  await withTempRoot(async (root) => {
+    await mkdir(join(root, ".cairn"));
+    const lockPath = stateLockPath(root);
+    const record = { schemaVersion: 1, hostname: hostname(), nonce: randomUUID(), acquiredAt: new Date().toISOString() };
+
+    await writeFile(lockPath, JSON.stringify({ ...record, pid: process.pid }));
+    let confirmationFailures = 0;
+    await withStateLock(root, async () => {}, {
+      timeoutMs: 500,
+      retryMs: 5,
+      testHooks: {
+        async beforeContendedLockConfirmation() {
+          if (confirmationFailures > 0) return;
+          confirmationFailures += 1;
+          await rm(lockPath);
+          throw transientError("EPERM");
+        },
+      },
+    });
+    assert.equal(confirmationFailures, 1);
+
+    await writeFile(lockPath, JSON.stringify({ ...record, nonce: randomUUID(), pid: 99999999 }));
+    let reclaimFailures = 0;
+    await withStateLock(root, async () => {}, {
+      timeoutMs: 500,
+      retryMs: 5,
+      testHooks: {
+        afterStaleObserved() {
+          if (reclaimFailures > 0) return;
+          reclaimFailures += 1;
+          throw transientError("EACCES");
+        },
+      },
+    });
+    assert.equal(reclaimFailures, 1);
+  });
+});
+
 test("a stale observer restores a newly acquired lock before its owner enters the critical section", async () => {
   await withTempRoot(async (root) => {
     await mkdir(join(root, ".cairn"));
@@ -344,4 +383,10 @@ function deferred() {
   let resolvePromise;
   const promise = new Promise((resolve) => { resolvePromise = resolve; });
   return { promise, resolve: resolvePromise };
+}
+
+function transientError(code) {
+  const error = new Error(`simulated ${code}`);
+  error.code = code;
+  return error;
 }

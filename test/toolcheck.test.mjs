@@ -16,6 +16,7 @@ import {
   packageManager,
   parseCliArgs,
   shouldUseShell,
+  systemCommandCandidates,
 } from "../scripts/cairn-toolcheck.mjs";
 
 const fixtures = resolve("test", "fixtures", "toolcheck");
@@ -166,6 +167,23 @@ test("commandCandidates includes Windows executable shims for local bins", () =>
   assert.equal(shouldUseShell(join(root, "node_modules", ".bin", "tsc.cmd"), "linux"), false);
   assert.equal(isWithin("D:\\a\\repository", "C:\\hostedtoolcache\\node", "win32"), false);
   assert.equal(isWithin("D:\\a\\repository", "D:\\a\\repository\\tools", "win32"), true);
+  assert.deepEqual(systemCommandCandidates("npm", "win32"), ["npm", "npm.cmd", "npm.bat", "npm.exe"]);
+});
+
+test("Windows tool checks execute command shims available through PATH", async () => {
+  const calls = [];
+  const report = await createReport({
+    root: join(fixtures, "javascript"),
+    platform: "win32",
+    runner(command) {
+      calls.push(command);
+      return { status: command === "node" || command === "npm.cmd" ? 0 : 1 };
+    },
+  });
+
+  assert.equal(report.results.find(({ name }) => name === "npm").ok, true);
+  assert.equal(report.results.find(({ name }) => name === "npm").candidate, "npm.cmd");
+  assert.deepEqual(calls, ["node", "npm", "npm.cmd"]);
 });
 
 test("createReport is read-only by default", async () => {
