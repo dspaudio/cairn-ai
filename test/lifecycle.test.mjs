@@ -117,6 +117,12 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(message("memory", "ko-KR"), /cairn-memory/);
     assert.match(message("plan", "en-US"), /Every agent.*project-root MEMORY\.md/);
     assert.match(message("plan", "en-US"), /Light\/Heavy Path triage/);
+    assert.match(message("plan", "en-US"), /request, planning, and code checkpoints/i);
+    assert.match(message("plan", "en-US"), /plan artifact.*repository goal task roadmap.*UI plan/i);
+    assert.match(message("work", "en-US"), /code checkpoint.*before the first edit/i);
+    assert.match(message("plan", "en-US"), /inherit.*model.*reasoning effort/i);
+    assert.match(message("work", "en-US"), /Light.*medium.*Heavy.*high.*xhigh/i);
+    assert.match(message("work", "en-US"), /unsupported.*effective.*inherited/i);
     assert.match(message("plan", "en-US"), /whole work.*tasks and sub-tasks/i);
     assert.match(message("plan", "ko-KR"), /전체 작업.*task.*sub-task/);
     assert.match(message("work", "ko-KR"), /모든 에이전트.*MEMORY\.md/);
@@ -150,6 +156,9 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(plan, /Every agent.*project-root `MEMORY\.md`/);
     assert.match(plan, /Run complexity triage/);
     assert.match(plan, /checked Heavy Path signals/);
+    assert.match(plan, /request, planning, and code checkpoints/i);
+    assert.match(plan, /plan artifact.*repository goal task roadmap.*native UI plan/i);
+    assert.match(plan, /reasoning effort profile/i);
     assert.match(plan, /generated or updated documentation, plans, and memory artifacts/i);
 
     const outputKo = await runState("manual", { root: tempKo, locale: "ko-KR" });
@@ -158,6 +167,7 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     const planKo = await readFile(join(tempKo, "PLAN.md"), "utf8");
     assert.match(memoryKo, /문서, 계획, 메모리 산출물/);
     assert.match(planKo, /복잡도 트리아지/);
+    assert.match(planKo, /요청, 계획, 코드 체크포인트/);
     assert.match(planKo, /문서, 계획, 메모리 산출물/);
 
     const cli = spawnSync(process.execPath, [cliScript, "memory"], {
@@ -283,6 +293,7 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     const worker = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "agents", "worker.md"), "utf8");
     const installedPlan = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "skills", "cairn-plan", "SKILL.md"), "utf8");
     const installedWork = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "skills", "cairn-work", "SKILL.md"), "utf8");
+    const installedGuidance = await readFile(join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn", "docs", "model-guidance", "README.md"), "utf8");
     assert.match(explorer, /root `MEMORY\.md` → the phase skill.*active plan.*current-task references/i);
     assert.match(explorer, /recursively delegate bounded read-only sub-tasks to subagents/);
     assert.match(worker, /root `MEMORY\.md` → the phase skill.*active plan.*current-task references/i);
@@ -292,6 +303,9 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(installedPlan, /user-called\/main agent as the orchestrator/i);
     assert.match(installedWork, /test contract first.*requirements, invariants, boundaries, and failure modes/i);
     assert.match(installedWork, /npm pack --dry-run/i);
+    assert.match(installedWork, /requested.*effective.*reasoning effort/is);
+    assert.match(installedWork, /reasoning effort profile/i);
+    assert.match(installedGuidance, /Reasoning Effort Routing/i);
     await stat(join(env.CLAUDE_HOME, "commands", "cairn-plan.md"));
     await stat(join(env.ANTIGRAVITY_HOME, "skills", "cairn-plan", "SKILL.md"));
     const antigravityWork = await readFile(join(env.ANTIGRAVITY_HOME, "workflows", "cairn-work.md"), "utf8");

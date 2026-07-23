@@ -36,6 +36,8 @@ Every implementation task passes complexity triage first, before agent, plugin, 
 
 The selected path and rationale are recorded in `docs/plan/<topic>.md` when a plan artifact exists. Even on Light Path, the two verification gates remain. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence.
 
+Cairn inherits the host/user model and routes only reasoning effort. Light planning, implementation, and verification request `medium`; Heavy planning, review, and implementation request `high`; final verification/review requests `xhigh`. Each task records requested and effective effort. Only a newly dispatched task/worker may receive a host-supported effort option. Unsupported hosts or values remain `effective: inherited` without changing model/global config. When the path changes, the plan artifact, repository goal task roadmap, native UI plan, and effort profile are synchronized together; completed profiles are preserved and incomplete profiles are recalculated.
+
 When the subagent tool provides a progress-reporting channel, subagents report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing. The orchestrator immediately relays received status events to the user. If no mid-run reporting channel exists, the orchestrator relays observable events such as assignment, waiting, and final completion.
 
 When a delegated subagent finishes, it provides a final report before leaving. After the orchestrator captures that final report and evidence, the completed subagent is closed or released. The orchestrator then reviews the final report and evidence before marking the work complete.

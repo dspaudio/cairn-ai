@@ -19,6 +19,7 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - Keep repository-specific judgment in `docs/memory/` and `docs/plan/`. Keep Cairn's model guidance in the installed plugin and reference it with `cairn://docs/model-guidance/...`.
 - Preserve proper nouns, file names, variable names, service names, alert names, MCP tool names, and agent names exactly as written.
 - Select Light Path or Heavy Path before implementation.
+- Treat complexity as three checkpoints: a provisional request checkpoint, a post-exploration planning checkpoint, and a code checkpoint after exact file/caller/test inspection immediately before the first edit. Before editing, evidence may change either route. Every change must synchronize the plan artifact, repository goal task roadmap through `goal replan`, and native UI plan, including reviews and required evidence. After editing begins, a new Heavy signal promotes Light Path to Heavy Path: stop further edits, mark affected evidence stale, synchronize all three roadmaps, and repeat the code checkpoint.
 - Treat the user-called/main agent as the orchestrator: it plans, assigns, verifies, and records evidence.
 - Delegate actual implementation edits to `worker` subagents whenever subagent tools are available, regardless of Light Path or Heavy Path.
 - When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, the orchestrator relays observable events such as assignment, waiting, and final completion.
@@ -45,6 +46,16 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - A foreign session receives only a generic ownership-conflict capsule on session/prompt events. It must not expose goal, plan, or task details, and it must not make stop hooks block work owned by another session.
 - Character budgets are regression proxies for cache-friendly prompt shape, not measurements of provider cache hits or cost. Cairn does not require provider cache keys, breakpoints, or live API telemetry.
 - Do not add read receipts that claim model attention. Restore references on every re-entry and use readable state plus fresh bound evidence as the enforceable contract.
+
+## Reasoning Effort Routing
+
+- Models always inherit the host or user default; Cairn never selects or overrides a model.
+- Light Path planning, implementation, and verification request `medium`.
+- Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
+- Every plan task records `Requested reasoning effort` and `Effective reasoning effort`.
+- Only a newly dispatched task or worker may receive the requested value, and only through a host-exposed reasoning-effort option or host-native equivalent. Omit every model override.
+- For an unsupported host or value, record `Effective reasoning effort: inherited` with the reason. Do not change the model or global config and do not silently choose a nearby value.
+- A route change synchronizes the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Preserve completed task profiles as audit history and recalculate incomplete task profiles for the new path.
 
 ## Delegation Defaults
 

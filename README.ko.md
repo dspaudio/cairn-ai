@@ -28,6 +28,8 @@ Cairn은 실행 정책에서는 LazyCodex와 다릅니다. LazyCodex의 role-cha
 
 선택된 path와 근거는 계획 산출물이 있을 때 `docs/plan/<topic>.md`에 기록합니다. Light Path에서도 두 검증 게이트는 유지됩니다. subagent 도구가 없으면 main agent가 implementation을 직접 인계하고, 그 takeover를 evidence에 기록합니다.
 
+Cairn은 host/user model을 상속하고 reasoning effort만 라우팅합니다. Light 계획·구현·검증은 `medium`, Heavy 계획·검토·구현은 `high`, 최종 검증·검토는 `xhigh`를 요청합니다. 각 task는 requested/effective effort를 기록하며, 새로 dispatch하는 task/worker에만 host가 지원하는 effort option을 전달합니다. 미지원 host/value는 model/global config를 바꾸지 않고 `effective: inherited`로 남깁니다. path가 바뀌면 plan artifact, 저장소 goal task roadmap, native UI plan, effort profile을 함께 동기화하고 완료 profile은 보존하며 미완료 profile은 재계산합니다.
+
 subagent 도구가 progress-reporting channel을 제공하면 subagent는 작업 시작, 방향 결정/확인, 주기적 진행, 완료 시점에 orchestrator에게 상태를 보고합니다. orchestrator는 받은 status event를 즉시 사용자에게 전달합니다. mid-run reporting channel이 없으면 orchestrator는 할당, 대기, 최종 완료처럼 관측 가능한 event를 사용자에게 전달합니다.
 
 위임받은 subagent는 작업을 마치면 퇴근 전에 final report를 남깁니다. orchestrator가 final report와 evidence를 회수한 뒤 완료된 subagent를 close/release합니다. 그 다음 orchestrator가 final report와 evidence를 검토한 뒤 작업 완료 여부를 판단합니다.

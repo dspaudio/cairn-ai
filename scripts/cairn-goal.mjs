@@ -153,6 +153,34 @@ export async function setTaskStatus({ root = process.cwd(), taskId, status, bloc
   });
 }
 
+export async function replanGoal({ root = process.cwd(), tasks } = {}) {
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    throw new Error("replan tasks must contain at least one incomplete task");
+  }
+
+  return mutateGoal(root, (state) => {
+    assertGoalMutable(state);
+    if (state.goal.status !== "active") throw new Error("Only an active goal can be replanned");
+
+    const completedTasks = state.tasks.filter((task) => task.status === "completed");
+    const completedIds = new Set(completedTasks.map((task) => task.id));
+    const replacementTasks = tasks.map((task, index) => {
+      const source = typeof task === "string" ? task : { ...task, status: undefined, blocker: undefined };
+      const normalized = normalizeTask(source, index, index === 0 ? "active" : "pending");
+      if (completedIds.has(normalized.id)) {
+        throw new Error(`Replanned task conflicts with completed task id: ${normalized.id}`);
+      }
+      return normalized;
+    });
+
+    state.tasks = [...completedTasks, ...replacementTasks];
+    state.receipts = state.receipts.filter((receipt) => receipt.scope === "task" && completedIds.has(receipt.taskId));
+    state.goal.blocker = null;
+    state.goal.updatedAt = timestamp();
+    return state;
+  });
+}
+
 export async function assignTask({ root = process.cwd(), taskId, agentId = null } = {}) {
   const normalizedTaskId = requiredText(taskId, "taskId");
   const normalizedAgentId = agentId === null ? null : requiredText(agentId, "agentId");
@@ -403,6 +431,11 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
     emit(JSON.stringify(state));
     return state;
   }
+  if (command === "replan") {
+    const state = await replanGoal({ root, tasks: parseTasks(options.tasks ?? positional.slice(0)) });
+    emit(JSON.stringify(state));
+    return state;
+  }
   if (command === "assign") {
     const state = await assignTask({ root, taskId: options.task ?? positional[0], agentId: options.agent ?? positional[1] ?? null });
     emit(JSON.stringify(state));
@@ -452,7 +485,7 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
     emit(JSON.stringify(state));
     return state;
   }
-  throw new Error("Usage: cairn-goal start|status|task|assign|receipt|verify|pause|resume|block|cancel|complete [--root PATH]");
+  throw new Error("Usage: cairn-goal start|status|task|replan|assign|receipt|verify|pause|resume|block|cancel|complete [--root PATH]");
 }
 
 async function mutateGoal(root, mutate) {
@@ -916,6 +949,7 @@ function allowedOptions(command) {
     start: ["goal", "plan", "tasks", "criteria", "requiredEvidence", "session", "evidencePolicy", "evidence-policy"],
     status: [],
     task: ["task", "status", "reason"],
+    replan: ["tasks"],
     assign: ["task", "agent"],
     receipt: ["task", "kind", "scope", "command", "exitCode", "exit-code", "exit", "timestamp", "goalId", "goal-id", "plan"],
     verify: ["task", "kind", "scope", "watch", "timeout-ms"],

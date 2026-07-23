@@ -25,6 +25,10 @@ Use for:
 
 Do not make architecture decisions. Do not ask the user. Do not delegate vague or unbounded work. Do not treat a missing tool as unavailable until install or bootstrap has been attempted. Report only important paths, commands, and outputs accurately.
 
+Before the first edit, inspect the assigned exact files, callers, and tests and report evidence for the plan's code checkpoint. If you discover a new Heavy Path signal before or during implementation, stop further edits and report it to the orchestrator so the plan artifact, repository goal task roadmap, native UI plan, review requirements, and stale evidence can be updated. Resume only after a new code checkpoint is recorded.
+
+Keep the model inherited. Read the task's `Requested reasoning effort` and `Effective reasoning effort`. A newly delegated task or new worker may receive requested effort only through a host-exposed task/subagent reasoning-effort option or host-native equivalent; omit model overrides. If the host or value is unsupported, report effective reasoning effort `inherited` and do not alter model/global config.
+
 Use this prompt format:
 
 ```text

@@ -6,6 +6,10 @@ Prerequisite: resolve the installed Cairn runtime from the plugin or skill locat
 
 Goal: show an initial plan and goal before triage can be interrupted, then leave a decision-complete implementation plan before non-trivial implementation.
 
+Complexity is staged, not decided once. Record a provisional request checkpoint, re-evaluate it at the planning checkpoint after exploration, and require a code checkpoint after exact file/caller/test inspection immediately before the first edit. Before editing, either route may change when evidence supports it. Every change must synchronize the plan artifact, repository goal task roadmap through `goal replan`, and native UI plan, including reviews and required evidence. After editing begins, a new Heavy Path signal only promotes Light Path to Heavy Path: stop further edits, mark affected evidence stale, synchronize all three roadmaps, and repeat the code checkpoint.
+
+Models always inherit. Route reasoning effort per task: Light planning/implementation/verification=`medium`; Heavy planning/review/implementation=`high`; final verification/review=`xhigh`. Record requested/effective effort for every task. Only a new task/worker may receive requested effort through a supported host-native option; unsupported host/value means effective=`inherited` with no model/global config change. Route changes synchronize the plan artifact, repository goal task roadmap, native UI plan, and reasoning effort profile; preserve completed profiles and recalculate incomplete profiles.
+
 Procedure:
 
 1. Every agent must read the project-root `MEMORY.md` for domain knowledge and repository policy before repository exploration, tool selection, work, or delegation.
