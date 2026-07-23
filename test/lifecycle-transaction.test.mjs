@@ -53,7 +53,7 @@ test("install creates custom source, versioned runtime, ownership, and current A
     assert.equal(result.status, 0, result.stderr);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
     assert.equal(ownership.schemaVersion, 1);
-    assert.equal(ownership.version, "0.2.3");
+    assert.equal(ownership.version, "0.2.4");
     assert.ok(ownership.targets.length > 20);
     await stat(paths.source);
     await stat(paths.versioned);
@@ -115,6 +115,15 @@ test("lifecycle lock recovers a dead owner and rejects a live owner or nonce rep
   });
 });
 
+test("lock acquisition recreates a parent pruned before exclusive create", async () => {
+  await withHome(async ({ env, paths }) => {
+    const result = run("install", { ...env, CAIRN_TEST_PRUNE_LOCK_PARENT_BEFORE_ACQUIRE: "1" });
+    assert.equal(result.status, 0, result.stderr);
+    await stat(paths.ownership);
+    await assert.rejects(stat(join(paths.marketplace, ".cairn", "lifecycle.lock")));
+  });
+});
+
 for (const phase of ["after-codex", "after-claude", "after-antigravity", "after-config"]) {
   test(`failure injection ${phase} rolls back every committed phase`, async () => {
     await withHome(async ({ env, paths }) => {
@@ -157,7 +166,7 @@ test("upgrade failure restores the previous runtime and manifest", async () => {
   });
 });
 
-test("an owned 0.2.2 installation upgrades to 0.2.3 and removes only the previous runtime", async () => {
+test("an owned 0.2.2 installation upgrades to 0.2.4 and removes only the previous runtime", async () => {
   await withHome(async ({ env, paths }) => {
     assert.equal(run("install", env).status, 0);
     const oldRuntime = await rewriteOwnedVersion(paths, "0.2.2");
@@ -166,7 +175,7 @@ test("an owned 0.2.2 installation upgrades to 0.2.3 and removes only the previou
     await assert.rejects(stat(oldRuntime));
     await stat(paths.versioned);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.2.3");
+    assert.equal(ownership.version, "0.2.4");
     assert.equal(ownership.targets.find((record) => record.id === "codex-runtime").path, paths.versioned);
     assert.equal(ownership.targets.some((record) => record.id === "previous-codex-runtime"), false);
   });
@@ -267,6 +276,70 @@ test("uninstall preserves modified artifacts and returns conflict", async () => 
   });
 });
 
+test("managed-only uninstall prunes the marketplace cache root and can reinstall", async () => {
+  await withHome(async ({ env, paths }) => {
+    assert.equal(run("install", env).status, 0);
+    const uninstall = run("uninstall", env);
+    assert.equal(uninstall.status, 0, uninstall.stderr);
+    await assert.rejects(stat(paths.marketplace));
+
+    const reinstall = run("install", env);
+    assert.equal(reinstall.status, 0, reinstall.stderr);
+    await stat(paths.ownership);
+    assert.equal(run("doctor", env).status, hostToolsAvailable() ? 0 : 1);
+  });
+});
+
+test("uninstall preserves unmanaged children at every marketplace scaffold", async () => {
+  await withHome(async ({ env, paths }) => {
+    assert.equal(run("install", env).status, 0);
+    const unmanaged = [
+      join(paths.marketplace, "plugins", "keep.txt"),
+      join(paths.marketplace, "cairn", "keep.txt"),
+      join(paths.marketplace, ".agents", "plugins", "keep.txt"),
+      join(paths.marketplace, ".agents", "keep.txt"),
+      join(paths.marketplace, ".cairn", "keep.txt"),
+    ];
+    for (const path of unmanaged) {
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, `keep ${path}\n`);
+    }
+
+    const uninstall = run("uninstall", env);
+    assert.equal(uninstall.status, 0, uninstall.stderr);
+    for (const path of unmanaged) assert.match(await readFile(path, "utf8"), /^keep /);
+    await assert.rejects(stat(paths.ownership));
+    await stat(paths.marketplace);
+  });
+});
+
+test("post-commit failure never rolls back removed artifacts", async () => {
+  await withHome(async ({ env, paths }) => {
+    assert.equal(run("install", env).status, 0);
+    const failed = run("uninstall", { ...env, CAIRN_TEST_FAIL_PHASE: "uninstall-after-commit" });
+    assert.equal(failed.status, 1);
+    assert.match(failed.stderr, /Injected lifecycle failure/);
+    await assert.rejects(stat(paths.ownership));
+    await assert.rejects(stat(paths.source));
+    await stat(paths.marketplace);
+
+    const reinstall = run("install", env);
+    assert.equal(reinstall.status, 0, reinstall.stderr);
+    await stat(paths.ownership);
+  });
+});
+
+test("nonce replacement before release prevents post-release root pruning", async () => {
+  await withHome(async ({ env, paths }) => {
+    assert.equal(run("install", env).status, 0);
+    const uninstall = run("uninstall", { ...env, CAIRN_TEST_REPLACE_LOCK_BEFORE_RELEASE: "1" });
+    assert.equal(uninstall.status, 0, uninstall.stderr);
+    await assert.rejects(stat(paths.ownership));
+    await stat(join(paths.marketplace, ".cairn", "lifecycle.lock"));
+    await stat(paths.marketplace);
+  });
+});
+
 test("an exact legacy 0.2.2 tree is adopted once and upgraded transactionally", async () => {
   await withHome(async ({ env, paths }) => {
     await createLegacy022(paths.source);
@@ -274,7 +347,7 @@ test("an exact legacy 0.2.2 tree is adopted once and upgraded transactionally", 
     const result = run("upgrade", env);
     assert.equal(result.status, 0, result.stderr);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.2.3");
+    assert.equal(ownership.version, "0.2.4");
     assert.ok(ownership.targets.some((target) => target.id === "codex-source"));
     await stat(paths.versioned);
   });
@@ -421,7 +494,7 @@ test("Codex A/B gate proves the versioned custom cache is required", async (cont
     const installed = withVersion.installed.find((entry) => entry.pluginId === "cairn@cairn");
     assert.equal(installed?.installed, true);
     assert.equal(installed?.enabled, true);
-    assert.equal(installed?.version, "0.2.3");
+    assert.equal(installed?.version, "0.2.4");
   });
 });
 
@@ -535,7 +608,7 @@ async function withHome(fn) {
   const paths = {
     marketplace,
     source: join(marketplace, "plugins", "cairn"),
-    versioned: join(marketplace, "cairn", "0.2.3"),
+    versioned: join(marketplace, "cairn", "0.2.4"),
     ownership: join(marketplace, ".cairn", "lifecycle.json"),
   };
   try { await fn({ temp, env, paths }); } finally { await rm(temp, { recursive: true, force: true }); }

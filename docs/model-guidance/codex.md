@@ -17,6 +17,7 @@ Codex-family models are strong at small implementation tasks, explicit tool use,
 
 ## Adjustment Rules
 
+- On every fresh entry, compaction recovery, restart, delegation, or handoff, restore root `MEMORY.md` → current phase skill → active plan → current-task references → recorded model guidance. If persisted state or the assignment requires a missing, unreadable, or inconsistent reference, fail closed and report a blocker before editing, delegating, approving, or completing.
 - Do not start implementation without a plan.
 - Do not stop before local implementation solely because subagent tools are unavailable; the main agent takes over implementation directly and records that takeover in evidence.
 - Keep work units small. Split large changes into smaller plan tasks.
@@ -26,6 +27,7 @@ Codex-family models are strong at small implementation tasks, explicit tool use,
 - Do not skip LSP, typecheck, lint, dry-run, or verification because a tool is missing. Try repository-local installation or record the failed install attempt as a blocker.
 - Do not continue an open-ended verification loop. Use at most two verification passes per task unless the plan records a risk-based exception.
 - Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
+- Preserve the stable prompt prefix: keep detailed workflow in phase skills/model guidance, and do not vary a hook capsule with prompt text or turn ID when persisted state is unchanged.
 
 ## Path Guidance
 

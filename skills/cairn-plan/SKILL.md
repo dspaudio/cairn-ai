@@ -17,6 +17,10 @@ Do not treat planning as optional for implementation work that is more than a na
 
 Plan from the whole work down. First understand the full requested outcome and affected surfaces, then classify the work into small executable tasks. If one task is still too broad to verify cleanly, split that task into sub-tasks.
 
+## Re-entry and Required References
+
+At the start and after compaction, restart, or handoff, restore context in this order: root `MEMORY.md` → `cairn-plan` → the active plan → current-task references → model guidance recorded by the plan. A new implementation request with no persisted goal may create its initial plan through the procedure below. If persisted state names a plan or task and that reference is missing, unreadable, or inconsistent, do not explore, edit, delegate, or complete work; report or record a blocker first. Do not add a read-receipt field that claims the model read a file: filesystem/state consistency and bound tool evidence remain the fail-closed authority.
+
 ## Runtime Location
 
 Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's `scripts/`, `templates/`, commands, agents, and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never search the target repository for Cairn scripts, templates, or model guidance, and never derive the plugin root from the current working directory.

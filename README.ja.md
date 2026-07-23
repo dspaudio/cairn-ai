@@ -108,6 +108,8 @@ cairn toolcheck
 
 custom marketplace lifecycle は source と versioned runtime を分離します。各 commit 前に staged validation を行い、ownership manifest が全 managed digest を結び、失敗時は reverse-order rollback します。modified または unmanaged artifacts は preserve して conflict として報告します。Cairn-owned TOML sections だけを変更し、public feature/agent settings は強制しません。
 
+Clean uninstall は、すべての managed scaffold directory が空の場合に限り Cairn marketplace cache root を削除し、unmanaged content は保持します。source repository と repository state、global `cairn-ai` package、package-manager cache、現在の ownership manifest 外の legacy backup/settings は自動削除しません。
+
 Codex は `skills/` と `commands/` を使います。Claude Code は `.claude/` 配下の mirrored commands と agent definitions を使います。Antigravity は `.agents/workflows` と global skills mirrors を使います。
 
 ## Antigravity Compatibility

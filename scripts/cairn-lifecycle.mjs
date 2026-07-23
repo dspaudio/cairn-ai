@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { realpathSync } from "node:fs";
 import {
-  copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, writeFile,
+  copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, rmdir, writeFile,
 } from "node:fs/promises";
 import { homedir, hostname, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep, win32 } from "node:path";
@@ -47,7 +47,7 @@ if (isCliEntry()) {
     const command = process.argv[2] ?? "help";
     if (command === "install" || command === "upgrade") await withLifecycleLock(() => install(command));
     else if (command === "doctor") await doctor();
-    else if (command === "uninstall") await withLifecycleLock(uninstall);
+    else if (command === "uninstall") await withLifecycleLock(uninstall, { afterRelease: pruneUninstallRoots });
     else help();
   } catch (error) {
     console.error(`Cairn lifecycle error: ${error.message}`);
@@ -107,7 +107,7 @@ async function install(mode) {
     console.log(`Codex versioned runtime: ${versionedPluginRoot}`);
     console.log(`Ownership manifest: ${ownershipPath}`);
   } catch (error) {
-    await rollback(transaction);
+    if (transaction.state !== "committed") await rollback(transaction);
     throw error;
   }
 }
@@ -141,11 +141,13 @@ async function uninstall() {
     await removeManagedTarget({ id: "ownership", phase: "manifest", path: ownershipPath, type: "file" }, transaction);
     injectFailure("uninstall-after-ownership");
     await finishTransaction(transaction);
-    console.log(t("uninstallComplete"));
+    injectFailure("uninstall-after-commit");
   } catch (error) {
-    await rollback(transaction);
+    if (transaction.state !== "committed") await rollback(transaction);
     throw error;
   }
+  await pruneUninstallScaffolds();
+  console.log(t("uninstallComplete"));
 }
 
 async function doctor() {
@@ -328,8 +330,10 @@ async function withLifecycleLock(operation, {
   timeoutMs = Number(process.env.CAIRN_LIFECYCLE_LOCK_TIMEOUT_MS ?? DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS),
   retryMs = 25,
   malformedStaleMs = 30_000,
+  afterRelease,
 } = {}) {
   await mkdir(dirname(lifecycleLockPath), { recursive: true });
+  if (process.env.CAIRN_TEST_PRUNE_LOCK_PARENT_BEFORE_ACQUIRE === "1") await rmdir(dirname(lifecycleLockPath));
   const owner = { schemaVersion: 1, pid: process.pid, hostname: hostname(), nonce: randomUUID(), acquiredAt: new Date().toISOString() };
   const deadline = Date.now() + timeoutMs;
   while (true) {
@@ -342,21 +346,76 @@ async function withLifecycleLock(operation, {
       if (acquired?.nonce !== owner.nonce) throw new Error("Cairn lifecycle lock ownership changed after acquisition");
       break;
     } catch (error) {
+      if (error?.code === "ENOENT") {
+        if (Date.now() >= deadline) throw new Error(`Timed out waiting for Cairn lifecycle lock after ${timeoutMs}ms`);
+        await mkdir(dirname(lifecycleLockPath), { recursive: true });
+        continue;
+      }
       if (error?.code !== "EEXIST") throw error;
       if (await reclaimLifecycleLock(malformedStaleMs)) continue;
       if (Date.now() >= deadline) throw new Error(`Timed out waiting for Cairn lifecycle lock after ${timeoutMs}ms`);
       await delay(Math.min(retryMs, Math.max(1, deadline - Date.now())));
     }
   }
+  let operationSucceeded = false;
   try {
-    return await operation();
+    const result = await operation();
+    operationSucceeded = true;
+    return result;
   } finally {
-    try {
-      const current = parseLifecycleLock(await readFile(lifecycleLockPath, "utf8"));
-      if (current?.nonce === owner.nonce) await rm(lifecycleLockPath, { force: true });
-    } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
+    if (process.env.CAIRN_TEST_REPLACE_LOCK_BEFORE_RELEASE === "1") {
+      await writeFile(lifecycleLockPath, `${JSON.stringify({ ...owner, nonce: randomUUID() })}\n`);
     }
+    const released = await releaseLifecycleLock(owner);
+    if (operationSucceeded && released && afterRelease) await afterRelease();
+  }
+}
+
+async function releaseLifecycleLock(owner) {
+  let current;
+  try {
+    current = parseLifecycleLock(await readFile(lifecycleLockPath, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+  if (current?.nonce !== owner.nonce) return false;
+  const releasedPath = `${lifecycleLockPath}.released.${owner.nonce}`;
+  try {
+    await rename(lifecycleLockPath, releasedPath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+  const released = parseLifecycleLock(await readFile(releasedPath, "utf8"));
+  if (released?.nonce !== owner.nonce) {
+    if (!(await exists(lifecycleLockPath))) await rename(releasedPath, lifecycleLockPath);
+    return false;
+  }
+  await rm(releasedPath, { force: true });
+  return true;
+}
+
+async function pruneUninstallScaffolds() {
+  for (const path of [
+    join(marketplaceRoot, "plugins"),
+    join(marketplaceRoot, pluginName),
+    join(marketplaceRoot, ".agents", "plugins"),
+    join(marketplaceRoot, ".agents"),
+    transactionRoot,
+  ]) await removeEmptyDirectory(path);
+}
+
+async function pruneUninstallRoots() {
+  await removeEmptyDirectory(dirname(lifecycleLockPath));
+  await removeEmptyDirectory(marketplaceRoot);
+}
+
+async function removeEmptyDirectory(path) {
+  try {
+    await rmdir(path);
+  } catch (error) {
+    if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error?.code)) throw error;
   }
 }
 
@@ -462,7 +521,12 @@ async function rollback(transaction) {
 
 async function finishTransaction(transaction) {
   transaction.state = "committed";
-  await writeTransactionJournal(transaction);
+  try {
+    await writeTransactionJournal(transaction);
+  } catch (error) {
+    transaction.state = "active";
+    throw error;
+  }
   await rm(transaction.root, { recursive: true, force: true });
   await rm(join(transactionRoot, transaction.id), { recursive: true, force: true });
   await rm(transactionPath, { force: true });

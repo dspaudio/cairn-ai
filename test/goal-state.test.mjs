@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync, writeFileSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -13,6 +14,7 @@ import {
   setTaskStatus,
   startGoal,
   transitionGoal,
+  verifyAndRecord,
 } from "../scripts/cairn-goal.mjs";
 import { runStateResult } from "../scripts/cairn-state.mjs";
 
@@ -299,6 +301,122 @@ test("tool-bound goals execute verification, reject declared and stale evidence,
   });
 });
 
+test("completed tasks can refresh stale tool evidence without reopening status or assignment", async () => {
+  await withTempRoot(async (root) => {
+    await writeFile(join(root, "watched.txt"), "v1\n");
+    await startGoal({
+      root,
+      goal: "Refresh completed evidence",
+      planId: "docs/plan/refresh.md",
+      tasks: [{ id: "refresh", title: "Refresh evidence" }],
+    });
+    await assignTask({ root, taskId: "refresh", agentId: "worker-1" });
+    for (const kind of ["moduleAcceptance", "surfaceIntegration"]) {
+      await verifyAndRecord({ root, taskId: "refresh", kind, watchPaths: ["watched.txt"], argv: [process.execPath, "-e", "process.exit(0)"] });
+    }
+    await setTaskStatus({ root, taskId: "refresh", status: "completed" });
+    await writeFile(join(root, "watched.txt"), "v2\n");
+
+    const refreshed = await verifyAndRecord({
+      root,
+      taskId: "refresh",
+      kind: "moduleAcceptance",
+      watchPaths: ["watched.txt"],
+      argv: [process.execPath, "-e", "console.log('refreshed')"],
+    });
+    const task = refreshed.state.tasks.find((item) => item.id === "refresh");
+    assert.equal(task.status, "completed");
+    assert.equal(task.assignedAgentId, "worker-1");
+    assert.equal(refreshed.evidence.kind, "moduleAcceptance");
+    await assert.rejects(setTaskStatus({ root, taskId: "refresh", status: "active" }), /Cannot transition task/);
+  });
+});
+
+test("verification rejects pending, blocked, and terminal targets before running tools", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Reject invalid verification targets",
+      planId: "docs/plan/reject.md",
+      evidencePolicy: "declared",
+      tasks: [{ id: "active", title: "Active" }, { id: "pending", title: "Pending" }],
+    });
+    let ran = false;
+    const runner = () => { ran = true; return { status: 0, stdout: "", stderr: "" }; };
+    await assert.rejects(
+      verifyAndRecord({ root, taskId: "pending", kind: "moduleAcceptance", argv: ["unused"], runner }),
+      /must be active or completed/,
+    );
+    await setTaskStatus({ root, taskId: "active", status: "blocked", blocker: "waiting" });
+    await assert.rejects(
+      verifyAndRecord({ root, taskId: "active", kind: "moduleAcceptance", argv: ["unused"], runner }),
+      /must be active or completed/,
+    );
+    assert.equal(ran, false);
+  });
+
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Terminal verification",
+      planId: "docs/plan/terminal.md",
+      evidencePolicy: "declared",
+      tasks: [{ id: "only", title: "Only" }],
+    });
+    for (const kind of ["moduleAcceptance", "surfaceIntegration"]) {
+      await recordReceipt({ root, taskId: "only", kind, command: `verify ${kind}`, exitCode: 0 });
+    }
+    await setTaskStatus({ root, taskId: "only", status: "completed" });
+    await recordReceipt({ root, scope: "goal", kind: "finalReview", command: "review", exitCode: 0 });
+    await transitionGoal({ root, status: "completed" });
+    await assert.rejects(
+      verifyAndRecord({ root, taskId: "only", kind: "moduleAcceptance", argv: [process.execPath, "-e", "process.exit(0)"] }),
+      /completed goal/,
+    );
+  });
+});
+
+test("verification fails closed when goal, task, assignment, or watched files race", async () => {
+  const cases = [
+    ["goal identity", (state) => { state.goal.id = "goal-replaced-during-verification"; }],
+    ["plan identity", (state) => { state.goal.planId = "docs/plan/replaced.md"; }],
+    ["task status", (state) => { state.tasks[0].status = "blocked"; state.tasks[0].blocker = "raced"; }],
+    ["task assignment", (state) => { state.tasks[0].assignedAgentId = "raced-agent"; }],
+  ];
+  for (const [name, mutate] of cases) {
+    await withTempRoot(async (root) => {
+      await startGoal({ root, goal: `Race ${name}`, planId: "docs/plan/race.md", tasks: [{ id: "race", title: "Race" }] });
+      const runner = () => {
+        const path = goalStatePath(root);
+        const state = JSON.parse(readFileSync(path, "utf8"));
+        mutate(state);
+        writeFileSync(path, `${JSON.stringify(state, null, 2)}\n`);
+        return { status: 0, stdout: "ok", stderr: "" };
+      };
+      await assert.rejects(
+        verifyAndRecord({ root, taskId: "race", kind: "moduleAcceptance", argv: ["race"], runner }),
+        /changed during verification/,
+        name,
+      );
+      assert.equal((await readGoalState({ root })).receipts.length, 0);
+    });
+  }
+
+  await withTempRoot(async (root) => {
+    await writeFile(join(root, "watched.txt"), "v1\n");
+    await startGoal({ root, goal: "Watch race", planId: "docs/plan/watch.md", tasks: [{ id: "race", title: "Race" }] });
+    const runner = () => {
+      writeFileSync(join(root, "watched.txt"), "v2\n");
+      return { status: 0, stdout: "ok", stderr: "" };
+    };
+    await assert.rejects(
+      verifyAndRecord({ root, taskId: "race", kind: "moduleAcceptance", watchPaths: ["watched.txt"], argv: ["race"], runner }),
+      /Watched workspace changed/,
+    );
+    assert.equal((await readGoalState({ root })).receipts.length, 0);
+  });
+});
+
 test("receipts fail closed and task completion advances only after successful bound evidence", async () => {
   await withTempRoot(async (root) => {
     const initial = await createTwoTaskGoal(root);
@@ -349,17 +467,15 @@ test("automatic context hooks do not initialize an uninitialized repository", as
     assert.match(prompt.message, /read (?:the project-)?root MEMORY/);
     assert.equal(session.hookOutput.hookSpecificOutput.hookEventName, "SessionStart");
     assert.equal(prompt.hookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /Implementation\/continue.*initial triage plan/i);
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /update_plan, then create_goal/i);
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /repository goal before exploration/i);
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /finalize the plan after triage, then implement/i);
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /consultation, explanation, or plan-only requests/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /implementation\/continue.*load cairn-plan/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /restore or create the active plan and current task/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /consultation, explanation, and plan-only requests goal-free/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
     const promptKo = await runStateResult("user-prompt-submit", { root, locale: "ko-KR", payload: { cwd: root, session_id: "s1", turn_id: "t2", prompt: "요청한 수정을 구현해줘" } });
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /구현\/계속 실행.*초기 트리아지 계획/);
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /update_plan → create_goal/);
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /탐색 전 저장소 goal 시작/);
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /트리아지 후 계획 확정 → 구현/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /구현\/계속 실행이면 cairn-plan을 로드/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /active plan과 current task를 복원하거나 생성/);
     assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /상담·설명·계획 전용은 goal 없이/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /없거나 읽을 수 없거나 일치하지 않으면 수정·위임·완료하지/);
     await assert.rejects(access(join(root, "MEMORY.md")));
     await assert.rejects(access(join(root, ".cairn")));
   });
@@ -372,7 +488,7 @@ test("session-owned goals are isolated from other hook sessions", async () => {
       goal: "Session isolated goal",
       planId: "docs/plan/session.md",
       ownerSessionId: "session-owner",
-      tasks: [{ id: "owned", title: "Owned task" }],
+      tasks: [{ id: "secret-task-id", title: "Secret task title" }],
     });
     const owner = await runStateResult("session-start", { root, locale: "en-US", payload: { cwd: root, session_id: "session-owner", turn_id: "t1" } });
     assert.equal(owner.hookOutput.hookSpecificOutput.hookEventName, "SessionStart");
@@ -384,9 +500,16 @@ test("session-owned goals are isolated from other hook sessions", async () => {
     assert.equal(cli.status, 0, cli.stderr);
     assert.equal(JSON.parse(cli.stdout).hookSpecificOutput.hookEventName, "SessionStart");
 
-    for (const event of ["session-start", "user-prompt-submit", "stop"]) {
+    for (const event of ["session-start", "user-prompt-submit"]) {
       const foreign = await runStateResult(event, { root, locale: "en-US", payload: { cwd: root, session_id: "session-foreign", turn_id: "t2" } });
-      assert.deepEqual(foreign.hookOutput, {}, `${event} must not expose or block an owner-bound goal`);
+      const context = foreign.hookOutput.hookSpecificOutput.additionalContext;
+      assert.match(context, /owned by another session/i);
+      assert.match(context, /do not start, edit, delegate, or complete/i);
+      assert.doesNotMatch(context, /Session isolated goal|docs\/plan\/session\.md|secret-task-id|Secret task title/);
+    }
+    for (const event of ["stop", "subagent-stop"]) {
+      const foreign = await runStateResult(event, { root, locale: "en-US", payload: { cwd: root, session_id: "session-foreign", turn_id: "t2" } });
+      assert.deepEqual(foreign.hookOutput, {}, `${event} must not block an owner-bound goal`);
     }
   });
 });
