@@ -39,7 +39,7 @@
 - Current changes: clean uninstall, completed-task evidence refresh, prompt recovery/cache shape, tests/docs가 아직 commit되지 않은 상태입니다.
 - Release branch: `codex/release-0.2.4-clean-uninstall-cache`, base `dev`. 같은 이름의 remote branch와 열린 0.2.4 PR은 없습니다.
 - Version surfaces: `package.json`, `.codex-plugin/plugin.json`, current-version assertions in `test/contract-parity.test.mjs`, `test/installed-plugin.test.mjs`, `test/lifecycle-transaction.test.mjs`, `test/lifecycle.test.mjs`, `test/packed-install.test.mjs`만 0.2.4로 올립니다. `scripts/release-integrity-0.2.2.json`과 legacy adoption 0.2.2 계약, 과거 릴리스 계획은 유지합니다.
-- GitHub: `gh` token은 invalid이지만 git fetch/push credential과 GitHub app read/write PR·workflow·merge 경로가 동작합니다. PR 생성·조회·병합은 GitHub app을 사용합니다.
+- GitHub: 갱신된 `gh` token과 git credential, GitHub app의 read/write PR·workflow·merge 경로가 모두 동작합니다. PR 생성·병합은 GitHub app을 사용하고 CI 재확인은 `gh`로 교차 검증합니다.
 - npm: account `wonkyoo.nam` 인증됨; registry의 `cairn-ai@0.2.4`는 E404로 미게시 상태입니다.
 - npm runtime: system npm 12.0.0은 직전 릴리스에서 sigstore 게시 문제가 있었으므로 사용하지 않습니다. 검증된 `/private/tmp/cairn-npm-runtime/node_modules/npm/bin/npm-cli.js`의 npm 10.9.8을 pack, tarball dry-run, actual publish 모두에 동일하게 사용합니다.
 - Package lifecycle: `prepack`은 content-producing `npm run check`이므로 `--ignore-scripts`를 사용하지 않습니다.
@@ -81,13 +81,13 @@
 
 ### Task 0: triage-plan
 
-- Status: active.
+- Status: completed.
 - Contract: 저장소·도구·릴리스 표면을 조사하고 dry-run/check 및 rollback/중단 경계를 포함한 decision-complete 실행 계획을 확정합니다.
 - Required evidence: `planArtifact`, `triageDecision`.
 
 ### Task 1: release-prepare
 
-- Status: pending.
+- Status: completed.
 - Contract: 위에 확정한 current-version surface를 0.2.4로 올리고, `git diff --check`, 전체 `npm run check`, 정상 `npm pack --dry-run`, `npm publish --dry-run`을 통과합니다.
 - Files: `package.json`, `.codex-plugin/plugin.json`, 5개 current-version test files, `PLAN.md`, `docs/plan/release-0.2.4.md`.
 - Test contract: 두 manifest가 0.2.4로 일치하고 모든 installed/runtime/current ownership expectation이 0.2.4이며 legacy 0.2.2 integrity/adoption 계약은 유지됩니다.
@@ -97,7 +97,7 @@
 
 ### Task 2: dev-pr
 
-- Status: pending.
+- Status: completed.
 - Contract: `codex/release-0.2.4-clean-uninstall-cache`를 만들고 전체 변경을 의도적으로 commit한 뒤 push합니다. GitHub app으로 base `dev` PR을 생성하고 head SHA의 3 OS × Node 18/current CI 6/6 성공을 확인한 뒤 merge commit 방식으로 병합합니다.
 - Dry-run/check: `git diff --check`, `git status --short`, `git diff --stat`, branch가 `origin/dev`에서 분기했는지 확인하고 실제 push 직전 `git push --dry-run origin HEAD:<branch>`를 실행합니다.
 - Failure boundary: CI 실패 시 merge 금지; 한 번 진단 후 bounded fix와 전체 gate 재실행. merge 직전 PR head를 재조회하고 검증된 head SHA를 GitHub merge API의 `expected_head_sha`로 전달합니다. head가 바뀌거나 expected SHA가 거부되면 merge하지 않고 이전 CI evidence를 폐기합니다.
@@ -106,7 +106,7 @@
 
 ### Task 3: main-pr
 
-- Status: pending.
+- Status: completed.
 - Contract: dev merge 후 remote `dev` SHA를 확인하고 GitHub app으로 `dev`→`main` PR을 생성합니다. PR head SHA의 CI 6/6 성공과 base가 최신 `main`임을 확인한 뒤 merge commit으로 병합합니다.
 - Dry-run/check: `git fetch origin`, `git merge-base --is-ancestor <dev-merge-sha> origin/dev`, GitHub compare/PR 상태.
 - Failure boundary: dev 이외 변경이 섞이거나 CI가 실패하면 main merge 금지. merge 직전 PR head를 재조회하고 CI가 성공한 SHA와 동일할 때만 그 값을 `expected_head_sha`로 전달하며, 불일치는 중단합니다.
@@ -115,7 +115,7 @@
 
 ### Task 4: npm-publish
 
-- Status: pending.
+- Status: completed.
 - Contract: main merge 뒤 새로 fetch한 exact `origin/main` SHA를 임시 clean worktree로 checkout합니다. pack 직전에 `HEAD == freshly fetched origin/main == main PR merge SHA`와 `git status --porcelain` empty를 확인합니다. 고정 npm 10.9.8의 `npm pack --json --pack-destination <external-artifact-dir>`로 worktree 밖에 한 번 만든 tarball의 SHA-1/SHA-512를 고정하고 tracked tree가 계속 clean인지 재확인합니다. 같은 외부 `.tgz` 절대 경로를 npm 10.9.8의 `publish --dry-run`과 실제 `publish --access public --tag latest` argv에 전달합니다.
 - Preconditions: exact clean worktree와 외부 artifact directory, manifests 0.2.4, registry 0.2.4 부재, npm account `wonkyoo.nam`, main PR merge SHA 일치, npm CLI 10.9.8.
 - Failure boundary: publish timeout/응답 손실 시 `npm view cairn-ai@0.2.4 dist --json`으로 먼저 확인합니다. registry digest가 고정 tarball과 일치할 때만 성공이며 blind retry하지 않습니다.
@@ -126,7 +126,7 @@
 
 ### Task 5: final-verify
 
-- Status: pending.
+- Status: completed.
 - Contract: release→dev와 dev→main PR/merge SHA, main package digest, npm registry 0.2.4/latest, isolated smoke, plan/goal evidence를 재확인하고 독립 리뷰합니다.
 - Tests: GitHub app PR/workflow state, `npm view cairn-ai@0.2.4 version dist --json`, `npm view cairn-ai dist-tags --json`, `git diff --check`.
 - Required evidence: `moduleAcceptance`, `surfaceIntegration`.
@@ -141,6 +141,11 @@
 - Initial tool/remote/registry triage: Node/npm OK, remote dev/main SHA 확인, 0.2.4 branch/PR 부재, npm account와 version E404 확인.
 - Pre-implementation review: 두 PR의 expected head 원자적 merge, npm 10.9.8 고정, 외부 tarball 경로와 clean-main 경계, 모든 HOME/cache가 격리된 smoke를 계획에 반영해 P1/P2 findings를 해소했습니다.
 - Release preparation: 두 manifest와 current-version test surface를 0.2.4로 갱신하고 legacy 0.2.2 integrity/adoption 계약을 유지했습니다. Focused 59/59, 고정 npm 10.9.8의 전체 `npm run check` 118/118, `npm pack --dry-run --json`, `npm publish --dry-run --access public --tag latest --json`, `git diff --check`가 통과했습니다.
+- dev promotion: release commit `e2e5cf8ed0c0f4d895603731685c86ddd5ee549c`를 PR #47로 `dev`에 제안했습니다. exact head의 macOS/Ubuntu/Windows × Node 18/current CI 6/6 성공을 재확인하고 `expected_head_sha`로 고정해 merge commit `796bdc9cb52a345de14a168f7ad980bf4dafb2d4`로 병합했습니다.
+- main promotion: `dev` merge SHA `796bdc9cb52a345de14a168f7ad980bf4dafb2d4`를 PR #48로 `main`에 제안했습니다. exact head의 CI 6/6 성공을 재확인하고 `expected_head_sha`로 고정해 merge commit `5b6cd2b31a34c1d5c00c4c0881ddee4a5d8f406c`로 병합했습니다.
+- npm publish: freshly fetched `origin/main`과 동일한 detached clean worktree `5b6cd2b31a34c1d5c00c4c0881ddee4a5d8f406c`에서 npm 10.9.8로 118/118 tests와 pack을 통과했습니다. 동일 tarball의 SHA-1은 `8a6949492a9009d71d6cef84d356d599ecff8ff5`, integrity는 `sha512-l6bMJBlmUV4jwKXu+8Cxj/kpAj+FQdb6uawHqi50GBoRT3i6aFf6DDKSgiw7eXaPL33vzJ/iKRbtizU8rjV8jg==`이며 dry-run과 실제 publish에 같은 절대 경로를 전달했습니다.
+- Registry/smoke: npm registry에서 `version=0.2.4`, `latest=0.2.4`, tarball shasum/integrity 일치를 확인했습니다. 모든 HOME, Cairn harness home, npm cache와 prefix를 임시 root로 격리한 설치에서 package version 0.2.4와 CLI `--help`를 확인했습니다.
+- Independent review: PR head/merge SHA, 각 CI 6/6, dev/main ancestry, clean worktree, tarball digest, registry metadata, npm 10.9.8, isolated install/CLI를 read-only로 독립 대조했습니다. 릴리스 산출물 차단 이슈는 없었고, 계획/goal 증거 동기화 P1 finding은 이 evidence/status 갱신과 tool-bound receipt 기록으로 해소했습니다.
 - Safety: 사용자 현재 Cairn 설치에는 lifecycle 명령을 실행하지 않습니다.
 
 ## Status
@@ -148,7 +153,7 @@
 - [x] Initial plan created
 - [x] Triage finalized
 - [x] Release prepared
-- [ ] dev PR merged
-- [ ] main PR merged
-- [ ] npm 0.2.4 published
-- [ ] Reviewed and completed
+- [x] dev PR merged
+- [x] main PR merged
+- [x] npm 0.2.4 published
+- [x] Reviewed and completed
