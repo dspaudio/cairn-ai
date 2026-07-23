@@ -14,6 +14,7 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 
 ## Common Rules
 
+- On every fresh entry, compaction recovery, restart, delegation, or handoff, restore context in this order: root `MEMORY.md` → current phase skill → active plan → current-task references → model guidance recorded by the plan. If persisted state or an assignment requires a reference that is missing, unreadable, or inconsistent, fail closed: do not edit, delegate, approve, or complete; report or record a blocker.
 - Keep root `MEMORY.md` and `PLAN.md` as indexes only.
 - Keep repository-specific judgment in `docs/memory/` and `docs/plan/`. Keep Cairn's model guidance in the installed plugin and reference it with `cairn://docs/model-guidance/...`.
 - Preserve proper nouns, file names, variable names, service names, alert names, MCP tool names, and agent names exactly as written.
@@ -35,6 +36,15 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - Before mutating external state, run the closest available dry-run, check, plan, diff, validate, or equivalent command.
 - Limit each task to two verification passes by default. After two failed passes, record the blocker or split it into sub-tasks instead of continuing a repeated loop.
 - User-visible responses and generated or updated documentation, plans, and memory artifacts must follow the OS locale unless the user asks for another language.
+
+## Prompt Cache Shape
+
+- Keep `.codex-plugin/plugin.json` `defaultPrompt` as a small, stable policy and recovery kernel. Put detailed bootstrap, delegation, test, package, and verification procedures in the phase skills and this installed guidance.
+- Put static instructions before dynamic goal data. Hook capsules must be deterministic for the same locale, event, and persisted state; prompt text and turn IDs must not change their content.
+- Idle capsules reference root `MEMORY.md` and `cairn-plan`; active-work capsules reference the active plan, current task, and `cairn-work`; all-tasks-complete capsules reference `cairn-review`.
+- A foreign session receives only a generic ownership-conflict capsule on session/prompt events. It must not expose goal, plan, or task details, and it must not make stop hooks block work owned by another session.
+- Character budgets are regression proxies for cache-friendly prompt shape, not measurements of provider cache hits or cost. Cairn does not require provider cache keys, breakpoints, or live API telemetry.
+- Do not add read receipts that claim model attention. Restore references on every re-entry and use readable state plus fresh bound evidence as the enforceable contract.
 
 ## Delegation Defaults
 

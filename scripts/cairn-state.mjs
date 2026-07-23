@@ -117,7 +117,7 @@ const planTemplateKo = `# PLAN
 
 const contextLimits = {
   goalTitle: 64,
-  taskId: 32,
+  roadmapTaskId: 24,
   taskTitle: 40,
   roadmapWindow: 3,
 };
@@ -158,7 +158,9 @@ export async function runStateResult(event = "manual", {
 
   if (event === "session-start" || event === "user-prompt-submit") {
     const state = await readGoalState({ root: resolvedRoot });
-    if (!isGoalOwnedBySession(state, payload?.session_id)) return { status: 0, message: "", hookOutput: {} };
+    if (state?.goal?.status === "active" && !isGoalOwnedBySession(state, payload?.session_id)) {
+      return foreignSessionContextResult({ ko, event });
+    }
     return contextResult({ ko, state, event });
   }
 
@@ -222,57 +224,76 @@ async function writeIfMissing(root, path, content) {
 }
 
 function contextResult({ ko, state, event }) {
-  const base = ko ? "Cairn: 루트 MEMORY.md를 읽으세요." : "Cairn: read root MEMORY.md.";
+  const base = ko ? "Cairn kernel: 루트 MEMORY.md를 먼저 읽으세요." : "Cairn kernel: read root MEMORY.md first.";
   const idlePolicy = event === "user-prompt-submit"
     ? (ko
-      ? " 구현/계속 실행: 초기 트리아지 계획 작성 → update_plan → create_goal → 탐색 전 저장소 goal 시작 → 트리아지 후 계획 확정 → 구현. 상담·설명·계획 전용은 goal 없이 처리하세요."
-      : " Implementation/continue: write an initial triage plan; call update_plan, then create_goal; start the repository goal before exploration; finalize the plan after triage, then implement. Skip goals for consultation, explanation, or plan-only requests.")
-    : "";
-  if (!state || state.goal.status !== "active") return contextHookResult({ event, message: `${base}${idlePolicy}` });
+      ? " 구현/계속 실행이면 cairn-plan을 로드하고 active plan과 current task를 복원하거나 생성하세요. 상담·설명·계획 전용은 goal 없이 처리하세요."
+      : " For implementation/continue, load cairn-plan and restore or create the active plan and current task. Keep consultation, explanation, and plan-only requests goal-free.")
+    : (ko
+      ? " 중요 작업 전에 cairn-plan을 로드하고 active plan과 current task를 복원하세요."
+      : " Before non-trivial work, load cairn-plan and restore the active plan and current task.");
+  const failClosed = ko
+    ? " state, skill, plan 또는 required reference가 없거나 읽을 수 없거나 일치하지 않으면 수정·위임·완료하지 말고 보고하거나 차단하세요."
+    : " If state, skill, plan, or a required ref is missing, unreadable, or inconsistent, do not edit, delegate, or complete; report/block.";
+  if (!state || state.goal.status !== "active") return contextHookResult({ event, message: `${base}${idlePolicy}${failClosed}` });
   const task = state.tasks.find((item) => item.status === "active")
     ?? state.tasks.find((item) => item.status === "pending")
     ?? state.tasks.find((item) => item.status === "blocked");
-  const goalTitle = clipText(state.goal.title, contextLimits.goalTitle);
+  const planId = state.goal.planId;
+  const phase = task ? "cairn-work" : "cairn-review";
   const activeHeader = ko
-    ? `Cairn active: "${goalTitle}". ${base}`
-    : `Cairn active: "${goalTitle}". ${base}`;
+    ? `${base} ${phase}를 로드하고 정확한 plan ${planId}${task ? "과 아래 current task" : "의 완료 기준"}를 복원하세요. 압축·재시작·handoff·위임 뒤 다시 읽으세요.${failClosed}`
+    : `${base} Load ${phase}; restore exact plan ${planId}${task ? " and the current task below" : " completion criteria"}. Re-read after compaction/restart/handoff/delegation.${failClosed}`;
   if (!task) {
     return contextHookResult({
       event,
       message: [activeHeader, taskRoadmap(ko, state), activeGoalCompletionMessage(ko, state)].join("\n"),
     });
   }
-  const taskId = clipText(task.id, contextLimits.taskId);
+  const taskId = task.id;
   const taskTitle = clipText(task.title, contextLimits.taskTitle);
-  const continuation = ko
-    ? `현재: ${taskId} (${taskTitle}). 바인딩된 증거 뒤에만 완료하세요.`
-    : `Current: ${taskId} (${taskTitle}). Complete only after bound evidence.`;
-  const resume = event === "user-prompt-submit"
+  const continuation = taskId.length > 48
     ? (ko
-      ? `곁가지 질문 뒤 일시정지·중단·전환 요청이 없으면 ${taskId}를 재개하세요.`
-      : `After a side question, resume ${taskId} unless asked to pause, stop, or switch.`)
+      ? `정확한 current task: ${taskId}. 바인딩된 증거 뒤에만 완료하세요.`
+      : `Exact task: ${taskId}. Complete after bound evidence.`)
+    : (ko
+      ? `현재: ${taskId} (${taskTitle}). 바인딩된 증거 뒤에만 완료하세요.`
+      : `Current: ${taskId} (${taskTitle}). Complete only after bound evidence.`);
+  const resume = event === "user-prompt-submit"
+    ? (taskId.length > 48
+      ? (ko
+        ? "곁가지 질문 뒤 일시정지·중단·전환 요청이 없으면 위의 정확한 task를 재개하세요."
+        : "Resume that exact task after side questions unless paused, stopped, or switched.")
+      : (ko
+        ? `곁가지 질문 뒤 일시정지·중단·전환 요청이 없으면 ${taskId}를 재개하세요.`
+        : `After a side question, resume ${taskId} unless asked to pause, stop, or switch.`))
     : "";
   return contextHookResult({ event, message: [activeHeader, taskRoadmap(ko, state), continuation, resume].filter(Boolean).join("\n") });
 }
 
+function foreignSessionContextResult({ ko, event }) {
+  const message = ko
+    ? "Cairn kernel: 루트 MEMORY.md를 먼저 읽으세요. 저장소 goal을 다른 session이 소유합니다. cairn goal status로 상태를 확인하고 소유권이 해결될 때까지 Cairn 작업을 시작·수정·위임·완료하지 마세요. 이 capsule은 goal, plan, task 상세를 노출하지 않습니다."
+    : "Cairn kernel: read root MEMORY.md first. A repository goal is owned by another session. Inspect cairn goal status; until ownership is resolved, do not start, edit, delegate, or complete Cairn work. This capsule does not expose goal, plan, or task details.";
+  return contextHookResult({ event, message });
+}
+
 function taskRoadmap(ko, state) {
-  const formatTask = (task, index) => `${index + 1}. ${clipText(task.id, contextLimits.taskId)} [${task.status}] ${clipText(task.title, contextLimits.taskTitle)}`;
+  const formatTask = (task, index) => `${index + 1}. ${clipText(task.id, contextLimits.roadmapTaskId)} [${task.status}] ${clipText(task.title, contextLimits.taskTitle)}`;
   if (state.tasks.length <= contextLimits.roadmapWindow) {
     return `${ko ? "작업 단계" : "Work steps"}:\n${state.tasks.map(formatTask).join("\n")}`;
   }
 
   const currentIndex = Math.max(0, state.tasks.findIndex((task) => task.status === "active" || task.status === "pending"));
-  const maxStart = state.tasks.length - contextLimits.roadmapWindow;
-  const start = Math.min(Math.max(0, currentIndex - 1), maxStart);
-  const visible = state.tasks.slice(start, start + contextLimits.roadmapWindow);
   const counts = Object.fromEntries([...TASK_STATUS_NAMES].map((status) => [status, state.tasks.filter((task) => task.status === status).length]));
   const countSummary = Object.entries(counts).filter(([, count]) => count > 0).map(([status, count]) => `${status} ${count}`).join(", ");
-  const omitted = state.tasks.length - visible.length;
+  const omitted = state.tasks.length - 1;
   const header = ko
     ? `작업 단계 (${state.tasks.length}개; ${countSummary})`
     : `Work steps (${state.tasks.length}; ${countSummary})`;
   const omission = ko ? `… ${omitted}개 단계 생략` : `… ${omitted} steps omitted`;
-  return `${header}:\n${visible.map((task, index) => formatTask(task, start + index)).join("\n")}\n${omission}`;
+  const currentPosition = currentIndex + 1;
+  return `${header}. ${ko ? `현재 위치 ${currentPosition}` : `Current position ${currentPosition}`}; ${omission}`;
 }
 
 function contextHookResult({ event, message }) {

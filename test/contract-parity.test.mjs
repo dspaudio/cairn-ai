@@ -46,7 +46,7 @@ test("work contracts document bounded verification and semantic evidence boundar
 test("package and CI contracts include every runtime artifact and supported node/os matrix", async () => {
   const packageJson = JSON.parse(await read("package.json"));
   const pluginJson = JSON.parse(await read(".codex-plugin/plugin.json"));
-  assert.equal(packageJson.version, "0.2.3");
+  assert.equal(packageJson.version, "0.2.4");
   assert.equal(pluginJson.version, packageJson.version);
   assert.match(packageJson.scripts.check, /cairn-safe-fs\.mjs/);
   assert.match(packageJson.scripts.check, /release-integrity-0\.2\.2\.json/);
@@ -74,7 +74,7 @@ test("install documentation describes the custom transactional lifecycle", async
     assert.match(content, /ownership manifest/i, `${path}: ownership manifest`);
     assert.match(content, /stag(?:e|ed|ing)/i, `${path}: staged validation`);
     assert.match(content, /roll(?:s|ed|ing)? ?back/i, `${path}: rollback`);
-    assert.match(content, /modified.*(?:preserv|conflict)|(?:preserv|conflict).*modified/i, `${path}: modified target preservation`);
+    assert.match(content, /modified.*(?:preserv|conflict|보존|충돌)|(?:preserv|conflict|보존|충돌).*modified/i, `${path}: modified target preservation`);
     assert.match(content, /~\/\.gemini\/config\/skills\/cairn-\*\/SKILL\.md/, `${path}: current Antigravity IDE path`);
     assert.match(content, /~\/\.gemini\/antigravity-cli\/skills\/cairn-\*\.md/, `${path}: current Antigravity CLI path`);
     assert.doesNotMatch(content, /\*\.cairn-backup-\*/, `${path}: obsolete backup-only contract`);

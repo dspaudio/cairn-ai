@@ -1,6 +1,6 @@
 {
   "name": "cairn",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity.",
   "author": {
     "name": "WkNam"
@@ -21,18 +21,13 @@
       "Tool Readiness"
     ],
     "defaultPrompt": [
-      "Use Cairn to create MEMORY.md and PLAN.md for this repository.",
-      "Every agent must read the project-root MEMORY.md before planning, implementation, review, or delegation. Keep MEMORY.md and PLAN.md as short indexes; open only current-task details.",
-      "Resolve Cairn runtime resources only through the installed locator, keep repoRoot separate, and run toolcheck before implementation planning. Tool installation requires explicit approval.",
-      "Run cairn-plan before non-trivial changes. Understand the whole work, split it into executable tasks/sub-tasks, record Light/Heavy Path triage, and finalize a decision-complete implementation plan before editing.",
-      "The user-called/main agent is the orchestrator. Delegate bounded implementation edits to worker subagents when allowed; otherwise the main agent implements and records takeover evidence.",
-      "With a progress-reporting channel, subagents report start, direction, periodic progress, and finish; relay those events immediately. Otherwise relay assignment, waiting, and final completion.",
-      "Delegated agents read MEMORY.md, preserve others' edits, return a final report, and may recursively delegate only bounded work. Capture evidence, close/release the agent, then review its report before completion.",
-      "Implementation/continue requests authorize an active Cairn goal even without the word goal. After MEMORY.md, write an initial plan with triage-plan active; before exploration call update_plan, then create_goal, then start/attach the repository goal. Triage finalizes the repository and UI plans before implementation. Keep roadmap/current-task recovery context; consultation, explanation, and plan-only requests stay goal-free.",
-      "Use a test contract first: spend reasoning on requirements, invariants, boundaries, and failure modes; design executable tests before implementation; make the minimum implementation that passes. Treat tool exit codes and machine summaries as authoritative, and expand context only for failing tests.",
-      "Missing, failed, skipped, stale, or placeholder evidence never completes work. Advance a UI step only after the matching repository task passes bound evidence; workers report only assigned tasks; active is not complete.",
-      "Use goal verify -- <argv>, quiet state mutations, and concise success summaries. Run focused tests and one final full check. Inspect package lifecycle scripts before packaging: run normal npm pack --dry-run by default; never skip content-producing or unknown scripts with --ignore-scripts, and use it only for absent or proven content-neutral scripts while evidence is fresh.",
-      "If blocked, pause/block/cancel explicitly. Answer side questions briefly, then resume the current task unless asked to pause, stop, or switch."
+      "Use Cairn's repository-local MEMORY.md, PLAN.md, and persisted goal state as the recovery spine; every agent reads root MEMORY.md before planning, implementation, review, or delegation.",
+      "For non-trivial work, load the phase skill (cairn-plan, cairn-work, or cairn-review), then restore the active plan and current-task references before acting.",
+      "After compaction, restart, handoff, or delegation, restore MEMORY.md → phase skill → active plan → current task references; do not rely on conversation recall.",
+      "If state, skill, plan, or a required reference is missing, unreadable, or inconsistent, fail closed: do not edit, delegate, or complete work; report or block the discrepancy.",
+      "Missing, failed, skipped, stale, or placeholder evidence never completes work; advance UI state only after bound repository evidence passes.",
+      "Before external-state changes, run dry-run/check and bind the resulting evidence to the current task.",
+      "Answer side questions briefly, then resume the current task unless asked to pause, stop, or switch."
     ]
   }
 }

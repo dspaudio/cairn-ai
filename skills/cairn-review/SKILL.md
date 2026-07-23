@@ -13,6 +13,8 @@ Review is not another implementation loop. Confirm that the completed task satis
 
 Every review run and every delegated review agent must read the project-root `MEMORY.md` before doing assigned work.
 
+At the start and after compaction, restart, delegation, or handoff, restore context in this order: root `MEMORY.md` → `cairn-review` → the active plan → completed/current-task references → model guidance recorded by the plan. Confirm those references agree with persisted goal state before reviewing. If any required reference is missing, unreadable, or inconsistent, do not approve, delegate, record final review, or complete the goal; report a blocker. Do not use a read-receipt field as evidence that a model understood a reference.
+
 When subagent tools are available, each agent may recursively delegate bounded review sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
 
 Resolve any `cairn://...` resource through `references/cairn-runtime.json` next to this `SKILL.md` (or this skill's `../..` source root during development). Never look for Cairn runtime resources in the target repository.

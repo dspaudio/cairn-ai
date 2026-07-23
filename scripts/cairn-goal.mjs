@@ -10,6 +10,9 @@ import { assertNoSymlinkComponents, safeMkdir, safeWriteFile, withStateLock } fr
 export const GOAL_STATE_VERSION = 2;
 export const GOAL_STATUSES = new Set(["active", "paused", "blocked", "cancelled", "completed"]);
 export const TASK_STATUSES = new Set(["pending", "active", "blocked", "completed"]);
+export const PLAN_ID_MAX_LENGTH = 128;
+export const TASK_ID_MAX_LENGTH = 64;
+export const RECOVERY_REFERENCE_MAX_LENGTH = 160;
 
 const terminalGoalStatuses = new Set(["cancelled", "completed"]);
 const evidencePolicies = new Set(["declared", "tool-bound"]);
@@ -48,7 +51,7 @@ export async function readGoalState({ root = process.cwd() } = {}) {
 
 export async function startGoal({ root = process.cwd(), goal, planId, tasks, completionCriteria = [], requiredEvidence = defaultGoalEvidence, ownerSessionId = null, evidencePolicy = "tool-bound" } = {}) {
   const normalizedGoal = requiredText(goal, "goal");
-  const normalizedPlanId = requiredText(planId, "planId");
+  const normalizedPlanId = boundedRequiredText(planId, "planId", PLAN_ID_MAX_LENGTH);
   if (!Array.isArray(tasks) || tasks.length === 0) throw new Error("tasks must contain at least one task");
 
   return withStateLock(root, async () => {
@@ -60,6 +63,7 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
     const now = timestamp();
     const goalId = `goal-${randomUUID()}`;
     const normalizedTasks = tasks.map((task, index) => normalizeTask(task, index, index === 0 ? "active" : "pending"));
+    for (const task of normalizedTasks) assertRecoveryReferenceBudget(normalizedPlanId, task.id);
     const state = {
       schemaVersion: GOAL_STATE_VERSION,
       revision: 1,
@@ -206,7 +210,9 @@ async function recordEvidence({
       || state.goal.planId !== expectedIdentity.planId
     )) throw new Error("Goal identity changed during verification; evidence was not recorded");
     if (expectedIdentity && normalizedScope === "task" && (
-      task?.id !== expectedIdentity.taskId || task?.status !== expectedIdentity.taskStatus
+      task?.id !== expectedIdentity.taskId
+      || task?.status !== expectedIdentity.taskStatus
+      || task?.assignedAgentId !== expectedIdentity.taskAgentId
     )) throw new Error("Verification task changed during verification; evidence was not recorded");
     if (expectedFingerprint && workspaceFingerprint(root, watchPaths) !== expectedFingerprint) {
       throw new Error("Watched workspace changed during verification; evidence was not recorded");
@@ -252,12 +258,15 @@ export async function verifyAndRecord({
   assertGoalMutable(initialState);
   const normalizedTaskId = normalizedScope === "task" ? requiredText(taskId, "taskId") : undefined;
   const initialTask = normalizedScope === "task" ? taskById(initialState, normalizedTaskId) : null;
-  if (initialTask && initialTask.status !== "active") throw new Error(`Verification task must be active: ${initialTask.id}`);
+  if (initialTask && !["active", "completed"].includes(initialTask.status)) {
+    throw new Error(`Verification task must be active or completed: ${initialTask.id}`);
+  }
   const identity = {
     goalId: initialState.goal.id,
     planId: initialState.goal.planId,
     taskId: normalizedTaskId,
     taskStatus: initialTask?.status,
+    taskAgentId: initialTask?.assignedAgentId,
   };
   const initialFingerprint = workspaceFingerprint(root, normalizedWatchPaths);
   const result = runner(normalizedArgv[0], normalizedArgv.slice(1), {
@@ -283,8 +292,11 @@ export async function verifyAndRecord({
   if (!postState || postState.goal.id !== identity.goalId || postState.goal.planId !== identity.planId) {
     throw new Error("Goal identity changed during verification; evidence was not recorded");
   }
-  if (normalizedScope === "task" && taskById(postState, normalizedTaskId).status !== identity.taskStatus) {
-    throw new Error("Verification task is no longer active; evidence was not recorded");
+  if (normalizedScope === "task") {
+    const postTask = taskById(postState, normalizedTaskId);
+    if (postTask.status !== identity.taskStatus || postTask.assignedAgentId !== identity.taskAgentId) {
+      throw new Error("Verification task changed during verification; evidence was not recorded");
+    }
   }
   const command = normalizedArgv.map((value) => JSON.stringify(value)).join(" ");
   const state = await recordEvidence({
@@ -457,7 +469,7 @@ async function mutateGoal(root, mutate) {
 function normalizeTask(task, index, defaultStatus) {
   const source = typeof task === "string" ? { title: task } : task;
   if (!source || typeof source !== "object") throw new Error(`tasks[${index}] must be a string or object`);
-  const id = source.id === undefined ? `task-${index + 1}` : requiredText(source.id, `tasks[${index}].id`);
+  const id = source.id === undefined ? `task-${index + 1}` : boundedRequiredText(source.id, `tasks[${index}].id`, TASK_ID_MAX_LENGTH);
   const title = requiredText(source.title, `tasks[${index}].title`);
   return {
     id,
@@ -495,7 +507,7 @@ function validateState(value) {
   const goal = value.goal;
   requiredText(goal.id, "goal.id");
   requiredText(goal.title, "goal.title");
-  requiredText(goal.planId, "goal.planId");
+  const planId = boundedRequiredText(goal.planId, "goal.planId", PLAN_ID_MAX_LENGTH);
   validGoalStatus(goal.status);
   validEvidencePolicy(goal.evidencePolicy);
   validTimestamp(goal.createdAt);
@@ -511,7 +523,8 @@ function validateState(value) {
   let activeTasks = 0;
   for (const task of value.tasks) {
     if (!task || typeof task !== "object") throw new Error("Each task must be an object");
-    requiredText(task.id, "task.id");
+    const taskId = boundedRequiredText(task.id, "task.id", TASK_ID_MAX_LENGTH);
+    assertRecoveryReferenceBudget(planId, taskId);
     if (ids.has(task.id)) throw new Error(`Duplicate task id: ${task.id}`);
     ids.add(task.id);
     requiredText(task.title, "task.title");
@@ -620,6 +633,19 @@ function taskById(state, taskId) {
 function requiredText(value, label) {
   if (typeof value !== "string" || value.trim().length === 0) throw new Error(`${label} must be a non-empty string`);
   return value.trim();
+}
+
+function boundedRequiredText(value, label, maxLength) {
+  const text = requiredText(value, label);
+  if (value !== text) throw new Error(`${label} must not have leading or trailing whitespace`);
+  if (text.length > maxLength) throw new Error(`${label} must be at most ${maxLength} characters`);
+  return text;
+}
+
+function assertRecoveryReferenceBudget(planId, taskId) {
+  if (planId.length + taskId.length > RECOVERY_REFERENCE_MAX_LENGTH) {
+    throw new Error(`planId and taskId must total at most ${RECOVERY_REFERENCE_MAX_LENGTH} characters for exact recovery context`);
+  }
 }
 
 function validGoalStatus(value) {

@@ -4,7 +4,7 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- [Cairn 0.2.3 릴리스](docs/plan/release-0.2.3.md): dev/main PR 승격, npm 배포, npm 설치본 재설치와 실제 upgrade smoke를 수행합니다.
+- [Cairn 0.2.4 릴리스](docs/plan/release-0.2.4.md): 현재 변경을 0.2.4로 준비해 dev PR, main PR, npm 배포까지 검증하며 진행합니다.
 
 ## Superseded Plans
 
@@ -13,6 +13,8 @@ This file is a short index of active and completed work plans.
 ## Completed Plans
 
 - Move completed topics here with evidence links.
+- [clean uninstall과 프롬프트 캐시 복원력](docs/plan/clean-uninstall-prompt-cache-resilience.md): 빈 managed cache root 정리와 unmanaged 보존, completed-task evidence 갱신, 7문장 recovery kernel과 exact bounded reference 복원을 구현하고 118개 전체 테스트, package dry-run, 독립 리뷰로 검증했습니다.
+- [Cairn 0.2.3 릴리스](docs/plan/release-0.2.3.md): dev/main PR 승격, npm 배포, npm 설치본 재설치와 실제 upgrade smoke 증거를 갱신하고 goal을 명시적으로 완료했습니다.
 - [Cairn 하네스 신뢰성 개선](docs/plan/harness-reliability-remediation.md): 상태 lock·검증 결속, custom lifecycle transaction과 교차 버전 rollback, 호스트 호환성, toolcheck·문서 계약을 보강하고 104개 전체 테스트와 64-file package dry-run으로 검증했습니다. 공식 plugin 설치 경로 전환은 제외했습니다.
 - [Cairn 0.2.2 릴리스](docs/plan/release-0.2.2.md): PR #39를 `dev`, PR #40을 `main`에 CI 통과 후 병합하고 `cairn-ai@0.2.2`를 npm `latest`로 게시했습니다.
 - [토큰 효율 방법론 검토 findings 전체 수정](docs/plan/fix-token-methodology-review-findings.md): inline 값 보존, 직접 실행된 tool-bound evidence와 stale fingerprint, lifecycle 분류 기반 package 검증, 700자 bounded roadmap, 8개 locale·증거 용어·상태 일관성을 실패 테스트부터 수정하고 전체 검사와 package dry-run으로 검증했습니다.
