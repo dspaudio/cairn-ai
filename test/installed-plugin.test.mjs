@@ -73,7 +73,7 @@ test("installed mirrors resolve Cairn resources through runtime locators", async
   const env = isolatedEnvironment(temp);
   const project = join(temp, "target project");
   const unrelatedCwd = join(temp, "unrelated cwd");
-  const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.4");
+  const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.5");
   const claudeLocatorPath = join(env.CLAUDE_HOME, "cairn", "runtime.json");
 
   try {

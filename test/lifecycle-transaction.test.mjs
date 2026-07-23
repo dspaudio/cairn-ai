@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createRuntimeLocator } from "../scripts/cairn-paths.mjs";
@@ -19,6 +19,7 @@ import {
 const root = resolve(".");
 const lifecycleScript = join(root, "scripts", "cairn-lifecycle.mjs");
 const published022Commit = "521782bf37dd0ab269a14caf7b19660c33243018";
+const published024Commit = "e2e5cf8ed0c0f4d895603731685c86ddd5ee549c";
 
 test("Cairn config editing preserves public settings, comments, arrays, and multiline strings", () => {
   const input = [
@@ -53,7 +54,7 @@ test("install creates custom source, versioned runtime, ownership, and current A
     assert.equal(result.status, 0, result.stderr);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
     assert.equal(ownership.schemaVersion, 1);
-    assert.equal(ownership.version, "0.2.4");
+    assert.equal(ownership.version, "0.2.5");
     assert.ok(ownership.targets.length > 20);
     await stat(paths.source);
     await stat(paths.versioned);
@@ -154,6 +155,120 @@ test("upgrade refuses a modified owned mirror and preserves it", async () => {
   });
 });
 
+test("upgrade preserves boundary trivia and an appended non-Cairn config section", async () => {
+  await withHome(async ({ env }) => {
+    assert.equal(run("install", env).status, 0);
+    const userConfig = '\n# user profile stays public\n[profiles.user]\nmodel = "custom"\n';
+    await writeFile(env.CODEX_CONFIG_PATH, `${await readFile(env.CODEX_CONFIG_PATH, "utf8")}${userConfig}`);
+
+    const result = run("upgrade", env);
+    assert.equal(result.status, 0, result.stderr);
+    const upgraded = await readFile(env.CODEX_CONFIG_PATH, "utf8");
+    assert.match(upgraded, /\n# user profile stays public\n\[profiles\.user\]\nmodel = "custom"\n/);
+  });
+});
+
+test("uninstall preserves boundary trivia and an appended non-Cairn config section", async () => {
+  await withHome(async ({ env }) => {
+    assert.equal(run("install", env).status, 0);
+    const userConfig = '\n# user profile stays public\n[profiles.user]\nmodel = "custom"\n';
+    await writeFile(env.CODEX_CONFIG_PATH, `${await readFile(env.CODEX_CONFIG_PATH, "utf8")}${userConfig}`);
+
+    const result = run("uninstall", env);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(env.CODEX_CONFIG_PATH, "utf8"), userConfig);
+  });
+});
+
+test("upgrade reconciles a modified Cairn-owned value in the mutable shared config", async () => {
+  await withHome(async ({ env }) => {
+    assert.equal(run("install", env).status, 0);
+    const config = await readFile(env.CODEX_CONFIG_PATH, "utf8");
+    await writeFile(env.CODEX_CONFIG_PATH, config.replace("enabled = true", "enabled = false"));
+
+    const result = run("upgrade", env);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(await readFile(env.CODEX_CONFIG_PATH, "utf8"), /enabled = true/);
+  });
+});
+
+test("upgrade rejects a shared config symlink even though config content is mutable", async () => {
+  await withHome(async ({ env, temp }) => {
+    assert.equal(run("install", env).status, 0);
+    const redirected = join(temp, "redirected-config.toml");
+    await writeFile(redirected, await readFile(env.CODEX_CONFIG_PATH, "utf8"));
+    await rm(env.CODEX_CONFIG_PATH);
+    await symlink(redirected, env.CODEX_CONFIG_PATH);
+
+    const result = run("upgrade", env);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /not a regular file/);
+  });
+});
+
+test("upgrade merges a public config edit captured immediately before replacement", async () => {
+  await withHome(async ({ env }) => {
+    assert.equal(run("install", env).status, 0);
+    const publicSuffix = '\n# concurrent public edit\n[profiles.concurrent]\nmodel = "custom"\n';
+
+    const result = run("upgrade", { ...env, CAIRN_TEST_APPEND_CONFIG_BEFORE_REPLACE: publicSuffix });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(await readFile(env.CODEX_CONFIG_PATH, "utf8"), /# concurrent public edit\n\[profiles\.concurrent\]\nmodel = "custom"/);
+  });
+});
+
+test("uninstall merges a public config edit captured immediately before replacement", async () => {
+  await withHome(async ({ env }) => {
+    assert.equal(run("install", env).status, 0);
+    const publicSuffix = '\n# concurrent uninstall edit\n[profiles.concurrent]\nmodel = "custom"\n';
+
+    const result = run("uninstall", { ...env, CAIRN_TEST_APPEND_CONFIG_BEFORE_REPLACE: publicSuffix });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(env.CODEX_CONFIG_PATH, "utf8"), publicSuffix);
+  });
+});
+
+test("the next upgrade recovers a crash immediately after shared config capture", async () => {
+  await withHome(async ({ env, paths }) => {
+    assert.equal(run("install", env).status, 0);
+    const publicSuffix = '\n# captured before crash\n[profiles.recovered]\nmodel = "custom"\n';
+    const crashed = run("upgrade", {
+      ...env,
+      CAIRN_TEST_APPEND_CONFIG_BEFORE_REPLACE: publicSuffix,
+      CAIRN_TEST_CRASH_AFTER_CONFIG_CAPTURE: "1",
+    });
+    assert.equal(crashed.status, 86, crashed.stderr);
+    await assert.rejects(stat(env.CODEX_CONFIG_PATH));
+    await stat(join(paths.marketplace, ".cairn", "transaction.json"));
+
+    const recovered = run("upgrade", env);
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.match(await readFile(env.CODEX_CONFIG_PATH, "utf8"), /# captured before crash\n\[profiles\.recovered\]\nmodel = "custom"/);
+    await assert.rejects(stat(join(paths.marketplace, ".cairn", "transaction.json")));
+  });
+});
+
+test("the next upgrade recovers when shared config disappears immediately before capture", async () => {
+  await withHome(async ({ env, paths }) => {
+    assert.equal(run("install", env).status, 0);
+    const crashed = run("upgrade", {
+      ...env,
+      CAIRN_TEST_REMOVE_CONFIG_BEFORE_REPLACE: "1",
+      CAIRN_TEST_CRASH_AFTER_CONFIG_CAPTURE: "1",
+    });
+    assert.equal(crashed.status, 86, crashed.stderr);
+    await assert.rejects(stat(env.CODEX_CONFIG_PATH));
+    const journal = JSON.parse(await readFile(join(paths.marketplace, ".cairn", "transaction.json"), "utf8"));
+    const configEntry = journal.entries.find((entry) => entry.type === "config");
+    await assert.rejects(stat(configEntry.backup));
+
+    const recovered = run("upgrade", env);
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.match(await readFile(env.CODEX_CONFIG_PATH, "utf8"), /\[marketplaces\.cairn\]/);
+    await assert.rejects(stat(join(paths.marketplace, ".cairn", "transaction.json")));
+  });
+});
+
 test("upgrade failure restores the previous runtime and manifest", async () => {
   await withHome(async ({ env, paths }) => {
     assert.equal(run("install", env).status, 0);
@@ -166,7 +281,29 @@ test("upgrade failure restores the previous runtime and manifest", async () => {
   });
 });
 
-test("an owned 0.2.2 installation upgrades to 0.2.4 and removes only the previous runtime", async () => {
+test("an owned 0.2.4 installation upgrades with mutable shared config changes", async () => {
+  await withHome(async ({ env, paths, temp }) => {
+    const oldSource = join(temp, "published-0.2.4");
+    await materializePublishedTree(published024Commit, oldSource);
+    const oldLifecycle = join(oldSource, "scripts", "cairn-lifecycle.mjs");
+    assert.equal(runLifecycle(oldLifecycle, "install", env).status, 0);
+    const oldRuntime = join(paths.marketplace, "cairn", "0.2.4");
+    const config = await readFile(env.CODEX_CONFIG_PATH, "utf8");
+    const publicSuffix = '\n# added after 0.2.4 install\n[profiles.user]\nmodel = "custom"\n';
+    await writeFile(env.CODEX_CONFIG_PATH, `${config.replace("enabled = true", "enabled = false")}${publicSuffix}`);
+
+    const result = run("upgrade", env);
+    assert.equal(result.status, 0, result.stderr);
+    await assert.rejects(stat(oldRuntime));
+    const upgraded = await readFile(env.CODEX_CONFIG_PATH, "utf8");
+    assert.match(upgraded, /enabled = true/);
+    assert.match(upgraded, /# added after 0\.2\.4 install\n\[profiles\.user\]\nmodel = "custom"/);
+    const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
+    assert.equal(ownership.version, "0.2.5");
+  });
+});
+
+test("an owned 0.2.2 installation upgrades to 0.2.5 and removes only the previous runtime", async () => {
   await withHome(async ({ env, paths }) => {
     assert.equal(run("install", env).status, 0);
     const oldRuntime = await rewriteOwnedVersion(paths, "0.2.2");
@@ -175,7 +312,7 @@ test("an owned 0.2.2 installation upgrades to 0.2.4 and removes only the previou
     await assert.rejects(stat(oldRuntime));
     await stat(paths.versioned);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.2.4");
+    assert.equal(ownership.version, "0.2.5");
     assert.equal(ownership.targets.find((record) => record.id === "codex-runtime").path, paths.versioned);
     assert.equal(ownership.targets.some((record) => record.id === "previous-codex-runtime"), false);
   });
@@ -347,7 +484,7 @@ test("an exact legacy 0.2.2 tree is adopted once and upgraded transactionally", 
     const result = run("upgrade", env);
     assert.equal(result.status, 0, result.stderr);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.2.4");
+    assert.equal(ownership.version, "0.2.5");
     assert.ok(ownership.targets.some((target) => target.id === "codex-source"));
     await stat(paths.versioned);
   });
@@ -494,7 +631,7 @@ test("Codex A/B gate proves the versioned custom cache is required", async (cont
     const installed = withVersion.installed.find((entry) => entry.pluginId === "cairn@cairn");
     assert.equal(installed?.installed, true);
     assert.equal(installed?.enabled, true);
-    assert.equal(installed?.version, "0.2.4");
+    assert.equal(installed?.version, "0.2.5");
   });
 });
 
@@ -593,6 +730,18 @@ test("doctor reports an effective Codex feature disabled by user config", async 
   });
 });
 
+test("doctor reports a modified Cairn hook digest even though upgrade can reconcile shared config", async () => {
+  await withHome(async ({ env }) => {
+    assert.equal(run("install", env).status, 0);
+    const config = await readFile(env.CODEX_CONFIG_PATH, "utf8");
+    await writeFile(env.CODEX_CONFIG_PATH, config.replace(/trusted_hash = "sha256:[a-f0-9]+"/, 'trusted_hash = "sha256:modified"'));
+
+    const doctor = run("doctor", env);
+    assert.equal(doctor.status, 1);
+    assert.match(doctor.stdout, /^FAIL ownership digests$/m);
+  });
+});
+
 async function withHome(fn) {
   const temp = await mkdtemp(join(tmpdir(), "cairn-transaction-"));
   const env = {
@@ -608,14 +757,18 @@ async function withHome(fn) {
   const paths = {
     marketplace,
     source: join(marketplace, "plugins", "cairn"),
-    versioned: join(marketplace, "cairn", "0.2.4"),
+    versioned: join(marketplace, "cairn", "0.2.5"),
     ownership: join(marketplace, ".cairn", "lifecycle.json"),
   };
   try { await fn({ temp, env, paths }); } finally { await rm(temp, { recursive: true, force: true }); }
 }
 
 function run(command, env) {
-  return spawnSync(process.execPath, [lifecycleScript, command], { cwd: root, env, encoding: "utf8" });
+  return runLifecycle(lifecycleScript, command, env);
+}
+
+function runLifecycle(script, command, env) {
+  return spawnSync(process.execPath, [script, command], { cwd: root, env, encoding: "utf8" });
 }
 
 function runAsync(command, env) {
@@ -693,6 +846,18 @@ async function replaceTextInManagedTarget(path, from, to) {
   }
   const content = await readFile(path, "utf8");
   if (content.includes(from)) await writeFile(path, content.replaceAll(from, to));
+}
+
+async function materializePublishedTree(commit, destination) {
+  const listed = spawnSync("git", ["ls-tree", "-r", "--name-only", commit], { cwd: root, encoding: "utf8" });
+  assert.equal(listed.status, 0, `Published commit ${commit} is unavailable: ${listed.stderr}`);
+  for (const path of listed.stdout.trim().split("\n").filter(Boolean)) {
+    const result = spawnSync("git", ["show", `${commit}:${path}`], { cwd: root });
+    assert.equal(result.status, 0, `Could not read ${path} from published commit ${commit}: ${result.stderr?.toString()}`);
+    const target = join(destination, path);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, result.stdout);
+  }
 }
 
 async function createLegacy022(destination) {

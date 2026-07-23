@@ -64,7 +64,7 @@ test("packed install remains self-contained after the npm package source is remo
     assert.equal(lifecycleInstall.status, 0, lifecycleInstall.stderr);
 
     const marketplaceSource = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn");
-    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.4");
+    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.5");
     const installedCli = join(installedRoot, "scripts", "cairn.mjs");
     await stat(join(marketplaceSource, ".codex-plugin", "plugin.json"));
     const installedManifest = JSON.parse(await readFile(join(installedRoot, ".codex-plugin", "plugin.json"), "utf8"));
