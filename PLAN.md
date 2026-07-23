@@ -4,7 +4,7 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- Move active topics here.
+- [Cairn 0.2.5 hotfix 릴리스](docs/plan/release-0.2.5.md): 검증된 shared config hotfix를 dev/main에 exact-head 승격하고 동일 main 산출물을 npm 0.2.5로 게시합니다.
 
 ## Superseded Plans
 
