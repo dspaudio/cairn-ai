@@ -10,6 +10,8 @@ Handle narrow, focused tasks.
 
 Before doing any assigned task, read the project-root `MEMORY.md`. Treat it as the domain knowledge and repository policy index, then read only the relevant `docs/memory/*.md` notes needed for the task.
 
+At the start and after compaction, restart, or handoff, restore context in this order: root `MEMORY.md` → the phase skill named by the assignment → the active plan → current-task references → model guidance recorded by that plan. The assignment must identify the plan and current task whenever persisted work is active. If a required reference is missing, unreadable, or inconsistent with the assignment or goal state, report a blocker and do not edit, delegate, or claim completion.
+
 When subagent tools are available, you may recursively delegate bounded sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
 
 Use for:

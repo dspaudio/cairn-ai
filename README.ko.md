@@ -103,7 +103,7 @@ cairn toolcheck
 - `cairn install`: custom marketplace source, versioned Codex runtime cache, Cairn-owned config section, Claude Code mirror, 현재 Antigravity IDE/CLI skill 표면을 transaction으로 설치합니다.
 - `cairn upgrade`: ownership manifest의 installed digest와 현재 값이 같은 항목만 교체하며, staged validation과 역순 rollback을 적용합니다.
 - `cairn doctor`: ownership manifest, managed digest, 유효 Codex feature, 실제 plugin installed/enabled/version, mirror/runtime locator를 수정 없이 진단합니다.
-- `cairn uninstall`: 수정되지 않은 ownership manifest 항목만 제거·복원하고, modified/unmanaged target은 conflict로 보존하며 실패 시 rollback합니다.
+- `cairn uninstall`: 수정되지 않은 ownership manifest 항목만 제거·복원한 뒤 빈 managed cache scaffold를 정리합니다. modified/unmanaged target과 그 상위 디렉터리는 보존하고 commit 전 실패는 rollback합니다.
 - `cairn toolcheck`: 저장소 스택과 필요한 LSP·검증 도구를 확인하며, 승인된 지원 installer만 실행합니다.
 - `cairn goal ...`: 저장소의 영속 goal을 시작·조회·일시정지·재개·차단·취소·완료합니다. 기본 tool-bound 정책은 `goal verify -- <argv>`가 명령을 직접 실행해 성공 증거를 기록합니다. `goal receipt`는 기존 선언 증거를 가져오는 호환 명령입니다.
 - `cairn-memory`: 도메인 지식을 탐색하고 `MEMORY.md`를 갱신합니다.
@@ -116,6 +116,8 @@ cairn toolcheck
 토큰 효율 실행에서는 구현보다 먼저 요구사항·불변식·경계·실패 모드로 집중 실행 test contract를 설계하는 데 추론을 배분합니다. 구현에는 실패 계약과 제한된 파일 범위만 전달하고 통과에 필요한 최소 변경을 요구합니다. 성공 여부는 도구 exit code와 기계적 요약으로 판정하며 성공 출력은 축약하고 실패할 때만 컨텍스트를 확장합니다. package 검증 전 lifecycle script를 검사하고 기본적으로 정상 `npm pack --dry-run`을 실행합니다. content-producing 또는 미분류 script에는 `--ignore-scripts`를 사용하면 안 되며, script가 없거나 content-neutral임을 입증했고 전체 검사 증거가 여전히 유효할 때만 사용할 수 있습니다. 성공한 상태 변경은 `--quiet`를 지원하므로 커지는 goal JSON이 대화 토큰을 소모하지 않습니다.
 
 `install`과 `upgrade`는 custom marketplace lifecycle을 유지하며 `codex plugin add`를 호출하지 않습니다. candidate를 staging에서 검증한 뒤 commit하고, 모든 managed destination과 digest를 ownership manifest에 기록하며 실패 시 완료된 phase를 역순 rollback합니다. 수정되지 않은 지원 legacy 설치만 release-integrity 검증 뒤 인수하고, 수정되거나 알 수 없는 artifact는 보존한 채 거부합니다. Cairn-owned TOML section만 편집하고 public feature/agent 설정은 강제하지 않습니다. lifecycle command는 교체 대상 cache copy가 아니라 게시/전역 package에서 실행해야 합니다.
+
+Clean uninstall은 모든 managed scaffold가 비었을 때만 recursive 삭제 없이 빈 디렉터리 제거로 Cairn marketplace cache root를 정리합니다. 소스 저장소와 저장소의 `MEMORY.md`/`PLAN.md`/`.cairn` 상태, 전역 `cairn-ai` package, package-manager download cache, legacy backup, 현재 ownership manifest 밖의 legacy shared setting은 지우지 않으며 별도의 명시적 정리 판단이 필요합니다.
 
 Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `.claude/` 아래의 mirror command와 agent definition을 사용합니다. Antigravity는 `.agents/workflows`와 global skills mirror를 사용합니다.
 

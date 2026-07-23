@@ -21,6 +21,10 @@ Delegated subagents must provide a final report before leaving. After the orches
 
 If the user asks a side question, status question, or narrow clarification while the selected task is still active, use the active goal's ordered task roadmap to preserve position, answer briefly, and then resume the current task unless the user explicitly asks to pause, stop, or switch tasks.
 
+## Re-entry and Required References
+
+At the start and after compaction, restart, delegation, or handoff, restore context in this order: root `MEMORY.md` → `cairn-work` → the active plan → current-task references → model guidance recorded by the plan. Confirm that the plan task, persisted current task, and worker assignment agree before acting. If state, skill, plan, assignment, or a required reference is missing, unreadable, or inconsistent, do not edit, delegate, record completion evidence, or complete work; report a blocker to the orchestrator. Do not introduce read receipts as proof of model attention: current state, readable references, and fresh tool-bound evidence are the authority.
+
 When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
 
 ## Runtime Location

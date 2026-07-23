@@ -108,6 +108,8 @@ cairn toolcheck
 
 Le custom marketplace lifecycle sépare source et versioned runtime. Staged validation précède chaque commit, le ownership manifest lie tous les managed digests et un échec déclenche un reverse-order rollback. Les artifacts modified ou unmanaged sont preserved et signalés comme conflict. Cairn ne modifie que ses propres TOML sections et ne force aucun feature/agent setting public.
 
+Clean uninstall supprime le Cairn marketplace cache root uniquement lorsque tous les managed scaffold directories sont vides ; tout contenu unmanaged est conservé. Il ne supprime ni le source repository et son state, ni le package global `cairn-ai`, les package-manager caches ou les legacy backups/settings hors du ownership manifest courant.
+
 Codex utilise `skills/` et `commands/`. Claude Code utilise les commandes miroir et définitions d'agents sous `.claude/`. Antigravity utilise `.agents/workflows` et les global skills mirrors.
 
 ## Antigravity Compatibility

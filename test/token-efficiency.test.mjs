@@ -1,23 +1,40 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { readGoalState, startGoal } from "../scripts/cairn-goal.mjs";
+import {
+  PLAN_ID_MAX_LENGTH,
+  RECOVERY_REFERENCE_MAX_LENGTH,
+  TASK_ID_MAX_LENGTH,
+  goalStatePath,
+  readGoalState,
+  recordReceipt,
+  setTaskStatus,
+  startGoal,
+  transitionGoal,
+} from "../scripts/cairn-goal.mjs";
 import { runStateResult } from "../scripts/cairn-state.mjs";
 import { message } from "../scripts/cairn.mjs";
 
 const cliScript = resolve("scripts/cairn.mjs");
 
-test("recurring Codex instructions stay inside the token proxy budget", async () => {
+test("recurring Codex instructions are a small stable recovery kernel", async () => {
   const manifest = JSON.parse(await readFile(".codex-plugin/plugin.json", "utf8"));
   const prompt = manifest.interface.defaultPrompt.join("\n");
 
-  assert.ok(prompt.length <= 3600, `defaultPrompt is ${prompt.length} characters; budget is 3600`);
-  assert.match(prompt, /design executable tests.*before implementation/i);
-  assert.match(prompt, /tool exit codes? and (?:machine )?summaries/i);
-  assert.match(prompt, /expand context only for failing tests/i);
+  assert.equal(manifest.interface.defaultPrompt.length, 7);
+  assert.ok(prompt.length <= 1600, `defaultPrompt is ${prompt.length} characters; budget is 1600`);
+  assert.match(prompt, /root MEMORY\.md.*before planning, implementation, review, or delegation/i);
+  assert.match(prompt, /phase skill.*cairn-plan.*cairn-work.*cairn-review/i);
+  assert.match(prompt, /active plan.*current-task references/i);
+  assert.match(prompt, /compaction, restart, handoff, or delegation/i);
+  assert.match(prompt, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
+  assert.match(prompt, /missing, failed, skipped, stale, or placeholder evidence never completes work/i);
+  assert.match(prompt, /external-state changes.*dry-run\/check/i);
+  assert.match(prompt, /side questions.*resume the current task/i);
+  assert.doesNotMatch(prompt, /update_plan|create_goal|package lifecycle|--ignore-scripts|progress-reporting channel/i);
 });
 
 test("hook context is a compact phase capsule without dropping recovery state", async () => {
@@ -29,9 +46,11 @@ test("hook context is a compact phase capsule without dropping recovery state", 
     });
     const idleContext = idle.hookOutput.hookSpecificOutput.additionalContext;
     assert.ok(idleContext.length <= 420, `idle hook is ${idleContext.length} characters; budget is 420`);
-    assert.match(idleContext, /initial.*triage plan/i);
-    assert.match(idleContext, /update_plan.*create_goal/i);
+    assert.match(idleContext, /^Cairn kernel: read root MEMORY\.md first\./);
+    assert.match(idleContext, /load cairn-plan/i);
+    assert.match(idleContext, /active plan.*current task/i);
     assert.match(idleContext, /consultation.*plan-only/i);
+    assert.match(idleContext, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
 
     await startGoal({
       root,
@@ -51,23 +70,118 @@ test("hook context is a compact phase capsule without dropping recovery state", 
     });
     const activeContext = active.hookOutput.hookSpecificOutput.additionalContext;
     assert.ok(activeContext.length <= 700, `active hook is ${activeContext.length} characters; budget is 700`);
+    assert.match(activeContext, /^Cairn kernel: read root MEMORY\.md first\./);
+    assert.match(activeContext, /load cairn-work/i);
+    assert.match(activeContext, /docs\/plan\/token-budget\.md/);
     assert.match(activeContext, /1\. triage \[active\]/);
     assert.match(activeContext, /2\. implement \[pending\]/);
     assert.match(activeContext, /current.*triage/i);
     assert.match(activeContext, /side question.*resume.*triage/i);
-    assert.doesNotMatch(activeContext, /request itself as authorization|initial repository plan/i);
+    assert.match(activeContext, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
+  });
+});
+
+test("hook capsules are deterministic for the same state and restore review phase", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Deterministic recovery",
+      planId: "docs/plan/deterministic.md",
+      ownerSessionId: "deterministic-session",
+      evidencePolicy: "declared",
+      tasks: [{ id: "only", title: "Only task" }],
+    });
+
+    const first = await runStateResult("user-prompt-submit", {
+      root,
+      locale: "en-US",
+      payload: { cwd: root, session_id: "deterministic-session", turn_id: "turn-1", prompt: "First prompt" },
+    });
+    const second = await runStateResult("user-prompt-submit", {
+      root,
+      locale: "en-US",
+      payload: { cwd: root, session_id: "deterministic-session", turn_id: "turn-2", prompt: "Different prompt" },
+    });
+    assert.equal(
+      first.hookOutput.hookSpecificOutput.additionalContext,
+      second.hookOutput.hookSpecificOutput.additionalContext,
+    );
+
+    await recordReceipt({ root, taskId: "only", kind: "moduleAcceptance", command: "node --test", exitCode: 0 });
+    await recordReceipt({ root, taskId: "only", kind: "surfaceIntegration", command: "npm run check", exitCode: 0 });
+    await setTaskStatus({ root, taskId: "only", status: "completed" });
+    const review = await runStateResult("session-start", {
+      root,
+      locale: "en-US",
+      payload: { cwd: root, session_id: "deterministic-session", turn_id: "turn-3" },
+    });
+    const reviewContext = review.hookOutput.hookSpecificOutput.additionalContext;
+    assert.match(reviewContext, /^Cairn kernel: read root MEMORY\.md first\./);
+    assert.match(reviewContext, /load cairn-review/i);
+    assert.match(reviewContext, /docs\/plan\/deterministic\.md/);
+    assert.match(reviewContext, /do not edit, delegate, or complete/i);
+  });
+});
+
+test("foreign sessions receive only a generic fail-closed capsule", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Secret owner goal",
+      planId: "docs/plan/secret-owner.md",
+      ownerSessionId: "owner-session",
+      tasks: [{ id: "secret-task", title: "Secret task title" }],
+    });
+
+    for (const event of ["session-start", "user-prompt-submit"]) {
+      const foreign = await runStateResult(event, {
+        root,
+        locale: "en-US",
+        payload: { cwd: root, session_id: "foreign-session", turn_id: "foreign-turn", prompt: "Continue" },
+      });
+      const context = foreign.hookOutput.hookSpecificOutput.additionalContext;
+      assert.match(context, /^Cairn kernel: read root MEMORY\.md first\./);
+      assert.match(context, /owned by another session/i);
+      assert.match(context, /inspect.*goal status/i);
+      assert.match(context, /do not start, edit, delegate, or complete/i);
+      assert.doesNotMatch(context, /Secret owner goal|secret-owner|secret-task|Secret task title/);
+    }
+
+    for (const event of ["stop", "subagent-stop"]) {
+      const stop = await runStateResult(event, {
+        root,
+        locale: "en-US",
+        payload: { cwd: root, session_id: "foreign-session", turn_id: "foreign-turn", agent_id: "foreign-agent" },
+      });
+      assert.deepEqual(stop.hookOutput, {}, `${event} must not block work owned by another session`);
+    }
+
+    await transitionGoal({ root, status: "cancelled" });
+    for (const event of ["session-start", "user-prompt-submit"]) {
+      const terminal = await runStateResult(event, {
+        root,
+        locale: "en-US",
+        payload: { cwd: root, session_id: "foreign-session", turn_id: "terminal-turn", prompt: "Start new work" },
+      });
+      const context = terminal.hookOutput.hookSpecificOutput.additionalContext;
+      assert.match(context, /^Cairn kernel: read root MEMORY\.md first\./);
+      assert.match(context, /load cairn-plan/i);
+      assert.doesNotMatch(context, /owned by another session|Secret owner goal|secret-owner|secret-task|Secret task title/i);
+    }
   });
 });
 
 test("active hook stays bounded for long goals and large roadmaps", async () => {
   await withTempRoot(async (root) => {
+    const exactPlanId = "p".repeat(RECOVERY_REFERENCE_MAX_LENGTH - TASK_ID_MAX_LENGTH);
+    const exactTaskId = "t".repeat(TASK_ID_MAX_LENGTH);
     await startGoal({
       root,
       goal: "G".repeat(600),
-      planId: "docs/plan/large-roadmap.md",
+      planId: exactPlanId,
       ownerSessionId: "large-roadmap-session",
       tasks: Array.from({ length: 20 }, (_, index) => ({
-        id: `task-${index + 1}-${"i".repeat(80)}`,
+        id: index === 0 ? exactTaskId : `task-${index + 1}`,
         title: `Long task ${index + 1} ${"t".repeat(200)}`,
       })),
     });
@@ -80,9 +194,56 @@ test("active hook stays bounded for long goals and large roadmaps", async () => 
     const context = active.hookOutput.hookSpecificOutput.additionalContext;
     assert.ok(context.length <= 700, `large active hook is ${context.length} characters; budget is 700`);
     assert.match(context, /20/);
-    assert.match(context, /task-1/);
     assert.match(context, /omitted/i);
-    assert.match(context, /resume task-1/i);
+    assert.ok(context.includes(exactPlanId), "active hook must preserve the exact plan reference");
+    assert.ok(context.includes(`Exact task: ${exactTaskId}.`), "active hook must preserve the exact current task id");
+    assert.match(context, /Resume that exact task after side questions/i);
+  });
+});
+
+test("goal state bounds exact recovery references and rejects oversized legacy state", async () => {
+  await withTempRoot(async (root) => {
+    await assert.rejects(
+      startGoal({ root, goal: "Long plan", planId: "p".repeat(PLAN_ID_MAX_LENGTH + 1), tasks: [{ id: "task", title: "Task" }] }),
+      /planId must be at most 128 characters/,
+    );
+    await assert.rejects(
+      startGoal({ root, goal: "Long task", planId: "plan", tasks: [{ id: "t".repeat(TASK_ID_MAX_LENGTH + 1), title: "Task" }] }),
+      /tasks\[0\]\.id must be at most 64 characters/,
+    );
+    await assert.rejects(
+      startGoal({
+        root,
+        goal: "Combined limit",
+        planId: "p".repeat(RECOVERY_REFERENCE_MAX_LENGTH - TASK_ID_MAX_LENGTH + 1),
+        tasks: [{ id: "t".repeat(TASK_ID_MAX_LENGTH), title: "Task" }],
+      }),
+      /planId and taskId must total at most 160 characters/,
+    );
+
+    const baseline = await startGoal({ root, goal: "Legacy bound", planId: "plan", tasks: [{ id: "task", title: "Task" }] });
+    const legacy = structuredClone(baseline);
+    legacy.schemaVersion = 1;
+    delete legacy.goal.evidencePolicy;
+    legacy.goal.planId = "p".repeat(PLAN_ID_MAX_LENGTH + 1);
+    await writeFile(goalStatePath(root), `${JSON.stringify(legacy, null, 2)}\n`);
+    await assert.rejects(readGoalState({ root }), /goal\.planId must be at most 128 characters/);
+
+    const paddedPlan = structuredClone(baseline);
+    paddedPlan.goal.planId = ` ${"p".repeat(96)}${" ".repeat(900)}`;
+    await writeFile(goalStatePath(root), `${JSON.stringify(paddedPlan, null, 2)}\n`);
+    await assert.rejects(readGoalState({ root }), /goal\.planId must not have leading or trailing whitespace/);
+
+    const paddedTask = structuredClone(baseline);
+    paddedTask.tasks[0].id = ` ${"t".repeat(64)} `;
+    await writeFile(goalStatePath(root), `${JSON.stringify(paddedTask, null, 2)}\n`);
+    await assert.rejects(readGoalState({ root }), /task\.id must not have leading or trailing whitespace/);
+
+    const paddedCombined = structuredClone(baseline);
+    paddedCombined.goal.planId = `${"p".repeat(96)} `;
+    paddedCombined.tasks[0].id = `${"t".repeat(64)} `;
+    await writeFile(goalStatePath(root), `${JSON.stringify(paddedCombined, null, 2)}\n`);
+    await assert.rejects(readGoalState({ root }), /must not have leading or trailing whitespace/);
   });
 });
 
@@ -124,6 +285,27 @@ test("work guidance spends reasoning on tests and trusts bounded tool evidence",
   assert.match(work, /content-neutral.*--ignore-scripts/is);
   assert.match(work, /stale evidence/i);
   assert.match(work, /goal verify.*--/i);
+});
+
+test("agents and phase guidance restore required references and fail closed", async () => {
+  const surfaces = await Promise.all([
+    "agents/explorer.md",
+    "agents/worker.md",
+    "skills/cairn-plan/SKILL.md",
+    "skills/cairn-work/SKILL.md",
+    "skills/cairn-review/SKILL.md",
+    "docs/model-guidance/README.md",
+    "docs/model-guidance/codex.md",
+  ].map(async (path) => [path, await readFile(path, "utf8")]));
+
+  for (const [path, content] of surfaces) {
+    assert.match(content, /MEMORY\.md.*(?:phase skill|cairn-(?:plan|work|review)).*active plan.*(?:current-task|current task|completed\/current-task).*model guidance/is, `${path} recovery order`);
+    assert.match(content, /missing, unreadable, or inconsistent/is, `${path} missing-reference guard`);
+    assert.match(content, /(?:do not|fail closed)/i, `${path} fail-closed action`);
+  }
+
+  const allGuidance = surfaces.map(([, content]) => content).join("\n");
+  assert.doesNotMatch(allGuidance, /requiredReferences|readReceipt|read_receipt/);
 });
 
 test("every supported locale exposes the token-efficient work contract", () => {
