@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { constants as fsConstants, realpathSync } from "node:fs";
 import {
   copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, rmdir, writeFile,
 } from "node:fs/promises";
@@ -119,17 +119,18 @@ async function uninstall() {
   const conflicts = [];
   for (const record of ownership.targets) {
     const current = await targetDigest(record.path, record.type);
-    if (current !== record.installedDigest) conflicts.push(record.path);
+    if (record.type !== "config" && current !== record.installedDigest) conflicts.push(record.path);
   }
   if (conflicts.length > 0) throw new Error(`Refusing to uninstall modified managed artifacts: ${conflicts.join(", ")}`);
   const transaction = await createTransaction();
   try {
     const configRecord = ownership.targets.find((record) => record.type === "config");
-    if (configRecord) {
+    if (configRecord && await exists(configRecord.path)) {
+      const snapshot = await readSharedConfigSnapshot(configRecord.path);
       const staged = join(transaction.stageRoot, "uninstall-config.toml");
       await mkdir(dirname(staged), { recursive: true });
-      await writeFile(staged, removeCairnConfig(await readText(configRecord.path)));
-      await replaceTarget({ ...configRecord, staged }, transaction);
+      await writeFile(staged, removeCairnConfig(snapshot.text));
+      await replaceTarget({ ...configRecord, staged, configSourceDigest: snapshot.digest }, transaction);
     }
     injectFailure("uninstall-after-config");
     for (const phase of ["antigravity", "claude"]) {
@@ -166,7 +167,7 @@ async function doctor() {
   checks.push(["installed CLI script", await exists(join(versionedPluginRoot, "scripts", "cairn.mjs"))]);
   checks.push(["installed plan template", await exists(join(versionedPluginRoot, "templates", "work-plan.md"))]);
   checks.push(["installed model guidance", await exists(join(versionedPluginRoot, "docs", "model-guidance", "codex.md"))]);
-  const config = await readText(configPath);
+  const config = (await readSharedConfigSnapshot(configPath)).text;
   checks.push(["config marketplace", splitSections(config).some((section) => section.header === "marketplaces.cairn")]);
   checks.push(["config plugin enabled", hasSetting(config, 'plugins."cairn@cairn"', "enabled", "true")]);
   checks.push(["Claude runtime locator", await validRuntimeLocator(claudeRuntimeLocatorPath)]);
@@ -204,7 +205,7 @@ async function ownershipDigestsValid(ownership) {
 
 async function stageInstall(stageRoot) {
   const targets = [];
-  const add = (id, phase, destination, staged, type = "tree") => targets.push({ id, phase, path: destination, staged, type });
+  const add = (id, phase, destination, staged, type = "tree", details = {}) => targets.push({ id, phase, path: destination, staged, type, ...details });
   const sourceStage = join(stageRoot, "codex-source");
   const runtimeStage = join(stageRoot, "codex-runtime");
   await copyPluginCandidate(sourceStage, versionedPluginRoot);
@@ -239,8 +240,9 @@ async function stageInstall(stageRoot) {
 
   const configStage = join(stageRoot, "config.toml");
   const hookStates = await trustedHookStates(runtimeStage);
-  await writeFile(configStage, updateConfig(await readText(configPath), hookStates));
-  add("codex-config", "config", configPath, configStage, "config");
+  const configSnapshot = await readSharedConfigSnapshot(configPath);
+  await writeFile(configStage, updateConfig(configSnapshot.text, hookStates));
+  add("codex-config", "config", configPath, configStage, "config", { configSourceDigest: configSnapshot.digest });
   for (const target of targets) await assertRegularTree(target.staged);
   return targets;
 }
@@ -465,6 +467,15 @@ function pidIsAlive(pid) {
 function delay(ms) { return new Promise((resolvePromise) => setTimeout(resolvePromise, ms)); }
 
 async function replaceTarget(target, transaction) {
+  let configProjection = null;
+  if (target.type === "config") {
+    const snapshot = await readSharedConfigSnapshot(target.path);
+    configProjection = cairnConfigProjection((await readSharedConfigSnapshot(target.staged)).text);
+    if (snapshot.digest !== target.configSourceDigest) {
+      await writeFile(target.staged, `${removeCairnConfig(snapshot.text)}${configProjection}`);
+      target.configSourceDigest = snapshot.digest;
+    }
+  }
   const existed = await exists(target.path);
   const backup = join(transaction.backupRoot, String(transaction.entries.length));
   await mkdir(dirname(backup), { recursive: true });
@@ -482,7 +493,30 @@ async function replaceTarget(target, transaction) {
   };
   transaction.entries.push(entry);
   await writeTransactionJournal(transaction);
-  if (existed) await rename(target.path, backup);
+  if (target.type === "config" && process.env.CAIRN_TEST_APPEND_CONFIG_BEFORE_REPLACE) {
+    const snapshot = await readSharedConfigSnapshot(target.path);
+    await writeFile(target.path, `${snapshot.text}${process.env.CAIRN_TEST_APPEND_CONFIG_BEFORE_REPLACE}`);
+  }
+  if (target.type === "config" && process.env.CAIRN_TEST_REMOVE_CONFIG_BEFORE_REPLACE === "1") {
+    await rm(target.path, { force: true });
+  }
+  if (target.type === "config") {
+    let capturedExists = true;
+    try {
+      await rename(target.path, backup);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      capturedExists = false;
+    }
+    if (process.env.CAIRN_TEST_CRASH_AFTER_CONFIG_CAPTURE === "1") process.exit(86);
+    const captured = await readSharedConfigSnapshot(backup);
+    if (capturedExists) await writeFile(target.staged, `${removeCairnConfig(captured.text)}${configProjection}`);
+    else await writeFile(target.staged, configProjection);
+    entry.existed = capturedExists;
+    entry.previousDigest = capturedExists ? await targetDigest(backup, target.type) : "missing";
+    entry.expectedNewDigest = await targetDigest(target.staged, target.type);
+    await writeTransactionJournal(transaction);
+  } else if (existed) await rename(target.path, backup);
   await mkdir(dirname(target.path), { recursive: true });
   await rename(target.staged, target.path);
   entry.status = "applied";
@@ -632,6 +666,18 @@ async function rollbackEntries(transaction) {
     const destinationExists = await exists(entry.path);
     const backupExists = await exists(entry.backup);
     if (backupExists) {
+      if (entry.type === "config" && entry.status === "prepared") {
+        const previousConfig = (await readSharedConfigSnapshot(entry.backup)).text;
+        if (destinationExists) {
+          const currentConfig = (await readSharedConfigSnapshot(entry.path)).text;
+          await writeFile(entry.path, `${removeCairnConfig(currentConfig)}${cairnConfigProjection(previousConfig)}`);
+          await rm(entry.backup, { force: true });
+        } else {
+          await mkdir(dirname(entry.path), { recursive: true });
+          await rename(entry.backup, entry.path);
+        }
+        continue;
+      }
       if (!entry.existed) throw new Error(`Cannot recover transaction because an unexpected backup exists: ${entry.path}`);
       if (await targetDigest(entry.backup, entry.type) !== entry.previousDigest) {
         throw new Error(`Cannot recover transaction because its durable backup changed: ${entry.path}`);
@@ -640,8 +686,8 @@ async function rollbackEntries(transaction) {
         const current = await targetDigest(entry.path, entry.type);
         if (current !== entry.expectedNewDigest) throw new Error(`Cannot recover transaction because destination changed: ${entry.path}`);
         if (entry.type === "config") {
-          const currentConfig = await readText(entry.path);
-          const previousConfig = await readText(entry.backup);
+          const currentConfig = (await readSharedConfigSnapshot(entry.path)).text;
+          const previousConfig = (await readSharedConfigSnapshot(entry.backup)).text;
           await writeFile(entry.path, `${removeCairnConfig(currentConfig)}${cairnConfigProjection(previousConfig)}`);
           await rm(entry.backup, { force: true });
           continue;
@@ -650,12 +696,14 @@ async function rollbackEntries(transaction) {
       }
       await mkdir(dirname(entry.path), { recursive: true });
       await rename(entry.backup, entry.path);
+    } else if (entry.type === "config" && entry.status === "prepared" && !destinationExists) {
+      continue;
     } else if (!entry.existed) {
       if (destinationExists) {
         const current = await targetDigest(entry.path, entry.type);
         if (current !== entry.expectedNewDigest) throw new Error(`Cannot recover new transaction target because it changed: ${entry.path}`);
         if (entry.type === "config") {
-          const preserved = removeCairnConfig(await readText(entry.path));
+          const preserved = removeCairnConfig((await readSharedConfigSnapshot(entry.path)).text);
           if (preserved.length > 0) await writeFile(entry.path, preserved);
           else await rm(entry.path, { force: true });
         } else await rm(entry.path, { recursive: true, force: true });
@@ -688,7 +736,7 @@ async function assertTargetsReplaceable(targets, ownership) {
     }
     const record = records.get(target.id);
     if (!record) {
-      if (target.type === "config" && cairnConfigProjection(await readText(target.path)).length === 0) continue;
+      if (target.type === "config" && cairnConfigProjection((await readSharedConfigSnapshot(target.path)).text).length === 0) continue;
       throw new Error(`Refusing to overwrite unmanaged artifact: ${target.path}`);
     }
     if (target.id === "codex-runtime" && ownership?.version !== releaseVersion) {
@@ -696,13 +744,14 @@ async function assertTargetsReplaceable(targets, ownership) {
     }
     if (record.path !== target.path || record.type !== target.type) throw new Error(`Ownership manifest target mismatch: ${target.id}`);
     const current = await targetDigest(target.path, target.type);
-    if (current !== record.installedDigest) throw new Error(`Managed artifact was modified: ${target.path}`);
+    if (target.type !== "config" && current !== record.installedDigest) throw new Error(`Managed artifact was modified: ${target.path}`);
   }
 }
 
 async function assertOwnershipDigests(ownership) {
   for (const record of ownership.targets) {
-    if (await targetDigest(record.path, record.type) !== record.installedDigest) {
+    const current = await targetDigest(record.path, record.type);
+    if (record.type !== "config" && current !== record.installedDigest) {
       throw new Error(`Managed artifact was modified: ${record.path}`);
     }
   }
@@ -806,7 +855,7 @@ function versionedRuntimeRoot(version) {
 async function anyManagedArtifactExists(targets) {
   for (const target of targets) {
     if (!(await exists(target.path))) continue;
-    if (target.type !== "config" || cairnConfigProjection(await readText(target.path)).length > 0) return true;
+    if (target.type !== "config" || cairnConfigProjection((await readSharedConfigSnapshot(target.path)).text).length > 0) return true;
   }
   return false;
 }
@@ -826,7 +875,7 @@ async function adoptLegacy(targets, transaction) {
       }
     }
     if (target.type === "config") {
-      const projection = cairnConfigProjection(await readText(target.path));
+      const projection = cairnConfigProjection((await readSharedConfigSnapshot(target.path)).text);
       if (!projection.includes("[marketplaces.cairn]") || !projection.includes('[plugins."cairn@cairn"]')) {
         throw new Error(`Legacy Cairn config cannot be identified: ${target.path}`);
       }
@@ -923,7 +972,7 @@ async function verifyLegacyMirror(target) {
 
 export async function targetDigest(path, type) {
   if (!(await exists(path))) return "missing";
-  if (type === "config") return sha(cairnConfigProjection(await readText(path)));
+  if (type === "config") return sha(cairnConfigProjection((await readSharedConfigSnapshot(path)).text));
   const info = await lstat(path);
   if (info.isSymbolicLink() || (!info.isFile() && !info.isDirectory())) throw new Error(`Managed artifact is not a regular file/tree: ${path}`);
   if (info.isFile()) return sha(await readFile(path));
@@ -969,19 +1018,60 @@ export function updateConfig(config, hookStates, { marketplacePath = marketplace
 }
 
 export function removeCairnConfig(config) {
-  return splitSections(config).filter((section) => {
-    if (section.header === null) return true;
-    if (section.header === "marketplaces.cairn") return false;
-    if (section.header === 'plugins."cairn@cairn"') return false;
-    return !(section.header.startsWith("hooks.state.") && section.header.includes("cairn@cairn:"));
-  }).map((section) => section.text).join("");
+  return splitSections(config).map((section) => isCairnConfigSection(section)
+    ? splitTrailingTomlTrivia(section.text).trivia
+    : section.text).join("");
 }
 
 function cairnConfigProjection(config) {
-  return splitSections(config).filter((section) => section.header === "marketplaces.cairn"
+  return splitSections(config).filter(isCairnConfigSection)
+    .map((section) => splitTrailingTomlTrivia(section.text).body).join("");
+}
+
+function isCairnConfigSection(section) {
+  return section.header === "marketplaces.cairn"
     || section.header === 'plugins."cairn@cairn"'
-    || (section.header?.startsWith("hooks.state.") && section.header.includes("cairn@cairn:")))
-    .map((section) => section.text).join("");
+    || (section.header?.startsWith("hooks.state.") && section.header.includes("cairn@cairn:"));
+}
+
+function splitTrailingTomlTrivia(text) {
+  const lines = text.split(/(?<=\n)/);
+  let boundary = lines.length;
+  while (boundary > 0) {
+    const line = lines[boundary - 1];
+    if (line.length === 0 || line.trim().length === 0 || line.trimStart().startsWith("#")) boundary -= 1;
+    else break;
+  }
+  return { body: lines.slice(0, boundary).join(""), trivia: lines.slice(boundary).join("") };
+}
+
+async function readSharedConfigSnapshot(path) {
+  let pathInfo;
+  try {
+    pathInfo = await lstat(path);
+  } catch (error) {
+    if (error?.code === "ENOENT") return { exists: false, text: "", digest: "missing" };
+    throw error;
+  }
+  if (pathInfo.isSymbolicLink() || !pathInfo.isFile()) throw new Error(`Managed config is not a regular file: ${path}`);
+  let handle;
+  try {
+    const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0);
+    handle = await open(path, flags);
+  } catch (error) {
+    if (["ELOOP", "EFTYPE", "ENXIO"].includes(error?.code)) throw new Error(`Managed config is not a regular file: ${path}`);
+    throw error;
+  }
+  try {
+    const openedInfo = await handle.stat();
+    if (!openedInfo.isFile() || openedInfo.dev !== pathInfo.dev || openedInfo.ino !== pathInfo.ino) {
+      throw new Error(`Managed config changed identity while opening: ${path}`);
+    }
+    const text = await handle.readFile("utf8");
+    return { exists: true, text, digest: sha(text) };
+  } finally {
+    await handle.close();
+  }
 }
 
 export function ensureSetting(config, sectionName, key, value) {
