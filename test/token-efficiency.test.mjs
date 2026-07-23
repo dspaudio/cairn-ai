@@ -285,6 +285,11 @@ test("work guidance spends reasoning on tests and trusts bounded tool evidence",
   assert.match(work, /content-neutral.*--ignore-scripts/is);
   assert.match(work, /stale evidence/i);
   assert.match(work, /goal verify.*--/i);
+  assert.match(work, /model.*inherit/i);
+  assert.match(work, /requested.*effective.*reasoning effort/is);
+  assert.match(work, /Light.*medium.*Heavy.*high.*xhigh/is);
+  assert.match(work, /completed.*profiles?.*preserv/is);
+  assert.match(work, /incomplete.*profiles?.*(?:recalculate|replace)/is);
 });
 
 test("agents and phase guidance restore required references and fail closed", async () => {

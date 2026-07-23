@@ -11,6 +11,7 @@ import {
   goalStatePath,
   readGoalState,
   recordReceipt,
+  replanGoal,
   setTaskStatus,
   startGoal,
   transitionGoal,
@@ -40,6 +41,74 @@ test("goal start persists a versioned, bound state atomically", async () => {
     assert.deepEqual(JSON.parse(text), state);
     const leftovers = await readdir(join(root, ".cairn"));
     assert.equal(leftovers.filter((name) => name.endsWith(".tmp")).length, 0);
+  });
+});
+
+test("goal replan preserves completed work and replaces the incomplete roadmap", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Reclassify the route",
+      planId: "docs/plan/reclassify.md",
+      evidencePolicy: "declared",
+      tasks: [
+        { id: "triage", title: "Triage" },
+        { id: "light-implement", title: "Light implementation" },
+        { id: "verify", title: "Verify" },
+      ],
+    });
+    for (const kind of ["moduleAcceptance", "surfaceIntegration"]) {
+      await recordReceipt({ root, taskId: "triage", kind, command: `verify triage ${kind}`, exitCode: 0 });
+    }
+    await setTaskStatus({ root, taskId: "triage", status: "completed" });
+    await recordReceipt({ root, taskId: "light-implement", kind: "moduleAcceptance", command: "old light evidence", exitCode: 0 });
+    await recordReceipt({ root, scope: "goal", kind: "finalReview", command: "old goal evidence", exitCode: 0 });
+
+    const replanned = await replanGoal({
+      root,
+      tasks: [
+        { id: "heavy-review", title: "Review the Heavy plan", requiredEvidence: ["planReview"] },
+        { id: "heavy-implement", title: "Implement the Heavy plan" },
+        { id: "verify", title: "Verify the Heavy plan" },
+      ],
+    });
+
+    assert.deepEqual(replanned.tasks.map(({ id, status }) => ({ id, status })), [
+      { id: "triage", status: "completed" },
+      { id: "heavy-review", status: "active" },
+      { id: "heavy-implement", status: "pending" },
+      { id: "verify", status: "pending" },
+    ]);
+    assert.deepEqual(replanned.tasks[1].requiredEvidence, ["planReview"]);
+    assert.ok(replanned.receipts.every((receipt) => receipt.taskId === "triage"));
+    await assert.rejects(replanGoal({ root, tasks: [] }), /at least one incomplete task/i);
+    await assert.rejects(replanGoal({ root, tasks: [{ id: "triage", title: "Duplicate completed task" }] }), /completed task id/i);
+  });
+});
+
+test("goal replan CLI replaces the incomplete roadmap", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "CLI replan",
+      planId: "docs/plan/cli-replan.md",
+      tasks: [{ id: "light", title: "Light task" }],
+    });
+
+    const cli = spawnSync(process.execPath, [
+      cliScript,
+      "goal", "replan",
+      "--root", root,
+      "--tasks", JSON.stringify([
+        { id: "review", title: "Heavy review", requiredEvidence: ["planReview"] },
+        { id: "implement", title: "Heavy implementation" },
+      ]),
+    ], { encoding: "utf8" });
+
+    assert.equal(cli.status, 0, cli.stderr);
+    const state = JSON.parse(cli.stdout);
+    assert.deepEqual(state.tasks.map((task) => task.id), ["review", "implement"]);
+    assert.equal(state.tasks[0].status, "active");
   });
 });
 
@@ -298,6 +367,15 @@ test("tool-bound goals execute verification, reject declared and stale evidence,
       cliScript, "goal", "task", "--quiet", "--root", root, "--task", "verify", "--status", "completed",
     ], { encoding: "utf8" });
     assert.equal(completed.status, 0, completed.stderr);
+
+    await writeFile(watched, "v3\n");
+    for (const kind of ["moduleAcceptance", "surfaceIntegration"]) {
+      const refreshedAfterCompletion = runVerify(root, kind, watched, "console.log('refreshed after completion')");
+      assert.equal(refreshedAfterCompletion.status, 0, refreshedAfterCompletion.stderr);
+    }
+    const refreshedCompletedState = await readGoalState({ root });
+    assert.equal(refreshedCompletedState.tasks[0].status, "completed");
+    assert.equal(refreshedCompletedState.receipts.filter((item) => item.source === "tool").length, 7);
   });
 });
 

@@ -35,6 +35,7 @@ Use the installed CLI for durable state. Important forms are:
 
 ```sh
 node "<pluginRoot>/scripts/cairn.mjs" goal status --root "<repoRoot>"
+node "<pluginRoot>/scripts/cairn.mjs" goal replan --quiet --root "<repoRoot>" --tasks '[{"id":"<task-id>","title":"<task-title>","requiredEvidence":["moduleAcceptance","surfaceIntegration"]}]'
 node "<pluginRoot>/scripts/cairn.mjs" goal assign --quiet --root "<repoRoot>" --task "<task-id>" --agent "<agent-id>"
 node "<pluginRoot>/scripts/cairn.mjs" goal verify --quiet --root "<repoRoot>" --task "<task-id>" --kind moduleAcceptance --watch "<path|path>" -- <tool> <arg> ...
 node "<pluginRoot>/scripts/cairn.mjs" goal verify --quiet --root "<repoRoot>" --task "<task-id>" --kind surfaceIntegration --watch "<path|path>" -- <tool> <arg> ...
@@ -66,6 +67,15 @@ Use this verification ladder:
 
 Any relevant mutation after a gate makes that result stale evidence. Rerun the affected focused gate and, when integration could change, the full gate. Use `--quiet` for successful Cairn state mutations so full state JSON does not consume conversation tokens. `goal status` is read-only and always returns state, including when `--quiet` is supplied.
 
+## Reasoning Effort Routing
+
+- Models always inherit the host/user default; never configure or override them.
+- Light Path planning, implementation, and verification request `medium`.
+- Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
+- Every module task records `Requested reasoning effort` and `Effective reasoning effort` in `docs/plan/<topic>.md`.
+- Pass requested effort only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Omit model overrides. For an unsupported host or value, record effective reasoning effort `inherited` with the reason and leave model/global config unchanged.
+- On every route change, synchronize the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Completed task profiles are preserved as audit history; incomplete task profiles are recalculated for the new path.
+
 ## Procedure
 
 1. Read the project-root `MEMORY.md` first.
@@ -75,21 +85,24 @@ Any relevant mutation after a gate makes that result stale evidence. Rerun the a
 5. Confirm that required LSP, typecheck, lint, dry-run, and verification tools are available from the plan's tool readiness section.
 6. If a required tool is missing, do not install it implicitly. Obtain explicit user approval, then run the installed runtime's `toolcheck --install --yes --root "<repoRoot>"` only for pinned/supported installers or run the approved repository-native command. Otherwise record a blocker.
 7. Confirm the selected Light Path or Heavy Path in the plan. If the plan lacks complexity triage, stop and update the plan before mutating files.
-8. For Light Path, keep the main agent in the orchestrator role and delegate implementation edits to one bounded `worker` whenever subagent tools are available; keep the verification gate.
-9. For Heavy Path, follow the full planning and review pipeline recorded in the plan. Run pre-implementation review before mutation and read-only review after evidence exists.
-10. Delegate implementation to `worker` with exact files, ownership, constraints, and model-specific adjustment rules on both Light Path and Heavy Path whenever subagent tools are available. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, preserve others' edits, and report status when the subagent tool provides a progress-reporting channel. Immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. Use `explorer` for parallel read-only discovery or verification when available and useful. Allow recursive delegation only for bounded sub-tasks when the current surface supports it. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence.
-11. Before mutating external state, run the task dry-run or check command when one is recorded. If none exists, record the absence and continue with the smallest reversible command available.
-12. Design the focused executable test contract before implementation. For behavior changes, run it and confirm the intended failure; for policy-only work, use the closest deterministic assertion or record why a failing test is unavailable.
-13. Give the implementation worker only the contract, failing evidence, exact file scope, and constraints; require the minimum implementation rather than renewed broad discovery.
-14. For Heavy Path, run the recorded automated test command and record explicit `Tests:` evidence before claiming completion.
-15. `worker` must return a structured handoff for only its assigned goal/task with changed files, tool readiness result, dry-run or check result when applicable, automated test result for Heavy Path, module acceptance command and result, surface integration command or QA artifact, blocker, and cleanup notes. A worker must not select the next task.
-16. Re-run both verification gates through `goal verify -- ...`. Treat tool exit codes as authoritative, keep successful output summarized, and expand context only for a failing test. Record each success as evidence bound to the current goal ID, task ID, plan, exact argv, and watched-workspace fingerprint.
-17. Apply the bounded loop policy when a gate fails. After two failed passes, transition the task or goal to `blocked` with a concrete blocker instead of continuing automatically.
-18. Mark a task complete only after every required evidence record passes. Let Cairn advance to the next pending task, then continue the goal without yielding a false completion.
-19. After all tasks complete, run and record goal-level final review evidence and explicitly complete the goal. `active` is not a completion state; `paused`, `blocked`, and `cancelled` are allowed terminal-for-now states that stop automatic continuation.
-20. Record evidence in the plan file and state before updating `PLAN.md`.
-21. If the user asks a side question, status question, or narrow clarification while this task is still active, answer it briefly and then resume the previous active work unless the user explicitly asks to pause, stop, or switch tasks.
-22. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
+8. Confirm the request checkpoint and planning checkpoint, inspect the exact files, callers, and tests, then record the code checkpoint immediately before the first edit. Missing or pending checkpoints block mutation.
+9. Before the first edit, evidence may change Light Path to Heavy Path or Heavy Path to Light Path. On every route change, update the plan artifact first, replace the incomplete repository goal task roadmap with `goal replan`, update the native UI plan to the same stable task order, and synchronize assignments, reviews, and required evidence. Do not mutate until all three agree.
+10. After editing starts, only promote Light Path to Heavy Path. Stop further edits on a new Heavy Path signal, mark affected evidence stale, revise and synchronize the plan artifact, repository goal task roadmap, and native UI plan, run newly required Heavy Path review, and repeat the code checkpoint before resuming.
+11. For Light Path, keep the main agent in the orchestrator role and delegate implementation edits to one bounded `worker` whenever subagent tools are available; keep the verification gate.
+12. For Heavy Path, follow the full planning and review pipeline recorded in the plan. Run pre-implementation review before mutation and read-only review after evidence exists.
+13. Delegate implementation to `worker` with exact files, ownership, constraints, and model-specific adjustment rules on both Light Path and Heavy Path whenever subagent tools are available. Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, preserve others' edits, and report status when the subagent tool provides a progress-reporting channel. Immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. Use `explorer` for parallel read-only discovery or verification when available and useful. Allow recursive delegation only for bounded sub-tasks when the current surface supports it. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence.
+14. Before mutating external state, run the task dry-run or check command when one is recorded. If none exists, record the absence and continue with the smallest reversible command available.
+15. Design the focused executable test contract before implementation. For behavior changes, run it and confirm the intended failure; for policy-only work, use the closest deterministic assertion or record why a failing test is unavailable.
+16. Give the implementation worker only the contract, failing evidence, exact file scope, and constraints; require the minimum implementation rather than renewed broad discovery.
+17. For Heavy Path, run the recorded automated test command and record explicit `Tests:` evidence before claiming completion.
+18. `worker` must return a structured handoff for only its assigned goal/task with changed files, tool readiness result, dry-run or check result when applicable, automated test result for Heavy Path, module acceptance command and result, surface integration command or QA artifact, blocker, and cleanup notes. A worker must not select the next task.
+19. Re-run both verification gates through `goal verify -- ...`. Treat tool exit codes as authoritative, keep successful output summarized, and expand context only for a failing test. Record each success as evidence bound to the current goal ID, task ID, plan, exact argv, and watched-workspace fingerprint.
+20. Apply the bounded loop policy when a gate fails. After two failed passes, transition the task or goal to `blocked` with a concrete blocker instead of continuing automatically.
+21. Mark a task complete only after every required evidence record passes. Let Cairn advance to the next pending task, then continue the goal without yielding a false completion.
+22. After all tasks complete, run and record goal-level final review evidence and explicitly complete the goal. `active` is not a completion state; `paused`, `blocked`, and `cancelled` are allowed terminal-for-now states that stop automatic continuation.
+23. Record evidence in the plan file and state before updating `PLAN.md`.
+24. If the user asks a side question, status question, or narrow clarification while this task is still active, answer it briefly and then resume the previous active work unless the user explicitly asks to pause, stop, or switch tasks.
+25. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Builder Prompt Format
 

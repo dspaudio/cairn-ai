@@ -70,6 +70,8 @@ This file is a short index of active and completed work plans.
 - Plans must be decision-complete before implementation.
 - Run complexity triage before applying agent, plugin, or delegated workflow guidance.
 - Record the selected Light Path or Heavy Path and the checked Heavy Path signals in \`docs/plan/<topic>.md\`.
+- Record request, planning, and code checkpoints. When the route changes before editing, synchronize the plan artifact, repository goal task roadmap through \`goal replan\`, and native UI plan. After editing starts, a new Heavy Path signal promotes Light Path to Heavy Path; stop further edits, mark affected evidence stale, synchronize all three roadmaps, and repeat the code checkpoint.
+- Keep models inherited. Record requested/effective reasoning effort per task: Light planning/implementation/verification=\`medium\`; Heavy planning/review/implementation=\`high\`; final verification/review=\`xhigh\`. A route change also synchronizes the reasoning effort profile, preserving completed profiles and recalculating incomplete profiles. Unsupported host/value means effective=\`inherited\` with no model/global config change.
 - Split implementation into small module tasks.
 - Detect repository stack and required LSP/check tools before implementation.
 - Record missing required tools and suggested commands. Run only pinned, supported installation steps after explicit user approval.
@@ -102,6 +104,8 @@ const planTemplateKo = `# PLAN
 - 계획은 구현 전에 의사결정이 완료된 상태여야 합니다.
 - 에이전트, 플러그인, 위임 워크플로 지침을 적용하기 전에 복잡도 트리아지를 실행합니다.
 - 선택한 Light Path 또는 Heavy Path와 확인한 Heavy Path 신호를 \`docs/plan/<topic>.md\`에 기록합니다.
+- 요청, 계획, 코드 체크포인트를 기록합니다. 편집 전에 경로가 바뀌면 plan artifact, 저장소 goal task roadmap, native UI plan을 동기화합니다. 편집 뒤 새 Heavy Path 신호가 나오면 추가 편집을 중단하고 관련 증거를 stale로 표시한 뒤 세 roadmap과 코드 체크포인트를 다시 맞춥니다.
+- 모델은 상속하고 task별 requested/effective reasoning effort를 기록합니다. Light 계획/구현/검증은 \`medium\`, Heavy 계획/검토/구현은 \`high\`, 최종 검증/검토는 \`xhigh\`입니다. 경로 변경 시 reasoning effort profile도 동기화하고 완료 profile은 보존하며 미완료 profile은 재계산합니다. 미지원 host/value는 model/global config 변경 없이 effective=\`inherited\`입니다.
 - 구현은 작은 모듈 작업으로 나눕니다.
 - 구현 전에 저장소 스택과 필요한 LSP/check 도구를 감지합니다.
 - 필요한 도구가 없으면 누락 상태와 제안 명령을 기록합니다. 명시적 사용자 승인 뒤에만 고정된 지원 설치 단계를 실행합니다.

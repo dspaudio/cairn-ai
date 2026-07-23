@@ -67,9 +67,26 @@ Use the current Codex hook `session_id` when it is available. If the surface doe
 12. Advance a Codex UI step only after the matching repository Cairn task transition succeeds with all required bound evidence records. The repository state is the fail-closed transition authority; UI state is its synchronized projection.
 13. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
+## Reasoning Effort Routing
+
+- Models always inherit the host/user default; never configure or override them.
+- Light Path planning, implementation, and verification request `medium`.
+- Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
+- Every module task records `Requested reasoning effort` and `Effective reasoning effort` in `docs/plan/<topic>.md`.
+- Pass requested effort only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Omit model overrides. For an unsupported host or value, record effective reasoning effort `inherited` with the reason and leave model/global config unchanged.
+- On every route change, synchronize the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before mutation. Completed task profiles are preserved as audit history; incomplete task profiles are recalculated for the new path.
+
 ## Complexity Triage
 
 Decide triage from repository evidence without asking the user.
+
+Use three mandatory checkpoints and record each result, evidence, newly discovered Heavy Path signals, and current route in the plan artifact:
+
+1. **Request checkpoint:** before exploration, make a provisional classification from the request and `MEMORY.md`; uncertainty stays explicit and this result is not implementation authority.
+2. **Planning checkpoint:** after repository exploration, affected-surface analysis, and test design, re-evaluate the provisional route and finalize the implementation plan.
+3. **Code checkpoint:** during `cairn-work`, inspect the exact files, callers, and tests, then record one final re-evaluation immediately before the first edit. A pending or missing code checkpoint blocks mutation.
+
+Before the first edit, the planning or code checkpoint may change Light Path to Heavy Path or Heavy Path to Light Path when the evidence supports it. Every route change must rebuild and synchronize the plan artifact, repository goal task roadmap through `goal replan`, and native UI plan, including assignments, reviews, and required evidence; do not mutate until all three agree. After editing starts, only promote Light Path to Heavy Path: stop further edits, mark affected evidence stale, revise and synchronize all three roadmaps, run newly required Heavy Path review, and repeat the code checkpoint before resuming.
 
 This decision takes priority over plugin, agent, or delegated workflow guidance unless higher-priority system or developer instructions say otherwise. The default is Light Path; use Heavy Path only when a Heavy Path condition clearly applies.
 
@@ -122,6 +139,8 @@ Heavy Path flow: plan -> pre-implementation review -> bounded `worker` implement
 - Roles or delegation omitted in Light Path and why.
 - Any unavailable subagent tool main-agent takeover and its evidence record.
 - Pre-implementation decisions that review must resolve in Heavy Path.
+- Request checkpoint, planning checkpoint, and code checkpoint status, evidence, newly found signals, and route.
+- Every route change and the synchronized plan artifact, repository goal task roadmap, native UI plan, assignments, reviews, required evidence, and stale evidence invalidation.
 
 ## Planning Rules
 
