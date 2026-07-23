@@ -4,7 +4,7 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- [경로별 추론 강도 변경 보존 및 PR 게시](docs/plan/publish-path-reasoning-effort-routing.md): dirty `dev` 변경을 보존하고 최신 `origin/dev` 기반 새 브랜치에 재적용·검증한 뒤 push/PR을 생성합니다.
+- 없음.
 
 ## Superseded Plans
 
@@ -13,6 +13,7 @@ This file is a short index of active and completed work plans.
 ## Completed Plans
 
 - Move completed topics here with evidence links.
+- [경로별 추론 강도 변경 보존 및 PR 게시](docs/plan/publish-path-reasoning-effort-routing.md): dirty `dev` 변경을 backup·stash로 보존하고 최신 `origin/dev` 기반 브랜치에 3-way 재적용·검증한 뒤 draft PR #55를 생성했습니다.
 - [Cairn 0.2.5 hotfix 릴리스](docs/plan/release-0.2.5.md): PR #51과 #52를 exact head의 CI 6/6 성공 후 dev/main에 병합하고, exact main tarball을 npm `latest` 0.2.5로 게시해 registry digest와 격리 설치/CLI를 검증했습니다.
 - [Cairn 0.2.5 공용 설정 upgrade hotfix](docs/plan/upgrade-shared-config-ownership.md): 공유 `config.toml`을 mutable merge surface로 전환하고 boundary trivia, concurrent edit, capture crash recovery, actual 0.2.4→0.2.5 upgrade를 128개 전체 검사와 독립 리뷰로 검증했습니다.
 - [Cairn 0.2.4 릴리스](docs/plan/release-0.2.4.md): PR #47과 #48을 exact head의 CI 6/6 성공 후 dev/main에 병합하고, exact main tarball을 npm `latest` 0.2.4로 게시해 registry digest와 격리 설치/CLI를 검증했습니다.

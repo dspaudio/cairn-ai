@@ -147,8 +147,11 @@
 - Publication scope check: `origin/dev` 대비 22개 추적 변경과 3개 plan 파일만 존재하며 staged/unstaged `git diff --check`가 통과했습니다.
 - Publication commit: `cbd7baad412f369ce02950e1d855c02a00296990` (`Route reasoning effort by Cairn path`)을 `agent/path-reasoning-effort-routing`에 만들고 `git push --dry-run` 성공 후 origin에 push했습니다.
 - Pull request: GitHub App으로 `dev` 대상 draft [#55](https://github.com/dspaudio/cairn-ai/pull/55)를 생성했습니다. title, Markdown body, base/head, draft 상태와 initial head SHA를 `gh pr view`로 read-back했습니다. 이 plan evidence commit을 push한 뒤 final head를 다시 결속합니다.
+- Final read-only review: correctness·scope finding 없음. `origin/dev...HEAD`는 계획된 25개 파일과 2개 commit만 포함하고 worktree/remote tracking이 clean입니다. conflict marker·whitespace 오류가 없고 compact prompt 7문장, prompt-cache guidance, reasoning-effort guidance가 함께 보존됐습니다.
+- CI checkpoint: PR #55의 initial final-review 시점에는 6개 matrix job 중 Ubuntu 2개와 macOS current가 성공했고 Windows 2개와 macOS Node 18이 실행 중이었습니다. 아래 completion evidence commit을 push한 최종 head에서 상태를 다시 조회합니다.
+- Residual risk: draft PR CI가 최종 head에서 완료되기 전까지 원격 OS matrix 결과는 미확정입니다. 로컬 관련 suite와 prepack 전체 check/package dry-run은 통과했습니다.
 - State recovery: blocked `preserve-and-rebase`와 잘못 active가 된 `verify`가 공존한 상태를 발견했습니다. `verify=pending`, `preserve-and-rebase=active`로 최소 복구하고 active task가 하나뿐임을 검사했습니다.
-- Goal final review evidence record: pending.
+- Goal final review evidence record: 이 완료 artifact commit을 push한 최종 head에서 task-level 및 goal-level `finalReview`를 결속합니다.
 - Verification pass count: preserve/rebase 두 gate 통과. verify 두 gate 최초 통과 후 plan 기록으로 재실행해 최신 코드·정책·테스트·package watch set에 결속했습니다.
 - Blocker after two failed passes: 없음.
 
@@ -160,5 +163,5 @@
 - [x] Changes reapplied
 - [x] Verification passed
 - [x] Branch pushed and PR created
-- [ ] Reviewed
-- [ ] Goal completed
+- [x] Reviewed
+- [ ] Goal completion ready; final head evidence 결속 직후 repository/UI goal을 완료합니다.
