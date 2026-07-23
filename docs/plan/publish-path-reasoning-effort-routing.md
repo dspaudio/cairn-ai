@@ -145,6 +145,8 @@
 - Verify module acceptance: 관련 5개 Node test file 통과, 최신 결속 `receipt-5ef3429b-15f1-412a-bcc6-cee69fb32dfd`.
 - Verify surface integration: normal `npm --cache /private/tmp/cairn-npm-cache pack --dry-run`이 prepack 전체 `npm run check`와 package file 검사를 포함해 통과, 최신 결속 `receipt-6507cf70-7341-4e2d-bb23-0c69aac2466e`.
 - Publication scope check: `origin/dev` 대비 22개 추적 변경과 3개 plan 파일만 존재하며 staged/unstaged `git diff --check`가 통과했습니다.
+- Publication commit: `cbd7baad412f369ce02950e1d855c02a00296990` (`Route reasoning effort by Cairn path`)을 `agent/path-reasoning-effort-routing`에 만들고 `git push --dry-run` 성공 후 origin에 push했습니다.
+- Pull request: GitHub App으로 `dev` 대상 draft [#55](https://github.com/dspaudio/cairn-ai/pull/55)를 생성했습니다. title, Markdown body, base/head, draft 상태와 initial head SHA를 `gh pr view`로 read-back했습니다. 이 plan evidence commit을 push한 뒤 final head를 다시 결속합니다.
 - State recovery: blocked `preserve-and-rebase`와 잘못 active가 된 `verify`가 공존한 상태를 발견했습니다. `verify=pending`, `preserve-and-rebase=active`로 최소 복구하고 active task가 하나뿐임을 검사했습니다.
 - Goal final review evidence record: pending.
 - Verification pass count: preserve/rebase 두 gate 통과. verify 두 gate 최초 통과 후 plan 기록으로 재실행해 최신 코드·정책·테스트·package watch set에 결속했습니다.
@@ -157,6 +159,6 @@
 - [x] Latest `origin/dev` branch created
 - [x] Changes reapplied
 - [x] Verification passed
-- [ ] Branch pushed and PR created
+- [x] Branch pushed and PR created
 - [ ] Reviewed
 - [ ] Goal completed
