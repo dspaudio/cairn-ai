@@ -11,7 +11,7 @@ Use this to implement a plan created by `cairn-plan`. Do not use this as a short
 
 Execute only one module task at a time, but keep advancing the active goal after each task passes until every task and the goal-level final review are complete. Instead of a repeated red-green loop, prove each small task with two strong verification gates.
 
-Every work run starts by reading the project-root `MEMORY.md` before choosing or executing a task. Every delegated agent must also read the project-root `MEMORY.md` before doing its assigned task.
+Every work run reads project-root `MEMORY.md` when present before choosing or executing a task. If it is absent, continue without repository memory; never invoke another memory service or block solely because the file is missing. Delegated agents follow the same rule.
 
 The user-called/main agent is the orchestrator for work execution: it selects the task, assigns implementation, verifies results, and records evidence. Actual implementation edits belong to `worker` subagents whenever subagent tools are available, regardless of Light Path or Heavy Path.
 
@@ -23,9 +23,9 @@ If the user asks a side question, status question, or narrow clarification while
 
 ## Re-entry and Required References
 
-At the start and after compaction, restart, delegation, or handoff, restore context in this order: root `MEMORY.md` → `cairn-work` → the active plan → current-task references → model guidance recorded by the plan. Confirm that the plan task, persisted current task, and worker assignment agree before acting. If state, skill, plan, assignment, or a required reference is missing, unreadable, or inconsistent, do not edit, delegate, record completion evidence, or complete work; report a blocker to the orchestrator. Do not introduce read receipts as proof of model attention: current state, readable references, and fresh tool-bound evidence are the authority.
+At the start and after compaction, restart, delegation, or handoff, restore context in this order: optional root `MEMORY.md` → `cairn-work` → the active plan → current-task references → model guidance recorded by the plan. Confirm that the plan task, persisted current task, and worker assignment agree before acting. Missing `MEMORY.md` is not an inconsistency. If state, skill, plan, assignment, or another required reference is missing, unreadable, or inconsistent, do not edit, delegate, record completion evidence, or complete work; report a blocker to the orchestrator. Do not introduce read receipts as proof of model attention: current state, readable references, and fresh tool-bound evidence are the authority.
 
-When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
+When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Every child subagent reads project-root `MEMORY.md` when present and continues when absent, keeps the assigned scope, and preserves others' edits.
 
 ## Runtime Location
 
@@ -78,10 +78,10 @@ Any relevant mutation after a gate makes that result stale evidence. Rerun the a
 
 ## Procedure
 
-1. Read the project-root `MEMORY.md` first.
+1. Read project-root `MEMORY.md` when present; continue without repository memory when absent.
 2. Read `PLAN.md`, the selected `docs/plan/<topic>.md`, and relevant memory notes.
 3. Read the `cairn://docs/model-guidance/*.md` inputs recorded in the plan through the installed runtime.
-4. Read `.cairn/state.json` through `cairn goal status --root "<repoRoot>"`. Select only the active goal's current task. If implementation was requested but no goal exists, create one from the decision-complete plan before editing.
+4. Read user-home, project/worktree-scoped state through `cairn goal status --root "<repoRoot>"`. Select only the active goal's current task. If implementation was requested but no goal exists, create one from the decision-complete plan before editing.
 5. Confirm that required LSP, typecheck, lint, dry-run, and verification tools are available from the plan's tool readiness section.
 6. If a required tool is missing, do not install it implicitly. Obtain explicit user approval, then run the installed runtime's `toolcheck --install --yes --root "<repoRoot>"` only for pinned/supported installers or run the approved repository-native command. Otherwise record a blocker.
 7. Confirm the selected Light Path or Heavy Path in the plan. If the plan lacks complexity triage, stop and update the plan before mutating files.
@@ -99,7 +99,7 @@ Any relevant mutation after a gate makes that result stale evidence. Rerun the a
 19. Re-run both verification gates through `goal verify -- ...`. Treat tool exit codes as authoritative, keep successful output summarized, and expand context only for a failing test. Record each success as evidence bound to the current goal ID, task ID, plan, exact argv, and watched-workspace fingerprint.
 20. Apply the bounded loop policy when a gate fails. After two failed passes, transition the task or goal to `blocked` with a concrete blocker instead of continuing automatically.
 21. Mark a task complete only after every required evidence record passes. Let Cairn advance to the next pending task, then continue the goal without yielding a false completion.
-22. After all tasks complete, run and record goal-level final review evidence and explicitly complete the goal. `active` is not a completion state; `paused`, `blocked`, and `cancelled` are allowed terminal-for-now states that stop automatic continuation.
+22. After all tasks complete, run and record goal-level final review evidence and explicitly complete the goal. Successful completion or cancellation removes the user-home active state because completed evidence already lives in the plan document; paused and blocked state remains resumable. `active` is not a completion state.
 23. Record evidence in the plan file and state before updating `PLAN.md`.
 24. If the user asks a side question, status question, or narrow clarification while this task is still active, answer it briefly and then resume the previous active work unless the user explicitly asks to pause, stop, or switch tasks.
 25. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.

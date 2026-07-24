@@ -12,8 +12,8 @@ Models always inherit. Route reasoning effort per task: Light planning/implement
 
 Procedure:
 
-1. Every agent must read the project-root `MEMORY.md` for domain knowledge and repository policy before repository exploration, tool selection, work, or delegation.
-2. For implementation or continued execution, write the initial repository plan and `PLAN.md` entry from the request and `MEMORY.md`. Include a planned `triage-plan` task and anticipated execution/verification stages, then start or attach the repository Cairn goal before exploration.
+1. Every agent reads project-root `MEMORY.md` when present and continues without repository memory when absent before repository exploration, tool selection, work, or delegation.
+2. Keep routine known-target Git/GitHub operations plan/goal-free unless they require code edits, conflict resolution, destructive recovery, release/deploy, or design. For non-trivial implementation or continuation of planned work, write the initial repository plan and `PLAN.md` entry from the request and `MEMORY.md`. Include a planned `triage-plan` task and anticipated execution/verification stages, then start or attach the repository Cairn goal before exploration.
 3. When the surface exposes native plan/goal UI tools, synchronize the same roadmap there before exploration; otherwise record that those tools are unavailable.
 4. Read relevant `docs/memory/*.md` and perform toolcheck, exploration, and Light/Heavy Path triage according to the initial task.
 5. Update the same plan to a decision-complete implementation revision before implementation.

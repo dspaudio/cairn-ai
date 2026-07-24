@@ -1,8 +1,54 @@
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const RUNTIME_LOCATOR_SCHEMA_VERSION = 1;
+
+export function cairnHome(env = process.env) {
+  const userHome = env.HOME ?? env.USERPROFILE ?? homedir();
+  return resolve(env.CAIRN_HOME ?? join(userHome, ".cairn"));
+}
+
+export function repositoryId(root = process.cwd()) {
+  return `project-${hashPath(gitLayout(root).commonDir)}`;
+}
+
+export function worktreeId(root = process.cwd()) {
+  return `worktree-${hashPath(gitLayout(root).gitDir)}`;
+}
+
+export function goalStateDirectory(root = process.cwd(), env = process.env) {
+  return join(cairnHome(env), "projects", repositoryId(root), "worktrees", worktreeId(root));
+}
+
+function gitLayout(root) {
+  const workspaceRoot = realpathSync(resolve(root));
+  const gitEntry = join(workspaceRoot, ".git");
+  try {
+    const stat = lstatSync(gitEntry);
+    const gitDir = stat.isDirectory() ? realpathSync(gitEntry) : resolveGitFile(workspaceRoot, gitEntry);
+    const commonFile = join(gitDir, "commondir");
+    const commonDir = existsSync(commonFile)
+      ? realpathSync(resolve(gitDir, readFileSync(commonFile, "utf8").trim()))
+      : gitDir;
+    return { gitDir, commonDir };
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    return { gitDir: workspaceRoot, commonDir: workspaceRoot };
+  }
+}
+
+function resolveGitFile(workspaceRoot, gitEntry) {
+  const match = readFileSync(gitEntry, "utf8").match(/^gitdir:\s*(.+)\s*$/m);
+  if (!match) throw new Error(`Invalid Git worktree file: ${gitEntry}`);
+  return realpathSync(resolve(workspaceRoot, match[1]));
+}
+
+function hashPath(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 export function resolvePluginRoot(moduleUrl = import.meta.url) {
   return resolve(dirname(fileURLToPath(moduleUrl)), "..");

@@ -84,8 +84,8 @@ if [ ! -f "$plan" ]; then
 
 ## Planning Rules
 
-- 모든 에이전트는 배정된 작업을 시작할 때 도메인 지식과 저장소 정책을 위해 프로젝트 루트 `MEMORY.md`를 먼저 읽어야 합니다.
-- 구현 또는 계속 실행 요청은 먼저 `triage-plan`이 active인 초기 계획을 쓰고, 탐색 전에 UI plan/goal과 저장소 goal을 동기화한 뒤 트리아지 결과로 계획을 갱신합니다.
+- 프로젝트 루트 `MEMORY.md`가 있으면 먼저 읽고, 없으면 저장소 메모리 없이 계속 진행합니다.
+- 비단순 구현 또는 계획된 작업 재개는 먼저 `triage-plan`이 active인 계획을 쓰거나 복원하고 탐색 전에 동기화합니다. 대상이 확정된 Git/GitHub 운영은 코드 수정·충돌 해결·파괴적 복구·릴리스/배포·설계가 필요하지 않으면 plan/goal 없이 실행합니다.
 - 계획은 구현 전에 의사결정이 완료된 상태여야 합니다.
 - 에이전트, 플러그인, 위임 워크플로 지침을 적용하기 전에 복잡도 트리아지를 실행합니다.
 - 선택한 Light Path 또는 Heavy Path와 확인한 Heavy Path 신호를 `docs/plan/<topic>.md`에 기록합니다.
@@ -117,8 +117,8 @@ This file is a short index of active and completed work plans.
 
 ## Planning Rules
 
-- Every agent must start assigned work by reading the project-root `MEMORY.md` for domain knowledge and repository policy.
-- For implementation or continued execution, first write an initial plan with `triage-plan` active, synchronize it to native UI plan/goal tools and the repository goal before exploration, then update it after triage.
+- Read project-root `MEMORY.md` first when it exists; if it is absent, continue without repository memory.
+- For non-trivial implementation or continuation of planned work, first write or restore a plan with `triage-plan` active and synchronize it before exploration. Known-target Git/GitHub operations stay plan/goal-free unless they require code edits, conflict resolution, destructive recovery, release/deploy, or design.
 - Plans must be decision-complete before implementation.
 - Split implementation into small module tasks.
 - Detect repository stack and required LSP/check tools before implementation.
@@ -138,9 +138,9 @@ fi
 case "$event" in
   session-start|user-prompt-submit)
     if is_ko; then
-      printf '%s\n' "Cairn 컨텍스트: 모든 에이전트는 작업 시작 시 도메인 지식과 정책 색인인 프로젝트 루트 MEMORY.md를 먼저 읽어야 합니다."
+      printf '%s\n' "Cairn 컨텍스트: 프로젝트 루트 MEMORY.md가 있으면 읽고, 없으면 저장소 메모리 없이 계속 진행합니다."
     else
-      printf '%s\n' "Cairn context: every agent must start by reading the project-root MEMORY.md for domain knowledge and repository policy."
+      printf '%s\n' "Cairn context: read project-root MEMORY.md first when present; if absent, continue without repository memory."
     fi
     ;;
   post-tool-use)

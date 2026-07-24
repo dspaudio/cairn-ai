@@ -11,15 +11,15 @@ Use this when domain knowledge, repository policy, or pre-plan context compressi
 
 The root `MEMORY.md` is an index, not detailed knowledge. Record details in `docs/memory/<domain>.md`.
 
-Every delegated agent must read the project-root `MEMORY.md` before doing its assigned discovery, evidence, or update task.
+Every delegated agent reads project-root `MEMORY.md` when present and continues when absent before doing its assigned discovery, evidence, or update task.
 
-When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
+When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Every child subagent reads project-root `MEMORY.md` when present and continues when absent, keeps the assigned scope, and preserves others' edits.
 
 ## Runtime Location
 
 Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's `scripts/`, `templates/`, commands, agents, and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never look for Cairn runtime files in the target repository or derive the plugin root from the current working directory.
 
-Keep the target repository root separate. Pass it explicitly with `--root <repoRoot>` when invoking the installed runtime. Only repository artifacts such as `MEMORY.md`, `PLAN.md`, `docs/memory/`, `docs/plan/`, and `.cairn/` belong there.
+Keep the target repository root separate. Pass it explicitly with `--root <repoRoot>` when invoking the installed runtime. Repository artifacts include `MEMORY.md`, `PLAN.md`, `docs/memory/`, and `docs/plan/`; runtime goal state lives only under the user-home Cairn directory.
 
 ## Procedure
 

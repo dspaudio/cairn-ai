@@ -3,7 +3,7 @@ import { realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { evaluateStop, isGoalOwnedBySession, readGoalState } from "./cairn-goal.mjs";
+import { evaluateStop, isGoalOwnedBySession, readGoalState, reconcileWorktreeState } from "./cairn-goal.mjs";
 import { resolveRepoRoot } from "./cairn-paths.mjs";
 import { assertNoSymlinkComponents, safeMkdir, safeWriteFile } from "./cairn-safe-fs.mjs";
 
@@ -65,8 +65,8 @@ This file is a short index of active and completed work plans.
 
 ## Planning Rules
 
-- Every agent must start assigned work by reading the project-root \`MEMORY.md\` for domain knowledge and repository policy.
-- For implementation or continued execution, first write an initial plan with \`triage-plan\` active, synchronize it to native UI plan/goal tools and the repository goal before exploration, then update it after triage.
+- Read project-root \`MEMORY.md\` first when it exists; if it is absent, continue without repository memory.
+- For non-trivial implementation or continuation of planned work, first write or restore a plan with \`triage-plan\` active and synchronize it before exploration. Known-target Git/GitHub operations stay plan/goal-free unless they require code edits, conflict resolution, destructive recovery, release/deploy, or design.
 - Plans must be decision-complete before implementation.
 - Run complexity triage before applying agent, plugin, or delegated workflow guidance.
 - Record the selected Light Path or Heavy Path and the checked Heavy Path signals in \`docs/plan/<topic>.md\`.
@@ -99,8 +99,8 @@ const planTemplateKo = `# PLAN
 
 ## Planning Rules
 
-- 모든 에이전트는 배정된 작업을 시작할 때 도메인 지식과 저장소 정책을 위해 프로젝트 루트 \`MEMORY.md\`를 먼저 읽어야 합니다.
-- 구현 또는 계속 실행 요청은 먼저 \`triage-plan\`이 active인 초기 계획을 쓰고, 탐색 전에 UI plan/goal과 저장소 goal을 동기화한 뒤 트리아지 결과로 계획을 갱신합니다.
+- 프로젝트 루트 \`MEMORY.md\`가 있으면 먼저 읽고, 없으면 저장소 메모리 없이 계속 진행합니다.
+- 비단순 구현 또는 계획된 작업 재개는 먼저 \`triage-plan\`이 active인 계획을 쓰거나 복원하고 탐색 전에 동기화합니다. 대상이 확정된 Git/GitHub 운영은 코드 수정·충돌 해결·파괴적 복구·릴리스/배포·설계가 필요하지 않으면 plan/goal 없이 실행합니다.
 - 계획은 구현 전에 의사결정이 완료된 상태여야 합니다.
 - 에이전트, 플러그인, 위임 워크플로 지침을 적용하기 전에 복잡도 트리아지를 실행합니다.
 - 선택한 Light Path 또는 Heavy Path와 확인한 Heavy Path 신호를 \`docs/plan/<topic>.md\`에 기록합니다.
@@ -161,11 +161,17 @@ export async function runStateResult(event = "manual", {
   }
 
   if (event === "session-start" || event === "user-prompt-submit") {
-    const state = await readGoalState({ root: resolvedRoot });
+    const reconciled = await reconcileWorktreeState({ root: resolvedRoot });
+    const state = reconciled.state;
     if (state?.goal?.status === "active" && !isGoalOwnedBySession(state, payload?.session_id)) {
       return foreignSessionContextResult({ ko, event });
     }
-    return contextResult({ ko, state, event });
+    const result = contextResult({ ko, state, event });
+    if (!reconciled.removed) return result;
+    const notice = ko
+      ? "Cairn worktree 점검: 현재 worktree에 속하지 않는 stale Cairn 상태를 제거했습니다."
+      : "Cairn worktree check: removed stale Cairn state that did not belong to this worktree.";
+    return prependContext(result, notice);
   }
 
   if (event === "post-tool-use") {
@@ -185,7 +191,7 @@ export async function runStateResult(event = "manual", {
   }
 
   if (event === "stop" || event === "subagent-stop") {
-    const state = await readGoalState({ root: resolvedRoot });
+    const { state } = await reconcileWorktreeState({ root: resolvedRoot });
     if (!isGoalOwnedBySession(state, payload?.session_id)) return { status: 0, message: "", hookOutput: {} };
     const gate = evaluateStop(state, {
       subagent: event === "subagent-stop",
@@ -227,18 +233,34 @@ async function writeIfMissing(root, path, content) {
   }
 }
 
+function prependContext(result, notice) {
+  const specific = result.hookOutput?.hookSpecificOutput;
+  if (!specific) return { ...result, message: `${notice}\n${result.message}` };
+  return {
+    ...result,
+    message: `${notice}\n${result.message}`,
+    hookOutput: {
+      ...result.hookOutput,
+      hookSpecificOutput: {
+        ...specific,
+        additionalContext: `${notice}\n${specific.additionalContext}`,
+      },
+    },
+  };
+}
+
 function contextResult({ ko, state, event }) {
-  const base = ko ? "Cairn kernel: 루트 MEMORY.md를 먼저 읽으세요." : "Cairn kernel: read root MEMORY.md first.";
+  const base = ko ? "Cairn kernel: 루트 MEMORY.md는 선택 사항이며, 있으면 읽으세요." : "Cairn kernel: root MEMORY.md is optional; read it when present.";
   const idlePolicy = event === "user-prompt-submit"
     ? (ko
-      ? " 구현/계속 실행이면 cairn-plan을 로드하고 active plan과 current task를 복원하거나 생성하세요. 상담·설명·계획 전용은 goal 없이 처리하세요."
-      : " For implementation/continue, load cairn-plan and restore or create the active plan and current task. Keep consultation, explanation, and plan-only requests goal-free.")
+      ? " 비단순 구현이나 계획된 작업 재개는 cairn-plan과 plan/task를 복원·생성하세요. 대상이 확정된 Git/GitHub 상태·fetch·checkout·merge·push·PR 작업은 코드 수정·충돌 해결·파괴적 복구·릴리스/배포·설계가 필요하지 않으면 plan/goal 없이 실행하세요. 상담·설명·계획 전용도 goal 없이 처리하세요."
+      : " For non-trivial implementation or planned-work continuation, load cairn-plan and restore/create its plan and task. Known-target Git/GitHub operations stay plan/goal-free unless they require code edits, conflict resolution, destructive recovery, release/deploy, or design. Consultation, explanation, and plan-only requests are also goal-free.")
     : (ko
       ? " 중요 작업 전에 cairn-plan을 로드하고 active plan과 current task를 복원하세요."
       : " Before non-trivial work, load cairn-plan and restore the active plan and current task.");
   const failClosed = ko
-    ? " state, skill, plan 또는 required reference가 없거나 읽을 수 없거나 일치하지 않으면 수정·위임·완료하지 말고 보고하거나 차단하세요."
-    : " If state, skill, plan, or a required ref is missing, unreadable, or inconsistent, do not edit, delegate, or complete; report/block.";
+    ? " active state와 그 skill·plan·required task reference가 없거나 읽을 수 없거나 일치하지 않을 때만 중단하세요."
+    : " Stop only if active state and its skill, plan, or required task ref is missing, unreadable, or inconsistent.";
   if (!state || state.goal.status !== "active") return contextHookResult({ event, message: `${base}${idlePolicy}${failClosed}` });
   const task = state.tasks.find((item) => item.status === "active")
     ?? state.tasks.find((item) => item.status === "pending")
@@ -277,8 +299,8 @@ function contextResult({ ko, state, event }) {
 
 function foreignSessionContextResult({ ko, event }) {
   const message = ko
-    ? "Cairn kernel: 루트 MEMORY.md를 먼저 읽으세요. 저장소 goal을 다른 session이 소유합니다. cairn goal status로 상태를 확인하고 소유권이 해결될 때까지 Cairn 작업을 시작·수정·위임·완료하지 마세요. 이 capsule은 goal, plan, task 상세를 노출하지 않습니다."
-    : "Cairn kernel: read root MEMORY.md first. A repository goal is owned by another session. Inspect cairn goal status; until ownership is resolved, do not start, edit, delegate, or complete Cairn work. This capsule does not expose goal, plan, or task details.";
+    ? "Cairn kernel: 루트 MEMORY.md는 선택 사항이며, 있으면 읽으세요. 저장소 goal을 다른 session이 소유합니다. cairn goal status로 상태를 확인하고 소유권이 해결될 때까지 Cairn 작업을 시작·수정·위임·완료하지 마세요. 이 capsule은 goal, plan, task 상세를 노출하지 않습니다."
+    : "Cairn kernel: root MEMORY.md is optional; read it when present. A repository goal is owned by another session. Inspect cairn goal status; until ownership is resolved, do not start, edit, delegate, or complete Cairn work. This capsule does not expose goal, plan, or task details.";
   return contextHookResult({ event, message });
 }
 

@@ -109,7 +109,7 @@ test("reasoning effort routing inherits models and follows path task roles", asy
 test("package and CI contracts include every runtime artifact and supported node/os matrix", async () => {
   const packageJson = JSON.parse(await read("package.json"));
   const pluginJson = JSON.parse(await read(".codex-plugin/plugin.json"));
-  assert.equal(packageJson.version, "0.2.5");
+  assert.equal(packageJson.version, "0.2.6");
   assert.equal(pluginJson.version, packageJson.version);
   assert.match(packageJson.scripts.check, /cairn-safe-fs\.mjs/);
   assert.match(packageJson.scripts.check, /release-integrity-0\.2\.2\.json/);
