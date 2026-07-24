@@ -17,8 +17,10 @@ Codex-family models are strong at small implementation tasks, explicit tool use,
 
 ## Adjustment Rules
 
-- On every fresh entry, compaction recovery, restart, delegation, or handoff, restore root `MEMORY.md` → current phase skill → active plan → current-task references → recorded model guidance. If persisted state or the assignment requires a missing, unreadable, or inconsistent reference, fail closed and report a blocker before editing, delegating, approving, or completing.
+- On every fresh entry, compaction recovery, restart, delegation, or handoff, restore optional root `MEMORY.md` → current phase skill → active plan → current-task references → recorded model guidance. Missing `MEMORY.md` never blocks and must not trigger another memory service. If persisted state or the assignment requires another missing, unreadable, or inconsistent reference, fail closed and report a blocker before editing, delegating, approving, or completing.
 - Do not start implementation without a plan.
+- Keep the model inherited. Read each plan task's `Requested reasoning effort` and `Effective reasoning effort`; only a newly dispatched task or worker may receive the requested effort through the host's task/subagent option, with no model override. For an unsupported host or value, record the effective reasoning effort as `inherited` and leave model/global configuration unchanged.
+- Do not treat complexity as a one-time choice. Require the provisional request checkpoint, post-exploration planning checkpoint, and code checkpoint after exact file/caller/test inspection immediately before the first edit. Before editing, evidence may change either route. Every change must synchronize the plan artifact, repository goal task roadmap through `goal replan`, and native UI plan, including reviews and required evidence. After editing begins, a new Heavy signal promotes Light Path to Heavy Path: stop further edits, mark affected evidence stale, synchronize all three roadmaps, and repeat the code checkpoint.
 - Do not stop before local implementation solely because subagent tools are unavailable; the main agent takes over implementation directly and records that takeover in evidence.
 - Keep work units small. Split large changes into smaller plan tasks.
 - If `apply_patch` is unstable in the environment, use an editing tool or a clear file update path.

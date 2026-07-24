@@ -14,11 +14,13 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 
 ## Common Rules
 
-- On every fresh entry, compaction recovery, restart, delegation, or handoff, restore context in this order: root `MEMORY.md` → current phase skill → active plan → current-task references → model guidance recorded by the plan. If persisted state or an assignment requires a reference that is missing, unreadable, or inconsistent, fail closed: do not edit, delegate, approve, or complete; report or record a blocker.
+- On every fresh entry, compaction recovery, restart, delegation, or handoff, restore context in this order: optional root `MEMORY.md` → current phase skill → active plan → current-task references → model guidance recorded by the plan. If `MEMORY.md` is absent, continue without repository memory and do not invoke another memory service. If persisted state or an assignment requires another reference that is missing, unreadable, or inconsistent, fail closed: do not edit, delegate, approve, or complete; report or record a blocker.
 - Keep root `MEMORY.md` and `PLAN.md` as indexes only.
 - Keep repository-specific judgment in `docs/memory/` and `docs/plan/`. Keep Cairn's model guidance in the installed plugin and reference it with `cairn://docs/model-guidance/...`.
+- Treat the user-home `.cairn/projects/<project-id>/worktrees/<worktree-id>/state.json` as a worktree-bound active-work slot. State without `worktreeId` and state copied into another worktree are stale and are removed on the next hook/goal start. Successful completion or cancellation removes the owning copy after plan evidence is recorded; only paused or blocked work remains for resumption.
 - Preserve proper nouns, file names, variable names, service names, alert names, MCP tool names, and agent names exactly as written.
 - Select Light Path or Heavy Path before implementation.
+- Treat complexity as three checkpoints: a provisional request checkpoint, a post-exploration planning checkpoint, and a code checkpoint after exact file/caller/test inspection immediately before the first edit. Before editing, evidence may change either route. Every change must synchronize the plan artifact, repository goal task roadmap through `goal replan`, and native UI plan, including reviews and required evidence. After editing begins, a new Heavy signal promotes Light Path to Heavy Path: stop further edits, mark affected evidence stale, synchronize all three roadmaps, and repeat the code checkpoint.
 - Treat the user-called/main agent as the orchestrator: it plans, assigns, verifies, and records evidence.
 - Delegate actual implementation edits to `worker` subagents whenever subagent tools are available, regardless of Light Path or Heavy Path.
 - When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, the orchestrator relays observable events such as assignment, waiting, and final completion.
@@ -26,7 +28,7 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence.
 - Detect required LSP, typecheck, lint, dry-run, and verification tools before implementation.
 - Missing required tools must be reported with a proposed install. Installation requires explicit user approval and a pinned/supported installer.
-- Treat every implementation or continued-execution request as authorization to bind active work to a persisted Cairn goal and stable task IDs, even when the user does not mention a goal. After MEMORY.md, first write an initial plan that makes triage the active task. Before exploration or triage, synchronize its roadmap to Codex `update_plan` and `create_goal` when available and to the repository Cairn goal. Update both plans after triage, and implement only from the decision-complete revision. Exclude consultation, explanation, and plan-only requests.
+- Treat non-trivial implementation or continuation of planned work as authorization to bind active work to a persisted Cairn goal and stable task IDs, even when the user does not mention a goal. Routine known-target Git/GitHub operations (status, fetch, checkout, branch, merge, push, PR management) stay plan/goal-free unless they require code edits, conflict resolution, destructive recovery, release/deploy, or design. For planned work, after MEMORY.md, first write an initial plan that makes triage the active task, synchronize it before exploration, and implement only from the decision-complete revision. Exclude consultation, explanation, and plan-only requests.
 - Treat missing, failed, skipped, stale, or placeholder evidence as failure. Task evidence records must be bound to the current goal, task, and plan.
 - Treat the repository Cairn state as the fail-closed transition authority. Advance the matching Codex UI plan step only after the evidence-gated repository task transition succeeds.
 - Spend reasoning on a focused executable test contract before implementation: requirements, invariants, boundaries, and failure modes. Give implementation only that contract, failing evidence, file scope, and constraints; require the minimum passing change.
@@ -45,6 +47,16 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - A foreign session receives only a generic ownership-conflict capsule on session/prompt events. It must not expose goal, plan, or task details, and it must not make stop hooks block work owned by another session.
 - Character budgets are regression proxies for cache-friendly prompt shape, not measurements of provider cache hits or cost. Cairn does not require provider cache keys, breakpoints, or live API telemetry.
 - Do not add read receipts that claim model attention. Restore references on every re-entry and use readable state plus fresh bound evidence as the enforceable contract.
+
+## Reasoning Effort Routing
+
+- Models always inherit the host or user default; Cairn never selects or overrides a model.
+- Light Path planning, implementation, and verification request `medium`.
+- Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
+- Every plan task records `Requested reasoning effort` and `Effective reasoning effort`.
+- Only a newly dispatched task or worker may receive the requested value, and only through a host-exposed reasoning-effort option or host-native equivalent. Omit every model override.
+- For an unsupported host or value, record `Effective reasoning effort: inherited` with the reason. Do not change the model or global config and do not silently choose a nearby value.
+- A route change synchronizes the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Preserve completed task profiles as audit history and recalculate incomplete task profiles for the new path.
 
 ## Delegation Defaults
 

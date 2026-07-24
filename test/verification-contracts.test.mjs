@@ -372,10 +372,16 @@ function spawnAsync(args) {
 
 async function withTempRoot(work) {
   const root = await mkdtemp(join(tmpdir(), "cairn-verification-contract-"));
+  const stateHome = `${root}-home`;
+  const previousCairnHome = process.env.CAIRN_HOME;
+  process.env.CAIRN_HOME = stateHome;
   try {
     await work(root);
   } finally {
+    if (previousCairnHome === undefined) delete process.env.CAIRN_HOME;
+    else process.env.CAIRN_HOME = previousCairnHome;
     await rm(root, { recursive: true, force: true });
+    await rm(stateHome, { recursive: true, force: true });
   }
 }
 

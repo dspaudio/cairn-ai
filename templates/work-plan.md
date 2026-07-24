@@ -39,10 +39,27 @@ Describe the observable result.
 - Role-specific adjustment:
 - User-visible response and artifact locale: OS locale unless the user asks for another language.
 
+## Reasoning Effort Profile
+
+- Model: inherited from the host/user default; never override it.
+- Light Path: planning=`medium`, implementation=`medium`, verification=`medium`.
+- Heavy Path: planning/review=`high`, implementation=`high`, final verification/review=`xhigh`.
+- Host boundary: pass a requested value only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Unsupported host/value means `Effective reasoning effort: inherited`; do not alter model/global config.
+- Route-change gate: synchronize the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Completed task profiles are preserved as audit history; incomplete task profiles are recalculated for the new path.
+- Every module task records:
+  - Requested reasoning effort:
+  - Effective reasoning effort: `inherited` until a new dispatch confirms an accepted override.
+
 ## Complexity Triage
 
 - Selected path: Light Path or Heavy Path.
 - Selection rationale:
+- Checkpoint ledger:
+  - Request checkpoint: provisional route, request/`MEMORY.md` evidence, uncertainty, and newly found Heavy Path signals.
+  - Planning checkpoint: post-exploration route, affected-surface/test evidence, and newly found Heavy Path signals.
+  - Code checkpoint: `pending` until exact files/callers/tests are inspected; record the final route immediately before the first edit.
+- Route-change synchronization: before editing, evidence may change either route. Update the plan artifact, replace the incomplete repository goal task roadmap with `goal replan`, and update the native UI plan to the same stable task order, reviews, assignments, and required evidence before mutation.
+- Late promotion: after editing begins, a new Heavy Path signal promotes Light Path to Heavy Path. Stop further edits, mark affected evidence stale, synchronize all three roadmaps, run newly required review, and repeat the code checkpoint before resuming.
 - Heavy Path signals checked:
   - New directory/module/layer:
   - New domain model/service/abstraction:
@@ -97,6 +114,8 @@ Describe the observable result.
 
 - Task ID: `triage-plan`
 - Initial status: `active`
+- Requested reasoning effort:
+- Effective reasoning effort:
 - Contract: execute the investigation scope and Heavy Path criteria declared by the initial plan, then update this file and the Codex UI plan to the decision-complete implementation revision.
 - Required evidence records:
   - `planArtifact`: command, exit code 0, timestamp, goal ID, task ID, and plan ID.
@@ -106,6 +125,8 @@ Describe the observable result.
 
 - Task ID: `task-1`
 - Initial status: `pending` or `active`
+- Requested reasoning effort:
+- Effective reasoning effort:
 - Contract:
 - Sub-tasks, if needed:
 - Files:

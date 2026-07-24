@@ -11,15 +11,15 @@ Use this before non-trivial implementation, refactoring, migrations, debugging, 
 
 Plans must reduce execution tokens. Do not leave long plans only in chat. Store the topic in `PLAN.md` and details in `docs/plan/<topic>.md`.
 
-Every planning run starts by reading the project-root `MEMORY.md`. Treat it as the repository policy and domain-knowledge index before exploring or delegating work. Every delegated agent must also read the project-root `MEMORY.md` before doing its assigned task.
+When project-root `MEMORY.md` exists, read it as the repository policy and domain-knowledge index before exploring or delegating work. If it is absent, continue without repository memory; never invoke another memory service or block solely because the file is missing. Delegated agents follow the same rule.
 
-Do not treat planning as optional for implementation work that is more than a narrow single-file fix. If the current request can change behavior, architecture, data, external state, or multiple files, produce or update a plan artifact before mutation.
+Do not treat planning as optional for implementation work that is more than a narrow single-file fix. Produce or update a plan when the request changes behavior, architecture, data, or multiple files, or when an external operation requires code edits, conflict resolution, destructive recovery, release/deploy, or design. External-state mutation alone is not a planning trigger: routine known-target Git/GitHub operations such as status, fetch, checkout, branch, merge, push, and PR management stay plan/goal-free.
 
 Plan from the whole work down. First understand the full requested outcome and affected surfaces, then classify the work into small executable tasks. If one task is still too broad to verify cleanly, split that task into sub-tasks.
 
 ## Re-entry and Required References
 
-At the start and after compaction, restart, or handoff, restore context in this order: root `MEMORY.md` → `cairn-plan` → the active plan → current-task references → model guidance recorded by the plan. A new implementation request with no persisted goal may create its initial plan through the procedure below. If persisted state names a plan or task and that reference is missing, unreadable, or inconsistent, do not explore, edit, delegate, or complete work; report or record a blocker first. Do not add a read-receipt field that claims the model read a file: filesystem/state consistency and bound tool evidence remain the fail-closed authority.
+At the start and after compaction, restart, or handoff, restore context in this order: optional root `MEMORY.md` → `cairn-plan` → the active plan → current-task references → model guidance recorded by the plan. A new implementation request with no persisted goal may create its initial plan through the procedure below. Missing `MEMORY.md` is not an inconsistency. If persisted state names a plan or task and that required reference is missing, unreadable, or inconsistent, do not explore, edit, delegate, or complete work; report or record a blocker first. Do not add a read-receipt field that claims the model read a file: filesystem/state consistency and bound tool evidence remain the fail-closed authority.
 
 ## Runtime Location
 
@@ -27,7 +27,7 @@ Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to t
 
 Use logical resource IDs such as `cairn://templates/work-plan.md` and `cairn://docs/model-guidance/codex.md` in repository plans. Resolve those IDs through `pluginRoot` only while executing. Keep `repoRoot` separate and pass it explicitly as `--root <repoRoot>`.
 
-For an implementation or continued-execution request, treat the request itself as authorization to create an initial two-phase plan and activate its roadmap, even when the user does not mention a goal. The initial plan is decision-complete for the `triage-plan` task but is not implementation-ready. After writing it and its `PLAN.md` index entry, synchronize the same ordered steps to Codex UI tools when available (`update_plan` first, then `create_goal`) and start the repository goal before exploration, toolcheck, complexity triage, or a non-blocking user question:
+For a non-trivial implementation request or continuation of already planned work, treat the request itself as authorization to create or restore a two-phase plan and activate its roadmap, even when the user does not mention a goal. Do not create a plan or goal for a routine known-target Git/GitHub operation unless it crosses one of the escalation boundaries above. The initial plan is decision-complete for the `triage-plan` task but is not implementation-ready. After writing it and its `PLAN.md` index entry, synchronize the same ordered steps to Codex UI tools when available (`update_plan` first, then `create_goal`) and start the repository goal before exploration, toolcheck, complexity triage, or a non-blocking user question:
 
 ```sh
 node "<pluginRoot>/scripts/cairn.mjs" goal start --root "<repoRoot>" --goal "<objective>" --plan "docs/plan/<topic>.md" --tasks '[{"id":"triage-plan","title":"Run planned triage and finalize the plan","requiredEvidence":["planArtifact","triageDecision"]},{"id":"implement","title":"Implement the finalized plan"},{"id":"verify","title":"Verify and review the result"}]' --criteria "<completion criterion>" --session "<current session_id>"
@@ -38,11 +38,11 @@ Use the current Codex hook `session_id` when it is available. If the surface doe
 ## Procedure
 
 1. Run `node "<pluginRoot>/scripts/cairn.mjs" init --root "<repoRoot>"` through the resolved runtime. If the runtime is unavailable, ensure `MEMORY.md`, `PLAN.md`, `docs/memory`, and `docs/plan` directly and report that `cairn doctor` or `cairn upgrade` is required.
-2. Read the project-root `MEMORY.md` before repository exploration, tool selection, or delegation.
-3. Classify the request as implementation/continued execution versus consultation/explanation/plan-only. For implementation/continued execution, immediately create an initial `docs/plan/<topic>.md` from `cairn://templates/work-plan.md` and add its `PLAN.md` index entry. Based only on the request and `MEMORY.md`, describe the observable outcome, anticipated affected surfaces, and stable top-level roadmap. Make `triage-plan` the first active task and specify its memory inputs, investigation scope, toolcheck, Heavy Path criteria, and exact condition for updating the plan. Mark the plan `initial: decision-complete for triage; not implementation-ready`.
+2. Read project-root `MEMORY.md` when present; otherwise continue without repository memory.
+3. Classify the request as non-trivial implementation/planned-work continuation, routine known-target Git/GitHub operation, or consultation/explanation/plan-only. For a routine operation, execute without creating a plan or goal unless it requires code edits, conflict resolution, destructive recovery, release/deploy, or design. For non-trivial implementation/planned-work continuation, immediately create an initial `docs/plan/<topic>.md` from `cairn://templates/work-plan.md` and add its `PLAN.md` index entry. Based only on the request and `MEMORY.md`, describe the observable outcome, anticipated affected surfaces, and stable top-level roadmap. Make `triage-plan` the first active task and specify its memory inputs, investigation scope, toolcheck, Heavy Path criteria, and exact condition for updating the plan. Mark the plan `initial: decision-complete for triage; not implementation-ready`.
 4. Before reading detailed memory, toolcheck, repository exploration, complexity triage, delegation, or any non-blocking user question, synchronize the initial roadmap:
    - Call Codex `update_plan` first when available so the UI displays the ordered tasks with `triage-plan` in progress.
-   - Call Codex `create_goal` next when available so the UI displays the active objective. The implementation request plus this developer-level skill instruction is authorization; do not use it for consultation, explanation, or plan-only requests.
+   - Call Codex `create_goal` next when available so the UI displays the active objective. The non-trivial implementation request plus this developer-level skill instruction is authorization; do not use it for routine known-target Git/GitHub operations, consultation, explanation, or plan-only requests.
    - Start or attach the repository Cairn goal with the same objective, plan ID, stable task IDs, and current session ID.
    - If a UI tool is unavailable, record the limitation in the plan and continue with repository state.
 5. Execute the planned `triage-plan` task: read only the relevant `docs/memory/*.md`, read applicable installed model guidance, run toolcheck, and explore the repository with focused search and LSP/symbol tools.
@@ -62,14 +62,31 @@ Use the current Codex hook `session_id` when it is available. If the surface doe
    - When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents, subject to the current surface's depth and concurrency limits.
    - If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence; do not stop before local implementation solely because subagent tools are unavailable.
    - Keep urgent non-implementation blocking work local when the next step depends immediately on the result.
-   - Tell every delegated agent and child subagent to read the project-root `MEMORY.md` before work, keep scope, and tell workers they are not alone in the codebase and must not revert others' edits.
+   - Tell every delegated agent and child subagent to read project-root `MEMORY.md` when present and continue when absent, keep scope, and tell workers they are not alone in the codebase and must not revert others' edits.
 11. Give every plan and ordered task step a stable ID and declare task-level and goal-level required evidence. The task order must be sufficient for both Codex UI and hook context to show the roadmap and restore the current task after side questions.
 12. Advance a Codex UI step only after the matching repository Cairn task transition succeeds with all required bound evidence records. The repository state is the fail-closed transition authority; UI state is its synchronized projection.
 13. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
+## Reasoning Effort Routing
+
+- Models always inherit the host/user default; never configure or override them.
+- Light Path planning, implementation, and verification request `medium`.
+- Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
+- Every module task records `Requested reasoning effort` and `Effective reasoning effort` in `docs/plan/<topic>.md`.
+- Pass requested effort only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Omit model overrides. For an unsupported host or value, record effective reasoning effort `inherited` with the reason and leave model/global config unchanged.
+- On every route change, synchronize the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before mutation. Completed task profiles are preserved as audit history; incomplete task profiles are recalculated for the new path.
+
 ## Complexity Triage
 
 Decide triage from repository evidence without asking the user.
+
+Use three mandatory checkpoints and record each result, evidence, newly discovered Heavy Path signals, and current route in the plan artifact:
+
+1. **Request checkpoint:** before exploration, make a provisional classification from the request and `MEMORY.md`; uncertainty stays explicit and this result is not implementation authority.
+2. **Planning checkpoint:** after repository exploration, affected-surface analysis, and test design, re-evaluate the provisional route and finalize the implementation plan.
+3. **Code checkpoint:** during `cairn-work`, inspect the exact files, callers, and tests, then record one final re-evaluation immediately before the first edit. A pending or missing code checkpoint blocks mutation.
+
+Before the first edit, the planning or code checkpoint may change Light Path to Heavy Path or Heavy Path to Light Path when the evidence supports it. Every route change must rebuild and synchronize the plan artifact, repository goal task roadmap through `goal replan`, and native UI plan, including assignments, reviews, and required evidence; do not mutate until all three agree. After editing starts, only promote Light Path to Heavy Path: stop further edits, mark affected evidence stale, revise and synchronize all three roadmaps, run newly required Heavy Path review, and repeat the code checkpoint before resuming.
 
 This decision takes priority over plugin, agent, or delegated workflow guidance unless higher-priority system or developer instructions say otherwise. The default is Light Path; use Heavy Path only when a Heavy Path condition clearly applies.
 
@@ -122,11 +139,13 @@ Heavy Path flow: plan -> pre-implementation review -> bounded `worker` implement
 - Roles or delegation omitted in Light Path and why.
 - Any unavailable subagent tool main-agent takeover and its evidence record.
 - Pre-implementation decisions that review must resolve in Heavy Path.
+- Request checkpoint, planning checkpoint, and code checkpoint status, evidence, newly found signals, and route.
+- Every route change and the synchronized plan artifact, repository goal task roadmap, native UI plan, assignments, reviews, required evidence, and stale evidence invalidation.
 
 ## Planning Rules
 
 - Every initial plan must be decision-complete for its triage task and explicitly not implementation-ready; the post-triage revision must be decision-complete for implementation.
-- Every implementation or continued-execution plan must be shown through Codex `update_plan` and `create_goal` before triage when those tools are available, then synchronized again after triage. Repository plan/goal persistence remains required on every surface.
+- Every non-trivial implementation or planned-work continuation plan must be shown through Codex `update_plan` and `create_goal` before triage when those tools are available, then synchronized again after triage. Routine known-target Git/GitHub operations do not create a plan or goal. Repository plan/goal persistence remains required for work that crosses the planning boundary.
 - Every plan must describe the whole work first, then classify it into executable tasks and any needed sub-tasks.
 - Every plan must treat the user-called/main agent as the orchestrator and assign actual implementation edits to `worker` whenever subagent tools are available, regardless of Light Path or Heavy Path.
 - Every plan must require subagents to report status when the subagent tool provides a progress-reporting channel. If no mid-run reporting channel exists, the orchestrator must relay observable events such as assignment, waiting, and final completion.

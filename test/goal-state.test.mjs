@@ -4,19 +4,22 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import {
   assignTask,
   evaluateStop,
   goalStatePath,
   readGoalState,
   recordReceipt,
+  replanGoal,
   setTaskStatus,
   startGoal,
   transitionGoal,
   verifyAndRecord,
+  worktreeId,
 } from "../scripts/cairn-goal.mjs";
 import { runStateResult } from "../scripts/cairn-state.mjs";
+import { cleanupProjectCairn } from "../scripts/cairn-cleanup.mjs";
 
 const stateScript = resolve("scripts/cairn-state.mjs");
 const cliScript = resolve("scripts/cairn.mjs");
@@ -33,20 +36,89 @@ test("goal start persists a versioned, bound state atomically", async () => {
 
     assert.equal(state.schemaVersion, 2);
     assert.equal(state.goal.evidencePolicy, "tool-bound");
+    assert.equal(state.goal.worktreeId, worktreeId(root));
     assert.equal(state.goal.status, "active");
     assert.equal(state.tasks[0].status, "active");
     assert.equal(state.tasks[1].status, "pending");
     const text = await readFile(goalStatePath(root), "utf8");
     assert.deepEqual(JSON.parse(text), state);
-    const leftovers = await readdir(join(root, ".cairn"));
+    const leftovers = await readdir(dirname(goalStatePath(root)));
     assert.equal(leftovers.filter((name) => name.endsWith(".tmp")).length, 0);
+  });
+});
+
+test("goal replan preserves completed work and replaces the incomplete roadmap", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Reclassify the route",
+      planId: "docs/plan/reclassify.md",
+      evidencePolicy: "declared",
+      tasks: [
+        { id: "triage", title: "Triage" },
+        { id: "light-implement", title: "Light implementation" },
+        { id: "verify", title: "Verify" },
+      ],
+    });
+    for (const kind of ["moduleAcceptance", "surfaceIntegration"]) {
+      await recordReceipt({ root, taskId: "triage", kind, command: `verify triage ${kind}`, exitCode: 0 });
+    }
+    await setTaskStatus({ root, taskId: "triage", status: "completed" });
+    await recordReceipt({ root, taskId: "light-implement", kind: "moduleAcceptance", command: "old light evidence", exitCode: 0 });
+    await recordReceipt({ root, scope: "goal", kind: "finalReview", command: "old goal evidence", exitCode: 0 });
+
+    const replanned = await replanGoal({
+      root,
+      tasks: [
+        { id: "heavy-review", title: "Review the Heavy plan", requiredEvidence: ["planReview"] },
+        { id: "heavy-implement", title: "Implement the Heavy plan" },
+        { id: "verify", title: "Verify the Heavy plan" },
+      ],
+    });
+
+    assert.deepEqual(replanned.tasks.map(({ id, status }) => ({ id, status })), [
+      { id: "triage", status: "completed" },
+      { id: "heavy-review", status: "active" },
+      { id: "heavy-implement", status: "pending" },
+      { id: "verify", status: "pending" },
+    ]);
+    assert.deepEqual(replanned.tasks[1].requiredEvidence, ["planReview"]);
+    assert.ok(replanned.receipts.every((receipt) => receipt.taskId === "triage"));
+    await assert.rejects(replanGoal({ root, tasks: [] }), /at least one incomplete task/i);
+    await assert.rejects(replanGoal({ root, tasks: [{ id: "triage", title: "Duplicate completed task" }] }), /completed task id/i);
+  });
+});
+
+test("goal replan CLI replaces the incomplete roadmap", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "CLI replan",
+      planId: "docs/plan/cli-replan.md",
+      tasks: [{ id: "light", title: "Light task" }],
+    });
+
+    const cli = spawnSync(process.execPath, [
+      cliScript,
+      "goal", "replan",
+      "--root", root,
+      "--tasks", JSON.stringify([
+        { id: "review", title: "Heavy review", requiredEvidence: ["planReview"] },
+        { id: "implement", title: "Heavy implementation" },
+      ]),
+    ], { encoding: "utf8" });
+
+    assert.equal(cli.status, 0, cli.stderr);
+    const state = JSON.parse(cli.stdout);
+    assert.deepEqual(state.tasks.map((task) => task.id), ["review", "implement"]);
+    assert.equal(state.tasks[0].status, "active");
   });
 });
 
 test("schema v1 state migrates to tool-bound schema v2 without losing declared evidence", async () => {
   await withTempRoot(async (root) => {
     const now = new Date().toISOString();
-    await mkdir(join(root, ".cairn"), { recursive: true });
+    await mkdir(dirname(goalStatePath(root)), { recursive: true });
     await writeFile(goalStatePath(root), `${JSON.stringify({
       schemaVersion: 1,
       revision: 3,
@@ -298,6 +370,15 @@ test("tool-bound goals execute verification, reject declared and stale evidence,
       cliScript, "goal", "task", "--quiet", "--root", root, "--task", "verify", "--status", "completed",
     ], { encoding: "utf8" });
     assert.equal(completed.status, 0, completed.stderr);
+
+    await writeFile(watched, "v3\n");
+    for (const kind of ["moduleAcceptance", "surfaceIntegration"]) {
+      const refreshedAfterCompletion = runVerify(root, kind, watched, "console.log('refreshed after completion')");
+      assert.equal(refreshedAfterCompletion.status, 0, refreshedAfterCompletion.stderr);
+    }
+    const refreshedCompletedState = await readGoalState({ root });
+    assert.equal(refreshedCompletedState.tasks[0].status, "completed");
+    assert.equal(refreshedCompletedState.receipts.filter((item) => item.source === "tool").length, 7);
   });
 });
 
@@ -369,9 +450,10 @@ test("verification rejects pending, blocked, and terminal targets before running
     await setTaskStatus({ root, taskId: "only", status: "completed" });
     await recordReceipt({ root, scope: "goal", kind: "finalReview", command: "review", exitCode: 0 });
     await transitionGoal({ root, status: "completed" });
+    assert.equal(await readGoalState({ root }), null);
     await assert.rejects(
       verifyAndRecord({ root, taskId: "only", kind: "moduleAcceptance", argv: [process.execPath, "-e", "process.exit(0)"] }),
-      /completed goal/,
+      /No Cairn goal state exists/,
     );
   });
 });
@@ -456,6 +538,7 @@ test("receipts fail closed and task completion advances only after successful bo
     await recordReceipt({ root, scope: "goal", kind: "finalReview", command: "npm run check", exitCode: 0 });
     const completed = await transitionGoal({ root, status: "completed" });
     assert.equal(completed.goal.status, "completed");
+    assert.equal(await readGoalState({ root }), null);
   });
 });
 
@@ -463,21 +546,95 @@ test("automatic context hooks do not initialize an uninitialized repository", as
   await withTempRoot(async (root) => {
     const session = await runStateResult("session-start", { root, locale: "en-US", payload: { cwd: root, session_id: "s1", turn_id: "t1" } });
     const prompt = await runStateResult("user-prompt-submit", { root, locale: "en-US", payload: { cwd: root, session_id: "s1", turn_id: "t1", prompt: "Implement the requested fix" } });
-    assert.match(session.message, /read (?:the project-)?root MEMORY/);
-    assert.match(prompt.message, /read (?:the project-)?root MEMORY/);
+    assert.match(session.message, /root MEMORY\.md is optional.*read it when present/i);
+    assert.match(prompt.message, /root MEMORY\.md is optional.*read it when present/i);
     assert.equal(session.hookOutput.hookSpecificOutput.hookEventName, "SessionStart");
     assert.equal(prompt.hookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /implementation\/continue.*load cairn-plan/i);
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /restore or create the active plan and current task/i);
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /consultation, explanation, and plan-only requests goal-free/i);
-    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /non-trivial implementation.*planned-work continuation.*load cairn-plan/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /known-target Git\/GitHub operations stay plan\/goal-free/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /code edits.*conflict resolution.*destructive recovery.*release\/deploy.*design/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /consultation, explanation, and plan-only requests are also goal-free/i);
+    assert.match(prompt.hookOutput.hookSpecificOutput.additionalContext, /stop only if active state.*missing, unreadable, or inconsistent/i);
     const promptKo = await runStateResult("user-prompt-submit", { root, locale: "ko-KR", payload: { cwd: root, session_id: "s1", turn_id: "t2", prompt: "요청한 수정을 구현해줘" } });
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /구현\/계속 실행이면 cairn-plan을 로드/);
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /active plan과 current task를 복원하거나 생성/);
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /상담·설명·계획 전용은 goal 없이/);
-    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /없거나 읽을 수 없거나 일치하지 않으면 수정·위임·완료하지/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /비단순 구현이나 계획된 작업 재개는 cairn-plan/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /Git\/GitHub 상태·fetch·checkout·merge·push·PR 작업.*plan\/goal 없이/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /코드 수정·충돌 해결·파괴적 복구·릴리스\/배포·설계/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /상담·설명·계획 전용도 goal 없이/);
+    assert.match(promptKo.hookOutput.hookSpecificOutput.additionalContext, /active state.*없거나 읽을 수 없거나 일치하지 않을 때만 중단/);
     await assert.rejects(access(join(root, "MEMORY.md")));
     await assert.rejects(access(join(root, ".cairn")));
+  });
+});
+
+test("worktree-bound state removes an identical copy from another worktree", async () => {
+  const first = await mkdtemp(join(tmpdir(), "cairn-worktree-first-"));
+  const second = await mkdtemp(join(tmpdir(), "cairn-worktree-second-"));
+  const previousCairnHome = process.env.CAIRN_HOME;
+  process.env.CAIRN_HOME = join(first, ".user-cairn");
+  try {
+    await startGoal({
+      root: first,
+      goal: "Original worktree goal",
+      planId: "docs/plan/worktree.md",
+      ownerSessionId: "first-session",
+      tasks: [{ id: "work", title: "Work" }],
+    });
+    await mkdir(dirname(goalStatePath(second)), { recursive: true });
+    await writeFile(goalStatePath(second), await readFile(goalStatePath(first), "utf8"));
+
+    const result = await runStateResult("user-prompt-submit", {
+      root: second,
+      locale: "en-US",
+      payload: { cwd: second, session_id: "second-session", prompt: "Continue" },
+    });
+    assert.equal(await readGoalState({ root: second }), null);
+    assert.equal((await readGoalState({ root: first })).goal.status, "active");
+    assert.match(result.hookOutput.hookSpecificOutput.additionalContext, /removed stale Cairn state.*did not belong to this worktree/i);
+  } finally {
+    if (previousCairnHome === undefined) delete process.env.CAIRN_HOME;
+    else process.env.CAIRN_HOME = previousCairnHome;
+    await rm(first, { recursive: true, force: true });
+    await rm(second, { recursive: true, force: true });
+  }
+});
+
+test("worktree reconciliation removes legacy state without a worktree id", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Legacy unbound goal",
+      planId: "docs/plan/legacy.md",
+      tasks: [{ id: "legacy", title: "Legacy" }],
+    });
+    const legacy = JSON.parse(await readFile(goalStatePath(root), "utf8"));
+    delete legacy.goal.worktreeId;
+    await writeFile(goalStatePath(root), `${JSON.stringify(legacy, null, 2)}\n`);
+
+    const result = await runStateResult("user-prompt-submit", {
+      root,
+      locale: "en-US",
+      payload: { cwd: root, session_id: "new-session", prompt: "Start current work" },
+    });
+    assert.equal(await readGoalState({ root }), null);
+    assert.match(result.hookOutput.hookSpecificOutput.additionalContext, /removed stale Cairn state/i);
+  });
+});
+
+test("legacy project cleanup inspects by default and preserves unknown entries", async () => {
+  await withTempRoot(async (root) => {
+    await mkdir(join(root, ".cairn", "tools"), { recursive: true });
+    await writeFile(join(root, ".cairn", "state.lock"), "stale\n");
+    await writeFile(join(root, ".cairn", "keep.txt"), "user data\n");
+
+    const inspected = await cleanupProjectCairn({ root });
+    assert.deepEqual(inspected.known, ["state.lock", "tools"]);
+    assert.deepEqual(inspected.unknown, ["keep.txt"]);
+    await access(join(root, ".cairn", "state.lock"));
+
+    const applied = await cleanupProjectCairn({ root, apply: true });
+    assert.deepEqual(applied.removed, ["state.lock", "tools"]);
+    assert.equal(applied.projectDirectoryRemoved, false);
+    assert.equal(await readFile(join(root, ".cairn", "keep.txt"), "utf8"), "user data\n");
   });
 });
 
@@ -691,9 +848,15 @@ function runVerify(root, kind, watched, source) {
 
 async function withTempRoot(work) {
   const root = await mkdtemp(join(tmpdir(), "cairn-goal-state-"));
+  const stateHome = `${root}-home`;
+  const previousCairnHome = process.env.CAIRN_HOME;
+  process.env.CAIRN_HOME = stateHome;
   try {
     await work(root);
   } finally {
+    if (previousCairnHome === undefined) delete process.env.CAIRN_HOME;
+    else process.env.CAIRN_HOME = previousCairnHome;
     await rm(root, { recursive: true, force: true });
+    await rm(stateHome, { recursive: true, force: true });
   }
 }

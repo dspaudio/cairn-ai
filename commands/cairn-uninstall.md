@@ -19,4 +19,4 @@ Managed items:
 
 After the transaction commits, Cairn removes empty managed scaffold directories bottom-up and removes the custom marketplace root only after releasing its own lifecycle lock. A directory containing any unmanaged child is preserved; pruning never uses recursive deletion.
 
-The source work folder and repository `MEMORY.md`, `PLAN.md`, `docs/`, and `.cairn/state.json` are not deleted. The globally installed `cairn-ai` package, package-manager download caches, legacy backup files, and legacy shared settings not recorded by the current ownership manifest are also outside this command's scope and require a separate, explicit cleanup decision.
+The source work folder, repository `MEMORY.md`, `PLAN.md`, `docs/`, and user-home Cairn goal state are not deleted. The globally installed `cairn-ai` package, package-manager download caches, legacy backup files, and legacy shared settings not recorded by the current ownership manifest are also outside this command's scope and require a separate, explicit cleanup decision.

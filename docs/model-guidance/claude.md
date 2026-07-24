@@ -18,7 +18,9 @@ Claude-family models are strong at long-context retention, policy interpretation
 - Do not skip the two verification gates even on Light Path.
 - Do not approve a plan that lacks dry-run or check evidence for external-state-changing work.
 - Do not allow open-ended verification loops. Require a blocker or sub-task split after two failed passes.
+- Keep the model inherited. Review each task's `Requested reasoning effort` and `Effective reasoning effort`; apply the requested value only to a newly dispatched task or worker through a host-native task/subagent option, never a model override. For an unsupported host or value, require effective reasoning effort `inherited` and no model/global configuration change.
 - On Heavy Path, check plan gaps before implementation.
+- Review all three complexity records: the provisional request checkpoint, post-exploration planning checkpoint, and code checkpoint after exact file/caller/test inspection immediately before the first edit. Before editing, evidence may change either route. Every change must synchronize the plan artifact, repository goal task roadmap through `goal replan`, and native UI plan, including reviews and required evidence. After editing begins, a new Heavy signal promotes Light Path to Heavy Path: stop further edits, mark affected evidence stale, synchronize all three roadmaps, and repeat the code checkpoint.
 - Before asking the user, use repository evidence and available `explorer`/`worker` delegation when it materially improves speed or quality.
 - Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 

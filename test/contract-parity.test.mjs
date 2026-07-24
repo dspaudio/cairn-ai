@@ -43,10 +43,73 @@ test("work contracts document bounded verification and semantic evidence boundar
   }
 });
 
+test("planning and work contracts require staged complexity reassessment", async () => {
+  const surfaces = [
+    "skills/cairn-plan/SKILL.md",
+    "skills/cairn-work/SKILL.md",
+    "commands/cairn-plan.md",
+    "commands/cairn-work.md",
+    ".agents/workflows/cairn-plan.md",
+    ".agents/workflows/cairn-work.md",
+    "docs/model-guidance/README.md",
+    "docs/model-guidance/codex.md",
+    "docs/model-guidance/claude.md",
+    "templates/work-plan.md",
+  ];
+
+  for (const path of surfaces) {
+    const content = await read(path);
+    assert.match(content, /request checkpoint/i, `${path}: request checkpoint`);
+    assert.match(content, /planning checkpoint/i, `${path}: planning checkpoint`);
+    assert.match(content, /code checkpoint/i, `${path}: code checkpoint`);
+    assert.match(content, /Light Path[\s\S]*Heavy Path|Heavy Path[\s\S]*Light Path/i, `${path}: path escalation`);
+    assert.match(content, /plan artifact[\s\S]*repository goal task roadmap[\s\S]*(?:native )?UI plan/i, `${path}: synchronized route roadmap`);
+    assert.match(content, /stop(?: further)? edit|before (?:the )?first edit|before mutating/i, `${path}: fail-closed edit gate`);
+    assert.match(content, /stale/i, `${path}: stale evidence`);
+  }
+
+  const worker = await read("agents/worker.md");
+  assert.match(worker, /new Heavy Path signal/i);
+  assert.match(worker, /stop(?: further)? edits/i);
+  assert.match(worker, /orchestrator/i);
+
+  const planIndex = await read("templates/PLAN.md");
+  assert.match(planIndex, /request, planning, and code checkpoints/i);
+});
+
+test("reasoning effort routing inherits models and follows path task roles", async () => {
+  const common = await read("docs/model-guidance/README.md");
+  assert.match(common, /model.*(?:always )?inherit/i);
+  assert.match(common, /Light Path[\s\S]*planning.*implementation.*verification.*`?medium`?/i);
+  assert.match(common, /Heavy Path[\s\S]*planning.*review.*implementation.*`?high`?/i);
+  assert.match(common, /final verification.*review.*`?xhigh`?/i);
+  assert.match(common, /unsupported host.*effective.*inherited/is);
+  assert.match(common, /new(?:ly)? (?:dispatched|delegated) task.*reasoning[-_ ]effort option/is);
+  assert.match(common, /do not (?:change|alter|override).*model.*global config/is);
+
+  for (const path of ["docs/model-guidance/codex.md", "docs/model-guidance/claude.md", "agents/worker.md"]) {
+    const content = await read(path);
+    assert.match(content, /requested.*reasoning effort/i, `${path}: requested effort`);
+    assert.match(content, /effective.*reasoning effort/i, `${path}: effective effort`);
+    assert.match(content, /model.*inherit/i, `${path}: inherited model`);
+    assert.match(content, /new(?:ly)? (?:dispatched|delegated) task|new worker/i, `${path}: new-task boundary`);
+    assert.match(content, /unsupported.*inherited/is, `${path}: unsupported fallback`);
+  }
+
+  for (const path of ["templates/work-plan.md", "skills/cairn-plan/SKILL.md", "skills/cairn-work/SKILL.md"]) {
+    const content = await read(path);
+    assert.match(content, /Requested reasoning effort/i, `${path}: requested profile`);
+    assert.match(content, /Effective reasoning effort/i, `${path}: effective profile`);
+    assert.match(content, /completed.*profiles?.*preserv/is, `${path}: completed profile preservation`);
+    assert.match(content, /incomplete.*profiles?.*(?:recalculate|replace)/is, `${path}: incomplete profile recalculation`);
+    assert.match(content, /plan artifact[\s\S]*repository goal task roadmap[\s\S]*(?:native )?UI plan[\s\S]*reasoning effort profile/i, `${path}: four-surface synchronization`);
+  }
+});
+
 test("package and CI contracts include every runtime artifact and supported node/os matrix", async () => {
   const packageJson = JSON.parse(await read("package.json"));
   const pluginJson = JSON.parse(await read(".codex-plugin/plugin.json"));
-  assert.equal(packageJson.version, "0.2.5");
+  assert.equal(packageJson.version, "0.2.6");
   assert.equal(pluginJson.version, packageJson.version);
   assert.match(packageJson.scripts.check, /cairn-safe-fs\.mjs/);
   assert.match(packageJson.scripts.check, /release-integrity-0\.2\.2\.json/);

@@ -1,6 +1,6 @@
 {
   "name": "cairn-ai",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity",
   "license": "MIT",
   "author": {
@@ -39,7 +39,7 @@
     "README.*.md"
   ],
   "scripts": {
-    "check": "node --check scripts/cairn.mjs && node --check scripts/cairn-paths.mjs && node --check scripts/cairn-safe-fs.mjs && node --check scripts/cairn-goal.mjs && node --check scripts/cairn-state.mjs && node --check scripts/cairn-lifecycle.mjs && node --check scripts/cairn-toolcheck.mjs && node -e \"JSON.parse(require('node:fs').readFileSync('package.json','utf8')); JSON.parse(require('node:fs').readFileSync('.codex-plugin/plugin.json','utf8')); JSON.parse(require('node:fs').readFileSync('hooks/hooks.json','utf8')); JSON.parse(require('node:fs').readFileSync('scripts/release-integrity-0.2.2.json','utf8'))\" && npm test",
+    "check": "node --check scripts/cairn.mjs && node --check scripts/cairn-paths.mjs && node --check scripts/cairn-safe-fs.mjs && node --check scripts/cairn-goal.mjs && node --check scripts/cairn-state.mjs && node --check scripts/cairn-cleanup.mjs && node --check scripts/cairn-lifecycle.mjs && node --check scripts/cairn-toolcheck.mjs && node -e \"JSON.parse(require('node:fs').readFileSync('package.json','utf8')); JSON.parse(require('node:fs').readFileSync('.codex-plugin/plugin.json','utf8')); JSON.parse(require('node:fs').readFileSync('hooks/hooks.json','utf8')); JSON.parse(require('node:fs').readFileSync('scripts/release-integrity-0.2.2.json','utf8'))\" && npm test",
     "test": "node --test",
     "prepack": "npm run check"
   },

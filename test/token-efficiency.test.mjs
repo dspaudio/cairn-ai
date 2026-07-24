@@ -26,11 +26,11 @@ test("recurring Codex instructions are a small stable recovery kernel", async ()
 
   assert.equal(manifest.interface.defaultPrompt.length, 7);
   assert.ok(prompt.length <= 1600, `defaultPrompt is ${prompt.length} characters; budget is 1600`);
-  assert.match(prompt, /root MEMORY\.md.*before planning, implementation, review, or delegation/i);
+  assert.match(prompt, /root MEMORY\.md.*when it exists.*continue without repository memory/i);
   assert.match(prompt, /phase skill.*cairn-plan.*cairn-work.*cairn-review/i);
   assert.match(prompt, /active plan.*current-task references/i);
   assert.match(prompt, /compaction, restart, handoff, or delegation/i);
-  assert.match(prompt, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
+  assert.match(prompt, /missing MEMORY\.md never blocks work/i);
   assert.match(prompt, /missing, failed, skipped, stale, or placeholder evidence never completes work/i);
   assert.match(prompt, /external-state changes.*dry-run\/check/i);
   assert.match(prompt, /side questions.*resume the current task/i);
@@ -45,12 +45,13 @@ test("hook context is a compact phase capsule without dropping recovery state", 
       payload: { cwd: root, session_id: "budget-session", prompt: "Implement the fix" },
     });
     const idleContext = idle.hookOutput.hookSpecificOutput.additionalContext;
-    assert.ok(idleContext.length <= 420, `idle hook is ${idleContext.length} characters; budget is 420`);
-    assert.match(idleContext, /^Cairn kernel: read root MEMORY\.md first\./);
-    assert.match(idleContext, /load cairn-plan/i);
-    assert.match(idleContext, /active plan.*current task/i);
+    assert.ok(idleContext.length <= 620, `idle hook is ${idleContext.length} characters; budget is 620`);
+    assert.match(idleContext, /^Cairn kernel: root MEMORY\.md is optional/);
+    assert.match(idleContext, /non-trivial implementation.*planned-work continuation.*load cairn-plan/i);
+    assert.match(idleContext, /known-target Git\/GitHub operations stay plan\/goal-free/i);
+    assert.match(idleContext, /code edits.*conflict resolution.*destructive recovery.*release\/deploy.*design/i);
     assert.match(idleContext, /consultation.*plan-only/i);
-    assert.match(idleContext, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
+    assert.match(idleContext, /stop only if active state.*missing, unreadable, or inconsistent/i);
 
     await startGoal({
       root,
@@ -70,14 +71,14 @@ test("hook context is a compact phase capsule without dropping recovery state", 
     });
     const activeContext = active.hookOutput.hookSpecificOutput.additionalContext;
     assert.ok(activeContext.length <= 700, `active hook is ${activeContext.length} characters; budget is 700`);
-    assert.match(activeContext, /^Cairn kernel: read root MEMORY\.md first\./);
+    assert.match(activeContext, /^Cairn kernel: root MEMORY\.md is optional/);
     assert.match(activeContext, /load cairn-work/i);
     assert.match(activeContext, /docs\/plan\/token-budget\.md/);
     assert.match(activeContext, /1\. triage \[active\]/);
     assert.match(activeContext, /2\. implement \[pending\]/);
     assert.match(activeContext, /current.*triage/i);
     assert.match(activeContext, /side question.*resume.*triage/i);
-    assert.match(activeContext, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
+    assert.match(activeContext, /stop only if active state.*missing, unreadable, or inconsistent/i);
   });
 });
 
@@ -116,10 +117,10 @@ test("hook capsules are deterministic for the same state and restore review phas
       payload: { cwd: root, session_id: "deterministic-session", turn_id: "turn-3" },
     });
     const reviewContext = review.hookOutput.hookSpecificOutput.additionalContext;
-    assert.match(reviewContext, /^Cairn kernel: read root MEMORY\.md first\./);
+    assert.match(reviewContext, /^Cairn kernel: root MEMORY\.md is optional/);
     assert.match(reviewContext, /load cairn-review/i);
     assert.match(reviewContext, /docs\/plan\/deterministic\.md/);
-    assert.match(reviewContext, /do not edit, delegate, or complete/i);
+    assert.match(reviewContext, /stop only if active state.*missing, unreadable, or inconsistent/i);
   });
 });
 
@@ -140,7 +141,7 @@ test("foreign sessions receive only a generic fail-closed capsule", async () => 
         payload: { cwd: root, session_id: "foreign-session", turn_id: "foreign-turn", prompt: "Continue" },
       });
       const context = foreign.hookOutput.hookSpecificOutput.additionalContext;
-      assert.match(context, /^Cairn kernel: read root MEMORY\.md first\./);
+      assert.match(context, /^Cairn kernel: root MEMORY\.md is optional/);
       assert.match(context, /owned by another session/i);
       assert.match(context, /inspect.*goal status/i);
       assert.match(context, /do not start, edit, delegate, or complete/i);
@@ -157,6 +158,7 @@ test("foreign sessions receive only a generic fail-closed capsule", async () => 
     }
 
     await transitionGoal({ root, status: "cancelled" });
+    assert.equal(await readGoalState({ root }), null);
     for (const event of ["session-start", "user-prompt-submit"]) {
       const terminal = await runStateResult(event, {
         root,
@@ -164,7 +166,7 @@ test("foreign sessions receive only a generic fail-closed capsule", async () => 
         payload: { cwd: root, session_id: "foreign-session", turn_id: "terminal-turn", prompt: "Start new work" },
       });
       const context = terminal.hookOutput.hookSpecificOutput.additionalContext;
-      assert.match(context, /^Cairn kernel: read root MEMORY\.md first\./);
+      assert.match(context, /^Cairn kernel: root MEMORY\.md is optional/);
       assert.match(context, /load cairn-plan/i);
       assert.doesNotMatch(context, /owned by another session|Secret owner goal|secret-owner|secret-task|Secret task title/i);
     }
@@ -285,6 +287,11 @@ test("work guidance spends reasoning on tests and trusts bounded tool evidence",
   assert.match(work, /content-neutral.*--ignore-scripts/is);
   assert.match(work, /stale evidence/i);
   assert.match(work, /goal verify.*--/i);
+  assert.match(work, /model.*inherit/i);
+  assert.match(work, /requested.*effective.*reasoning effort/is);
+  assert.match(work, /Light.*medium.*Heavy.*high.*xhigh/is);
+  assert.match(work, /completed.*profiles?.*preserv/is);
+  assert.match(work, /incomplete.*profiles?.*(?:recalculate|replace)/is);
 });
 
 test("agents and phase guidance restore required references and fail closed", async () => {
@@ -332,9 +339,15 @@ test("supported readmes document safe token-efficient verification and completed
 
 async function withTempRoot(run) {
   const root = await mkdtemp(join(tmpdir(), "cairn-token-efficiency-"));
+  const stateHome = `${root}-home`;
+  const previousCairnHome = process.env.CAIRN_HOME;
+  process.env.CAIRN_HOME = stateHome;
   try {
     await run(root);
   } finally {
+    if (previousCairnHome === undefined) delete process.env.CAIRN_HOME;
+    else process.env.CAIRN_HOME = previousCairnHome;
     await rm(root, { recursive: true, force: true });
+    await rm(stateHome, { recursive: true, force: true });
   }
 }

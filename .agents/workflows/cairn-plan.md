@@ -6,10 +6,14 @@ Read the installed Cairn runtime locator at `{{CAIRN_RUNTIME_LOCATOR_JSON}}`. Re
 
 Goal: write an initial plan with triage as its active task before exploration, persist the goal/roadmap, then update the same plan to a decision-complete implementation revision after triage.
 
+Complexity triage has a provisional request checkpoint, post-exploration planning checkpoint, and code checkpoint after exact file/caller/test inspection immediately before the first edit. Before editing, evidence may change either route. Every change must synchronize the plan artifact, repository goal task roadmap through `goal replan`, and native UI plan, including reviews and required evidence. After editing begins, a new Heavy Path signal promotes Light Path to Heavy Path: stop further edits, mark affected evidence stale, synchronize all three roadmaps, and repeat the code checkpoint.
+
+Models always inherit. Route reasoning effort per task: Light planning/implementation/verification=`medium`; Heavy planning/review/implementation=`high`; final verification/review=`xhigh`. Record requested/effective effort for every task. Only a new task/worker may receive requested effort through a supported host-native option; unsupported host/value means effective=`inherited` with no model/global config change. Route changes synchronize the plan artifact, repository goal task roadmap, native UI plan, and reasoning effort profile; preserve completed profiles and recalculate incomplete profiles.
+
 Procedure:
 
-1. Every agent must read the project-root `MEMORY.md` for domain knowledge and repository policy before repository exploration, tool selection, work, or delegation.
-2. For implementation or continued execution, write the initial repository plan and `PLAN.md` entry from the request and `MEMORY.md`. Include a planned `triage-plan` task and anticipated execution/verification stages, then start or attach the repository Cairn goal before exploration.
+1. Every agent reads project-root `MEMORY.md` when present and continues without repository memory when absent before repository exploration, tool selection, work, or delegation.
+2. Keep routine known-target Git/GitHub operations plan/goal-free unless they require code edits, conflict resolution, destructive recovery, release/deploy, or design. For non-trivial implementation or continuation of planned work, write the initial repository plan and `PLAN.md` entry from the request and `MEMORY.md`. Include a planned `triage-plan` task and anticipated execution/verification stages, then start or attach the repository Cairn goal before exploration.
 3. When the surface exposes native plan/goal UI tools, synchronize the same roadmap there before exploration; otherwise record that those tools are unavailable.
 4. Read relevant `docs/memory/*.md` and perform toolcheck, exploration, and Light/Heavy Path triage according to the initial task.
 5. Update the same plan to a decision-complete implementation revision before implementation.
