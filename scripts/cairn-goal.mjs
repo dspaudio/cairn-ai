@@ -2,10 +2,13 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstatSync, readFileSync, readlinkSync, realpathSync, readdirSync } from "node:fs";
-import { readFile, rename, rm } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { lstat, readFile, rename, rm } from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertNoSymlinkComponents, safeMkdir, safeWriteFile, withStateLock } from "./cairn-safe-fs.mjs";
+import { cairnHome, goalStateDirectory, worktreeId } from "./cairn-paths.mjs";
+
+export { worktreeId } from "./cairn-paths.mjs";
 
 export const GOAL_STATE_VERSION = 2;
 export const GOAL_STATUSES = new Set(["active", "paused", "blocked", "cancelled", "completed"]);
@@ -33,17 +36,17 @@ const taskTransitions = {
 };
 
 export function goalStatePath(root = process.cwd()) {
-  return join(resolve(root), ".cairn", "state.json");
+  return join(goalStateDirectory(root), "state.json");
 }
 
 export async function readGoalState({ root = process.cwd() } = {}) {
   try {
     const path = goalStatePath(root);
-    await assertNoSymlinkComponents(root, path);
+    await assertNoSymlinkComponents(cairnHome(), path);
     const text = await readFile(path, "utf8");
     return validateState(migrateState(JSON.parse(text)));
   } catch (error) {
-    if (error?.code === "ENOENT") return null;
+    if (error?.code === "ENOENT") return migrateLegacyGoalState(root);
     if (error instanceof SyntaxError) throw new Error(`Cairn goal state is invalid JSON: ${error.message}`);
     throw error;
   }
@@ -54,8 +57,15 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
   const normalizedPlanId = boundedRequiredText(planId, "planId", PLAN_ID_MAX_LENGTH);
   if (!Array.isArray(tasks) || tasks.length === 0) throw new Error("tasks must contain at least one task");
 
-  return withStateLock(root, async () => {
-    const existing = await readGoalState({ root });
+  return withGoalStateLock(root, async () => {
+    let existing = await readGoalState({ root });
+    const currentWorktreeId = worktreeId(root);
+    if (existing && existing.goal.worktreeId !== currentWorktreeId) {
+      const path = goalStatePath(root);
+      await assertNoSymlinkComponents(cairnHome(), path, { allowMissing: false });
+      await rm(path);
+      existing = null;
+    }
     if (existing && !terminalGoalStatuses.has(existing.goal.status)) {
       throw new Error(`An active Cairn goal already exists (${existing.goal.id}); pause, block, cancel, or complete it first`);
     }
@@ -75,6 +85,7 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
         completionCriteria: normalizeCriteria(completionCriteria),
         requiredEvidence: normalizeCriteria(requiredEvidence),
         evidencePolicy: validEvidencePolicy(evidencePolicy),
+        worktreeId: currentWorktreeId,
         ownerSessionId: optionalText(ownerSessionId, "ownerSessionId"),
         blocker: null,
         createdAt: now,
@@ -88,18 +99,36 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
   });
 }
 
+export async function reconcileWorktreeState({ root = process.cwd() } = {}) {
+  const initial = await readGoalState({ root });
+  if (!initial || initial.goal.worktreeId === worktreeId(root)) {
+    return { state: initial, removed: false };
+  }
+  return withGoalStateLock(root, async () => {
+    const state = await readGoalState({ root });
+    if (!state || state.goal.worktreeId === worktreeId(root)) {
+      return { state, removed: false };
+    }
+    const staleWorktreeId = state.goal.worktreeId;
+    const path = goalStatePath(root);
+    await assertNoSymlinkComponents(cairnHome(), path, { allowMissing: false });
+    await rm(path);
+    return { state: null, removed: true, staleWorktreeId };
+  });
+}
+
 export async function writeGoalState({ root = process.cwd(), state } = {}) {
-  return withStateLock(root, () => writeGoalStateUnlocked({ root, state }));
+  return withGoalStateLock(root, () => writeGoalStateUnlocked({ root, state }));
 }
 
 async function writeGoalStateUnlocked({ root = process.cwd(), state } = {}) {
   const validated = validateState(state);
   const path = goalStatePath(root);
-  await safeMkdir(root, ".cairn");
-  await assertNoSymlinkComponents(root, path);
+  await ensureGoalStateDirectory(root);
+  await assertNoSymlinkComponents(cairnHome(), path);
   const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    await safeWriteFile(root, temporaryPath, `${JSON.stringify(validated, null, 2)}\n`, "utf8");
+    await safeWriteFile(cairnHome(), temporaryPath, `${JSON.stringify(validated, null, 2)}\n`, "utf8");
     await rename(temporaryPath, path);
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => {});
@@ -109,19 +138,36 @@ async function writeGoalStateUnlocked({ root = process.cwd(), state } = {}) {
 
 export async function transitionGoal({ root = process.cwd(), status, blocker } = {}) {
   const nextStatus = validGoalStatus(status);
+  if (terminalGoalStatuses.has(nextStatus)) {
+    return withGoalStateLock(root, async () => {
+      const state = await readGoalState({ root });
+      if (!state) throw new Error("No Cairn goal state exists; start a goal first");
+      const next = applyGoalTransition(structuredClone(state), nextStatus, blocker, root);
+      next.revision += 1;
+      validateState(next);
+      const path = goalStatePath(root);
+      await assertNoSymlinkComponents(cairnHome(), path, { allowMissing: false });
+      await rm(path);
+      return next;
+    });
+  }
   return mutateGoal(root, (state) => {
-    const currentStatus = state.goal.status;
-    if (currentStatus === nextStatus) return state;
-    if (!goalTransitions[currentStatus].has(nextStatus)) {
-      throw new Error(`Cannot transition goal from ${currentStatus} to ${nextStatus}`);
-    }
-    if (nextStatus === "completed") ensureGoalCanComplete(state, root);
-    if (nextStatus === "blocked") state.goal.blocker = requiredText(blocker, "blocker");
-    if (nextStatus === "active") state.goal.blocker = null;
-    state.goal.status = nextStatus;
-    state.goal.updatedAt = timestamp();
-    return state;
+    return applyGoalTransition(state, nextStatus, blocker, root);
   });
+}
+
+function applyGoalTransition(state, nextStatus, blocker, root) {
+  const currentStatus = state.goal.status;
+  if (currentStatus === nextStatus) return state;
+  if (!goalTransitions[currentStatus].has(nextStatus)) {
+    throw new Error(`Cannot transition goal from ${currentStatus} to ${nextStatus}`);
+  }
+  if (nextStatus === "completed") ensureGoalCanComplete(state, root);
+  if (nextStatus === "blocked") state.goal.blocker = requiredText(blocker, "blocker");
+  if (nextStatus === "active") state.goal.blocker = null;
+  state.goal.status = nextStatus;
+  state.goal.updatedAt = timestamp();
+  return state;
 }
 
 export async function setTaskStatus({ root = process.cwd(), taskId, status, blocker } = {}) {
@@ -489,7 +535,7 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
 }
 
 async function mutateGoal(root, mutate) {
-  return withStateLock(root, async () => {
+  return withGoalStateLock(root, async () => {
     const state = await readGoalState({ root });
     if (!state) throw new Error("No Cairn goal state exists; start a goal first");
     const next = await mutate(structuredClone(state));
@@ -497,6 +543,44 @@ async function mutateGoal(root, mutate) {
     await writeGoalStateUnlocked({ root, state: next });
     return next;
   });
+}
+
+async function withGoalStateLock(root, operation) {
+  await ensureGoalStateDirectory(root);
+  return withStateLock(goalStateDirectory(root), operation);
+}
+
+async function ensureGoalStateDirectory(root) {
+  const home = cairnHome();
+  let existingAncestor = home;
+  while (true) {
+    try {
+      const stat = await lstat(existingAncestor);
+      if (!stat.isDirectory()) throw new Error(`Cairn home ancestor is not a directory: ${existingAncestor}`);
+      break;
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      const parent = dirname(existingAncestor);
+      if (parent === existingAncestor) throw error;
+      existingAncestor = parent;
+    }
+  }
+  await safeMkdir(existingAncestor, relative(existingAncestor, goalStateDirectory(root)));
+}
+
+async function migrateLegacyGoalState(root) {
+  const legacyPath = join(resolve(root), ".cairn", "state.json");
+  try {
+    await assertNoSymlinkComponents(root, legacyPath, { allowMissing: false });
+    const state = validateState(migrateState(JSON.parse(await readFile(legacyPath, "utf8"))));
+    await writeGoalStateUnlocked({ root, state });
+    await rm(legacyPath);
+    return state;
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    if (error instanceof SyntaxError) throw new Error(`Cairn goal state is invalid JSON: ${error.message}`);
+    throw error;
+  }
 }
 
 function normalizeTask(task, index, defaultStatus) {
@@ -549,6 +633,7 @@ function validateState(value) {
   if (!Array.isArray(goal.requiredEvidence) || goal.requiredEvidence.length === 0) throw new Error("goal.requiredEvidence must be a non-empty array");
   goal.requiredEvidence.forEach((kind, index) => requiredText(kind, `goal.requiredEvidence[${index}]`));
   if (goal.ownerSessionId !== null && goal.ownerSessionId !== undefined) requiredText(goal.ownerSessionId, "goal.ownerSessionId");
+  if (goal.worktreeId !== null && goal.worktreeId !== undefined) requiredText(goal.worktreeId, "goal.worktreeId");
   if (goal.blocker !== null && goal.blocker !== undefined) requiredText(goal.blocker, "goal.blocker");
   if (!Array.isArray(value.tasks) || value.tasks.length === 0) throw new Error("Cairn goal state must contain tasks");
   if (!Array.isArray(value.receipts)) throw new Error("Cairn goal state evidence records (receipts) must be an array");

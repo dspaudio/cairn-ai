@@ -1,6 +1,6 @@
 {
   "name": "cairn",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity.",
   "author": {
     "name": "WkNam"
@@ -21,10 +21,10 @@
       "Tool Readiness"
     ],
     "defaultPrompt": [
-      "Use Cairn's repository-local MEMORY.md, PLAN.md, and persisted goal state as the recovery spine; every agent reads root MEMORY.md before planning, implementation, review, or delegation.",
+      "Use Cairn's repository-local PLAN.md and persisted goal state as the recovery spine; read root MEMORY.md first when it exists, and continue without repository memory when it does not.",
       "For non-trivial work, load the phase skill (cairn-plan, cairn-work, or cairn-review), then restore the active plan and current-task references before acting.",
-      "After compaction, restart, handoff, or delegation, restore MEMORY.md → phase skill → active plan → current task references; do not rely on conversation recall.",
-      "If state, skill, plan, or a required reference is missing, unreadable, or inconsistent, fail closed: do not edit, delegate, or complete work; report or block the discrepancy.",
+      "After compaction, restart, handoff, or delegation, restore optional MEMORY.md → phase skill → active plan → current task references; do not rely on conversation recall.",
+      "A missing MEMORY.md never blocks work; fail closed only when active state, its skill, plan, or a required task reference is missing, unreadable, or inconsistent.",
       "Missing, failed, skipped, stale, or placeholder evidence never completes work; advance UI state only after bound repository evidence passes.",
       "Before external-state changes, run dry-run/check and bind the resulting evidence to the current task.",
       "Answer side questions briefly, then resume the current task unless asked to pause, stop, or switch."

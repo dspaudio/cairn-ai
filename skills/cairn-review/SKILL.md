@@ -11,18 +11,18 @@ Use this after meaningful implementation with Cairn.
 
 Review is not another implementation loop. Confirm that the completed task satisfies the plan and that memory and plan artifacts are useful to the next agent.
 
-Every review run and every delegated review agent must read the project-root `MEMORY.md` before doing assigned work.
+Every review run and delegated review agent reads project-root `MEMORY.md` when present. If it is absent, continue without repository memory and do not invoke another memory service.
 
-At the start and after compaction, restart, delegation, or handoff, restore context in this order: root `MEMORY.md` → `cairn-review` → the active plan → completed/current-task references → model guidance recorded by the plan. Confirm those references agree with persisted goal state before reviewing. If any required reference is missing, unreadable, or inconsistent, do not approve, delegate, record final review, or complete the goal; report a blocker. Do not use a read-receipt field as evidence that a model understood a reference.
+At the start and after compaction, restart, delegation, or handoff, restore context in this order: optional root `MEMORY.md` → `cairn-review` → the active plan → completed/current-task references → model guidance recorded by the plan. Missing `MEMORY.md` is not an inconsistency. Confirm the remaining references agree with persisted goal state before reviewing. If any required reference is missing, unreadable, or inconsistent, do not approve, delegate, record final review, or complete the goal; report a blocker. Do not use a read-receipt field as evidence that a model understood a reference.
 
-When subagent tools are available, each agent may recursively delegate bounded review sub-tasks to subagents. Every child subagent must read the project-root `MEMORY.md`, keep the assigned scope, and preserve others' edits.
+When subagent tools are available, each agent may recursively delegate bounded review sub-tasks to subagents. Every child subagent reads project-root `MEMORY.md` when present and continues when absent, keeps the assigned scope, and preserves others' edits.
 
 Resolve any `cairn://...` resource through `references/cairn-runtime.json` next to this `SKILL.md` (or this skill's `../..` source root during development). Never look for Cairn runtime resources in the target repository.
 
 ## Procedure
 
 1. Read the completed task in `docs/plan/<topic>.md`.
-2. Read `MEMORY.md` and relevant `docs/memory/*.md`.
+2. Read `MEMORY.md` when present and relevant `docs/memory/*.md`; continue when repository memory is absent.
 3. Check changed files, tool readiness evidence, and evidence paths.
 4. Delegate independent review when it materially improves speed or quality and the current tool policy allows it.
    - Use `explorer` for read-only impact analysis, pattern checks, and independent diff inspection.

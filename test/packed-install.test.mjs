@@ -64,7 +64,7 @@ test("packed install remains self-contained after the npm package source is remo
     assert.equal(lifecycleInstall.status, 0, lifecycleInstall.stderr);
 
     const marketplaceSource = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn");
-    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.5");
+    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.6");
     const installedCli = join(installedRoot, "scripts", "cairn.mjs");
     await stat(join(marketplaceSource, ".codex-plugin", "plugin.json"));
     const installedManifest = JSON.parse(await readFile(join(installedRoot, ".codex-plugin", "plugin.json"), "utf8"));
@@ -74,7 +74,7 @@ test("packed install remains self-contained after the npm package source is remo
     assert.ok(installedPrompt.length <= 1600, `installed defaultPrompt is ${installedPrompt.length} characters; budget is 1600`);
     assert.match(installedPrompt, /MEMORY\.md.*phase skill.*active plan/is);
     assert.match(installedPrompt, /compaction, restart, handoff, or delegation/i);
-    assert.match(installedPrompt, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/is);
+    assert.match(installedPrompt, /missing MEMORY\.md never blocks work/i);
     assert.doesNotMatch(installedPrompt, /update_plan|create_goal|package lifecycle|--ignore-scripts/i);
     const installedPlanSkill = await readFile(join(installedRoot, "skills", "cairn-plan", "SKILL.md"), "utf8");
     const installedWorkSkill = await readFile(join(installedRoot, "skills", "cairn-work", "SKILL.md"), "utf8");
@@ -110,10 +110,10 @@ test("packed install remains self-contained after the npm package source is remo
     assert.equal(promptHook.status, 0, promptHook.stderr);
     const promptHookOutput = JSON.parse(promptHook.stdout);
     assert.equal(promptHookOutput.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /^Cairn kernel: read root MEMORY\.md first\./);
-    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /implementation\/continue.*load cairn-plan/i);
-    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /active plan.*current task/i);
-    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
+    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /^Cairn kernel: root MEMORY\.md is optional/);
+    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /non-trivial implementation.*load cairn-plan/i);
+    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /restore\/create its plan and task/i);
+    assert.match(promptHookOutput.hookSpecificOutput.additionalContext, /stop only if active state.*missing, unreadable, or inconsistent/i);
 
     const goal = run(process.execPath, [
       installedCli,
@@ -136,13 +136,13 @@ test("packed install remains self-contained after the npm package source is remo
     });
     assert.equal(activePromptHook.status, 0, activePromptHook.stderr);
     const activePromptOutput = JSON.parse(activePromptHook.stdout);
-    assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /^Cairn kernel: read root MEMORY\.md first\./);
+    assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /^Cairn kernel: root MEMORY\.md is optional/);
     assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /load cairn-work/i);
     assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /docs\/plan\/packed\.md/);
     assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /1\. packed-current \[active\] Packed task/);
     assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /2\. packed-next \[pending\] Verify packed roadmap/);
     assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /resume packed-current/);
-    assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /missing, unreadable, or inconsistent.*do not edit, delegate, or complete/i);
+    assert.match(activePromptOutput.hookSpecificOutput.additionalContext, /stop only if active state.*missing, unreadable, or inconsistent/i);
 
     const hook = run(process.execPath, [join(installedRoot, "scripts", "cairn-state.mjs"), "stop"], {
       cwd: unrelated,
@@ -160,7 +160,9 @@ test("packed install remains self-contained after the npm package source is remo
     assert.equal(report.root, project);
     assert.deepEqual(report.detected, []);
 
-    const state = JSON.parse(await readFile(join(project, ".cairn", "state.json"), "utf8"));
+    const status = run(process.execPath, [installedCli, "goal", "status", "--root", project], { cwd: unrelated, env });
+    assert.equal(status.status, 0, status.stderr);
+    const state = JSON.parse(status.stdout);
     assert.equal(state.goal.ownerSessionId, "packed-session");
   } finally {
     await rm(temp, { recursive: true, force: true });

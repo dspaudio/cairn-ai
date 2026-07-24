@@ -12,7 +12,7 @@ Models always inherit. Route reasoning effort per task: Light planning/implement
 
 Procedure:
 
-1. Every agent must read the project-root `MEMORY.md` for domain knowledge and repository policy before selecting or executing a task.
+1. Every agent reads project-root `MEMORY.md` when present and continues without repository memory when absent before selecting or executing a task.
 2. Read `PLAN.md`, the detailed plan, and relevant memory notes.
 3. Read the Codex or Claude model guidance recorded in the plan.
 4. Select one small module task.

@@ -115,7 +115,7 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
   try {
     assert.match(message("usage", "en-US"), /cairn install\|upgrade/);
     assert.match(message("memory", "ko-KR"), /cairn-memory/);
-    assert.match(message("plan", "en-US"), /Every agent.*project-root MEMORY\.md/);
+    assert.match(message("plan", "en-US"), /MEMORY\.md first when present.*continue without repository memory/i);
     assert.match(message("plan", "en-US"), /Light\/Heavy Path triage/);
     assert.match(message("plan", "en-US"), /request, planning, and code checkpoints/i);
     assert.match(message("plan", "en-US"), /plan artifact.*repository goal task roadmap.*UI plan/i);
@@ -125,7 +125,7 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(message("work", "en-US"), /unsupported.*effective.*inherited/i);
     assert.match(message("plan", "en-US"), /whole work.*tasks and sub-tasks/i);
     assert.match(message("plan", "ko-KR"), /전체 작업.*task.*sub-task/);
-    assert.match(message("work", "ko-KR"), /모든 에이전트.*MEMORY\.md/);
+    assert.match(message("work", "ko-KR"), /MEMORY\.md가 있으면 읽고 없으면 무시하고 진행/);
     assert.match(message("work", "ko-KR"), /Light\/Heavy Path/);
     assert.match(message("work", "en-US"), /resume active work after side questions/i);
     assert.match(message("work", "ko-KR"), /곁가지 질문.*active work/);
@@ -153,7 +153,7 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     await stat(join(temp, "MEMORY.md"));
     await stat(join(temp, "PLAN.md"));
     const plan = await readFile(join(temp, "PLAN.md"), "utf8");
-    assert.match(plan, /Every agent.*project-root `MEMORY\.md`/);
+    assert.match(plan, /Read project-root `MEMORY\.md` first when it exists.*continue without repository memory/);
     assert.match(plan, /Run complexity triage/);
     assert.match(plan, /checked Heavy Path signals/);
     assert.match(plan, /request, planning, and code checkpoints/i);
@@ -276,16 +276,16 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(config, /\[marketplaces\.cairn\]/);
     assert.match(config, /\[hooks\.state\."cairn@cairn:hooks\/hooks\.json:stop:0:0"\]/);
 
-    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.5", ".codex-plugin", "plugin.json");
+    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.6", ".codex-plugin", "plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(manifest.hooks, "./hooks/hooks.json");
     const kernel = manifest.interface.defaultPrompt.join("\n");
     assert.equal(manifest.interface.defaultPrompt.length, 7);
     assert.ok(kernel.length <= 1600, `installed default prompt is ${kernel.length} chars`);
-    assert.match(kernel, /every agent reads root MEMORY\.md/i);
+    assert.match(kernel, /read root MEMORY\.md first when it exists.*continue without repository memory/i);
     assert.match(kernel, /load the phase skill.*restore the active plan and current-task references/i);
     assert.match(kernel, /compaction, restart, handoff, or delegation.*MEMORY\.md → phase skill → active plan → current task references/i);
-    assert.match(kernel, /missing, unreadable, or inconsistent.*fail closed.*do not edit, delegate, or complete/i);
+    assert.match(kernel, /missing MEMORY\.md never blocks work.*fail closed only when active state/is);
     assert.match(kernel, /missing, failed, skipped, stale, or placeholder evidence never completes work/i);
     assert.match(kernel, /external-state changes.*dry-run\/check.*current task/i);
     assert.match(kernel, /side questions.*resume the current task.*pause, stop, or switch/i);

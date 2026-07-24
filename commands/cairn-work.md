@@ -12,7 +12,7 @@ Models always inherit. Route reasoning effort per task: Light planning/implement
 
 Procedure:
 
-1. Every agent must read the project-root `MEMORY.md` for domain knowledge and repository policy before selecting or executing a task.
+1. Every agent reads project-root `MEMORY.md` when present and continues without repository memory when absent before selecting or executing a task.
 2. Read `PLAN.md`, the detailed plan, and relevant memory notes.
 3. Resolve and read the `cairn://` Codex or Claude model guidance recorded in the plan through the installed runtime.
 4. Read Cairn goal status and select only its current task. If implementation was requested but no goal exists, create it from the decision-complete plan.

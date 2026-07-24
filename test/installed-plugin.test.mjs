@@ -73,7 +73,7 @@ test("installed mirrors resolve Cairn resources through runtime locators", async
   const env = isolatedEnvironment(temp);
   const project = join(temp, "target project");
   const unrelatedCwd = join(temp, "unrelated cwd");
-  const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.5");
+  const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.6");
   const claudeLocatorPath = join(env.CLAUDE_HOME, "cairn", "runtime.json");
 
   try {
@@ -138,7 +138,13 @@ test("installed mirrors resolve Cairn resources through runtime locators", async
       encoding: "utf8",
     });
     assert.equal(goal.status, 0, goal.stderr);
-    const goalState = await readJson(join(project, ".cairn", "state.json"));
+    const status = spawnSync(process.execPath, [installedCli, "goal", "status", "--root", project], {
+      cwd: unrelatedCwd,
+      env,
+      encoding: "utf8",
+    });
+    assert.equal(status.status, 0, status.stderr);
+    const goalState = JSON.parse(status.stdout);
     assert.equal(goalState.goal.title, "Installed runtime goal");
     assert.equal(goalState.goal.ownerSessionId, "installed-session");
 
