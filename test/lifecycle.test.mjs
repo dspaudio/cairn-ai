@@ -3,16 +3,15 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { message } from "../scripts/cairn.mjs";
 import {
   hookHash,
-  pathHasSegment,
   removeCairnConfig,
-  shouldCopyPluginPath,
   splitSections,
   updateConfig,
-} from "../scripts/cairn-lifecycle.mjs";
+} from "../scripts/cairn-lifecycle-config.mjs";
+import { pathHasSegment, shouldCopyPluginPath } from "../scripts/cairn-lifecycle.mjs";
 import { runState, runStateResult } from "../scripts/cairn-state.mjs";
 
 const root = resolve(".");
@@ -41,7 +40,11 @@ test("updateConfig replaces Cairn sections and preserves unrelated TOML", () => 
     "",
   ].join("\n");
 
-  const output = updateConfig(input, [{ key: "cairn@cairn:hooks/hooks.json:stop:0:0", trustedHash: "sha256:new" }]);
+  const output = updateConfig(
+    input,
+    [{ key: "cairn@cairn:hooks/hooks.json:stop:0:0", trustedHash: "sha256:new" }],
+    { marketplacePath: "/tmp/cairn-marketplace" },
+  );
 
   assert.match(output, /\[features\]\nplugins = false\nother = true/);
   assert.doesNotMatch(output, /plugin_hooks =/);
@@ -244,6 +247,52 @@ test("plugin copy filtering ignores excluded names outside the package root", ()
   assert.equal(shouldCopyPluginPath("/tmp/node_modules/cairn-ai/.git"), false);
 });
 
+test("doctor waits for a concurrent lifecycle transaction before observing installed state", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn-doctor-lock-"));
+  const env = {
+    ...process.env,
+    CODEX_HOME: join(temp, "codex"),
+    CLAUDE_HOME: join(temp, "claude"),
+    ANTIGRAVITY_HOME: join(temp, "agents"),
+    ANTIGRAVITY_CLI_HOME: join(temp, "antigravity-cli"),
+    HOME: join(temp, "home"),
+    CODEX_CONFIG_PATH: join(temp, "codex", "config.toml"),
+  };
+
+  try {
+    await mkdir(dirname(env.CODEX_CONFIG_PATH), { recursive: true });
+    await writeFile(env.CODEX_CONFIG_PATH, "[profiles.default]\nmodel = \"gpt-5\"\n");
+
+    const install = spawn(process.execPath, [lifecycleScript, "install"], {
+      cwd: root,
+      env: { ...env, CAIRN_TEST_HOLD_LOCK_STDIN: "1" },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const installExit = waitForExit(install);
+    await waitForOutput(install.stdout, "CAIRN_TEST_LOCK_ACQUIRED");
+
+    const doctor = spawn(process.execPath, [lifecycleScript, "doctor"], {
+      cwd: root,
+      env: { ...env, CAIRN_TEST_REPORT_LOCK_WAIT: "1" },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const doctorExit = waitForExit(doctor);
+    let doctorOutput = "";
+    doctor.stdout.on("data", (chunk) => { doctorOutput += chunk; });
+    doctor.stderr.on("data", (chunk) => { doctorOutput += chunk; });
+    await waitForOutput(doctor.stdout, "CAIRN_TEST_LOCK_WAIT");
+
+    install.stdin.end("release\n");
+    assert.equal(await installExit, 0);
+    await doctorExit;
+    assert.match(doctorOutput, /^OK ownership manifest$/m);
+    assert.match(doctorOutput, /^OK ownership digests$/m);
+    assert.match(doctorOutput, /^OK installed runtime locator$/m);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
 test("install doctor uninstall lifecycle uses isolated homes", async () => {
   const temp = await mkdtemp(join(tmpdir(), "cairn-lifecycle-"));
   const env = {
@@ -276,7 +325,7 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(config, /\[marketplaces\.cairn\]/);
     assert.match(config, /\[hooks\.state\."cairn@cairn:hooks\/hooks\.json:stop:0:0"\]/);
 
-    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.6", ".codex-plugin", "plugin.json");
+    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.7", ".codex-plugin", "plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(manifest.hooks, "./hooks/hooks.json");
     const kernel = manifest.interface.defaultPrompt.join("\n");
@@ -326,6 +375,38 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     await rm(temp, { recursive: true, force: true });
   }
 });
+
+function waitForOutput(stream, expected) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    let output = "";
+    const timeout = setTimeout(() => {
+      stream.off("data", onData);
+      rejectPromise(new Error(`Timed out waiting for ${expected}`));
+    }, 10_000);
+    const onData = (chunk) => {
+      output += chunk;
+      if (!output.includes(expected)) return;
+      clearTimeout(timeout);
+      stream.off("data", onData);
+      resolvePromise();
+    };
+    stream.on("data", onData);
+  });
+}
+
+function waitForExit(child) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const timeout = setTimeout(() => rejectPromise(new Error("Timed out waiting for lifecycle process")), 20_000);
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      rejectPromise(error);
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timeout);
+      resolvePromise(code);
+    });
+  });
+}
 
 function runLifecycle(command, env) {
   return spawnSync(process.execPath, [lifecycleScript, command], {

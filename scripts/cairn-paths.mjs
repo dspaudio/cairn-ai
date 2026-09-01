@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const RUNTIME_LOCATOR_SCHEMA_VERSION = 1;
@@ -133,12 +133,42 @@ export function createRuntimeLocator(pluginRoot) {
   };
 }
 
+const runtimeEntryRelativePaths = [
+  join("scripts", "cairn.mjs"),
+  join("scripts", "cairn-lifecycle.mjs"),
+  join("scripts", "cairn-state.mjs"),
+  join("scripts", "cairn-toolcheck.mjs"),
+  join("scripts", "cairn-goal.mjs"),
+  join("scripts", "cairn-cleanup.mjs"),
+];
+const localModuleSpecifier = /^(?:import|export)\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|[\w$]+)(?:\s*,\s*(?:\{[^}]*\}|\*\s+as\s+\w+))?\s+from\s+)?["'](\.[^"']+)["']/gm;
+
+export function runtimeRequiredRelativePaths(pluginRoot) {
+  const root = resolve(pluginRoot);
+  const pending = runtimeEntryRelativePaths.map((path) => join(root, path));
+  const closure = new Set();
+
+  while (pending.length > 0) {
+    const path = pending.pop();
+    if (closure.has(path)) continue;
+    closure.add(path);
+    const source = readFileSync(path, "utf8");
+    for (const match of source.matchAll(localModuleSpecifier)) pending.push(resolve(dirname(path), match[1]));
+  }
+
+  return [...closure].map((path) => relative(root, path)).sort();
+}
+
 export function runtimeRequiredPaths(locator) {
-  if (!locator || locator.schemaVersion !== RUNTIME_LOCATOR_SCHEMA_VERSION || locator.plugin !== "cairn") return [];
+  if (!locator || locator.schemaVersion !== RUNTIME_LOCATOR_SCHEMA_VERSION || locator.plugin !== "cairn"
+      || typeof locator.pluginRoot !== "string") return [];
+  const root = locator.pluginRoot;
   return [
-    locator.entrypoints?.cli,
-    locator.entrypoints?.state,
-    locator.entrypoints?.toolcheck,
+    join(root, "package.json"),
+    join(root, ".codex-plugin", "plugin.json"),
+    join(root, "hooks", "hooks.json"),
+    ...runtimeRequiredRelativePaths(root).map((path) => join(root, path)),
+    join(root, "scripts", "release-integrity-0.2.2.json"),
     locator.resources?.commands,
     locator.resources?.agents,
     locator.resources?.skills,

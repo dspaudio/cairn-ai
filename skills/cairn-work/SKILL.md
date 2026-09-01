@@ -29,7 +29,7 @@ When subagent tools are available, each agent may recursively delegate bounded s
 
 ## Runtime Location
 
-Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's scripts and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never search the target repository for Cairn runtime files or derive the plugin root from the current working directory. Resolve `cairn://...` plan resources through this runtime and pass the target repository separately with `--root <repoRoot>`.
+Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's scripts and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never search the target repository for Cairn runtime files or derive the plugin root from the current working directory. Resolve `cairn://...` plan resources through this runtime and pass the target repository separately with `--root <repoRoot>`. If the shared runtime or locator is missing, unreadable, or inconsistent, stop every dependent mirror and recover from the published/global package with `cairn doctor` followed by `cairn upgrade`; do not use another mirror as a repair source.
 
 Use the installed CLI for durable state. Important forms are:
 
@@ -46,7 +46,7 @@ node "<pluginRoot>/scripts/cairn.mjs" goal complete --quiet --root "<repoRoot>"
 
 `goal verify` executes the argv after `--` without a shell and records its exit code, bounded tool output, output digest, and watched-workspace fingerprint. The legacy `goal receipt` command imports declared evidence for compatibility; declared evidence does not satisfy a default tool-bound goal.
 
-Verification defaults to 600,000 ms (10 minutes), accepts a shorter `--timeout-ms`, and is capped at 3,600,000 ms (1 hour). The external command never holds the state lock. A receipt is committed only when the starting goal/task identity and the pre/post watched fingerprint still match. Choose the watch set and verification command at the semantic boundary that proves the claimed behavior.
+Verification defaults to 600,000 ms (10 minutes), accepts a shorter `--timeout-ms`, and is capped at 3,600,000 ms (1 hour). The external command never holds the state lock. A receipt is committed only when the starting goal/task identity and the pre/post watched fingerprint still match. Choose the watch set and verification command at the semantic boundary that proves the claimed behavior. With no explicit watch, Git-ignored files are excluded; pass each ignored artifact required by the claim with `--watch <path>` or explicitly watch its containing directory.
 
 Use `goal pause`, `goal block --reason "<concrete blocker>"`, or `goal cancel` when that is the truthful state. A task can be blocked with `goal task --task "<task-id>" --status blocked --reason "<concrete blocker>"`.
 
@@ -72,8 +72,8 @@ Any relevant mutation after a gate makes that result stale evidence. Rerun the a
 - Models always inherit the host/user default; never configure or override them.
 - Light Path planning, implementation, and verification request `medium`.
 - Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
-- Every module task records `Requested reasoning effort` and `Effective reasoning effort` in `docs/plan/<topic>.md`.
-- Pass requested effort only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Omit model overrides. For an unsupported host or value, record effective reasoning effort `inherited` with the reason and leave model/global config unchanged.
+- Every module task records `Requested reasoning effort` and `Effective reasoning effort` in `docs/plan/<topic>.md`. Requested is Cairn's desired profile; Effective is what the dispatch result confirms.
+- Pass requested effort only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Omit model overrides. Effective `inherited` means no task-level override was confirmed, not proof of missing host capability. Describe capability only from the exposed interface or dispatch response, distinguish Cairn non-integration from host non-support, and leave model/global config unchanged.
 - On every route change, synchronize the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Completed task profiles are preserved as audit history; incomplete task profiles are recalculated for the new path.
 
 ## Procedure

@@ -111,7 +111,7 @@ test("state lock retries transient errors during contended confirmation and stal
   });
 });
 
-test("a stale observer restores a newly acquired lock before its owner enters the critical section", async () => {
+test("a stale observer revalidates a newly acquired lock before its owner enters the critical section", async () => {
   await withTempRoot(async (root) => {
     await mkdir(join(root, ".cairn"));
     const lockPath = stateLockPath(root);
@@ -127,7 +127,7 @@ test("a stale observer restores a newly acquired lock before its owner enters th
     const letStaleObserverRename = deferred();
     const newLockWritten = deferred();
     const letNewOwnerConfirm = deferred();
-    const mismatchHandled = deferred();
+    const reclaimInterlocked = deferred();
     let blockedStaleObserver = false;
     let newOwnerNonce;
     const entrants = [];
@@ -144,8 +144,8 @@ test("a stale observer restores a newly acquired lock before its owner enters th
           staleObserved.resolve();
           await letStaleObserverRename.promise;
         },
-        afterReclaimMismatch() {
-          mismatchHandled.resolve();
+        afterReclaimInterlock() {
+          reclaimInterlocked.resolve();
         },
       },
     });
@@ -169,10 +169,78 @@ test("a stale observer restores a newly acquired lock before its owner enters th
 
     await newLockWritten.promise;
     letStaleObserverRename.resolve();
-    await mismatchHandled.promise;
+    await reclaimInterlocked.promise;
     letNewOwnerConfirm.resolve();
     await Promise.all([staleObserver, newOwner]);
     assert.deepEqual(entrants, ["new-owner", "stale-observer"]);
+  });
+});
+
+test("a stale observer never displaces a confirmed live owner", async () => {
+  await withTempRoot(async (root) => {
+    await mkdir(join(root, ".cairn"));
+    const lockPath = stateLockPath(root);
+    await writeFile(lockPath, JSON.stringify({
+      schemaVersion: 1,
+      hostname: hostname(),
+      nonce: "original-stale",
+      acquiredAt: new Date().toISOString(),
+      pid: 99999999,
+    }));
+
+    const staleObserved = deferred();
+    const letStaleObserverContinue = deferred();
+    const reclaimInterlocked = deferred();
+    const letReclaimerContinue = deferred();
+    const liveOwnerEntered = deferred();
+    const letLiveOwnerExit = deferred();
+    let staleObservationBlocked = false;
+
+    const staleObserver = withStateLock(root, async () => {}, {
+      timeoutMs: 1_000,
+      retryMs: 5,
+      testHooks: {
+        async afterStaleObserved() {
+          if (staleObservationBlocked) return;
+          staleObservationBlocked = true;
+          staleObserved.resolve();
+          await letStaleObserverContinue.promise;
+        },
+        async afterReclaimInterlock() {
+          reclaimInterlocked.resolve();
+          await letReclaimerContinue.promise;
+        },
+      },
+    });
+
+    await staleObserved.promise;
+    const liveOwner = withStateLock(root, async () => {
+      liveOwnerEntered.resolve();
+      await letLiveOwnerExit.promise;
+    }, { timeoutMs: 1_000, retryMs: 5 });
+    await liveOwnerEntered.promise;
+
+    letStaleObserverContinue.resolve();
+    await reclaimInterlocked.promise;
+    const contenderOutcome = deferred();
+    const contender = withStateLock(root, async () => {}, {
+      timeoutMs: 1_000,
+      retryMs: 5,
+      testHooks: {
+        afterLockWritten() {
+          contenderOutcome.resolve("wrote-lock");
+        },
+        beforeContendedLockConfirmation() {
+          contenderOutcome.resolve("contended");
+        },
+      },
+    });
+    const outcome = await contenderOutcome.promise;
+
+    letReclaimerContinue.resolve();
+    letLiveOwnerExit.resolve();
+    await Promise.all([staleObserver, liveOwner, contender]);
+    assert.equal(outcome, "contended", "a contender must still observe the confirmed live owner's lock");
   });
 });
 

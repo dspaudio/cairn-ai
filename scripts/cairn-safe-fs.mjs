@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
-import { link, lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 const LOCK_SCHEMA_VERSION = 1;
@@ -100,7 +100,7 @@ export async function withStateLock(root, operation, {
     try {
       await safeWriteFile(workspaceRoot, lockPath, `${JSON.stringify(owner)}\n`, { encoding: "utf8", flag: "wx" });
       await testHooks.afterLockWritten?.({ lockPath, owner: structuredClone(owner) });
-      if (await confirmsLockOwnership(lockPath, owner.nonce)) break;
+      if (await confirmsUnclaimedLockOwnership(workspaceRoot, lockPath, owner.nonce)) break;
     } catch (error) {
       if (isTransientLockError(error)) {
         // Windows can briefly deny a lock file that another process is closing.
@@ -108,8 +108,8 @@ export async function withStateLock(root, operation, {
       } else if (error?.code === "EEXIST") {
         try {
           await testHooks.beforeContendedLockConfirmation?.({ lockPath });
-          if (await confirmsLockOwnership(lockPath, owner.nonce)) break;
-          const reclaimed = await reclaimStaleLock(workspaceRoot, lockPath, malformedStaleMs, testHooks);
+          if (await confirmsUnclaimedLockOwnership(workspaceRoot, lockPath, owner.nonce)) break;
+          const reclaimed = await reclaimStaleLock(workspaceRoot, lockPath, owner, malformedStaleMs, testHooks);
           if (reclaimed) continue;
         } catch (inspectionError) {
           if (!isTransientLockError(inspectionError)) throw inspectionError;
@@ -129,7 +129,7 @@ export async function withStateLock(root, operation, {
   }
 }
 
-async function reclaimStaleLock(root, lockPath, malformedStaleMs, testHooks) {
+async function reclaimStaleLock(root, lockPath, owner, malformedStaleMs, testHooks) {
   let observed;
   let stat;
   try {
@@ -140,50 +140,76 @@ async function reclaimStaleLock(root, lockPath, malformedStaleMs, testHooks) {
   }
   if (stat.isSymbolicLink()) throw symlinkError(lockPath);
   const record = parseLockRecord(observed);
-  if (record) {
-    if (record.hostname !== hostname()) return false;
-    if (pidIsAlive(record.pid)) return false;
-  } else if (Date.now() - stat.mtimeMs <= malformedStaleMs) {
-    return false;
-  }
+  if (!isReclaimableLock(record, stat, malformedStaleMs)) return false;
 
   await testHooks.afterStaleObserved?.({ lockPath, observed, record: record ? structuredClone(record) : null });
-  const quarantine = safePath(root, `.cairn/state.lock.stale.${record?.nonce ?? "malformed"}.${randomUUID()}`);
+  const claimPath = safePath(root, `.cairn/state.lock.reclaim.${owner.nonce}`);
+  await safeWriteFile(root, claimPath, `${JSON.stringify(owner)}\n`, { encoding: "utf8", flag: "wx" });
   try {
-    await rename(lockPath, quarantine);
-  } catch (error) {
-    if (error?.code === "ENOENT") return true;
-    throw error;
-  }
-  const moved = await readFile(quarantine, "utf8");
-  if (moved !== observed) {
-    const restored = await restoreMovedCandidate(lockPath, quarantine);
-    await testHooks.afterReclaimMismatch?.({ lockPath, restored });
-    return false;
-  }
-  await rm(quarantine, { force: true });
-  return true;
-}
+    await testHooks.afterReclaimInterlock?.({ lockPath });
+    let claimed;
+    let claimedStat;
+    try {
+      [claimed, claimedStat] = await Promise.all([readFile(lockPath, "utf8"), lstat(lockPath)]);
+    } catch (error) {
+      if (error?.code === "ENOENT") return true;
+      throw error;
+    }
+    if (claimedStat.isSymbolicLink()) throw symlinkError(lockPath);
+    const claimedRecord = parseLockRecord(claimed);
+    if (!isReclaimableLock(claimedRecord, claimedStat, malformedStaleMs)) return false;
 
-async function restoreMovedCandidate(lockPath, quarantine) {
-  try {
-    await link(quarantine, lockPath);
-    await rm(quarantine);
-    return true;
-  } catch (error) {
-    if (error?.code !== "EEXIST") throw error;
+    const quarantine = safePath(root, `.cairn/state.lock.stale.${claimedRecord?.nonce ?? "malformed"}.${randomUUID()}`);
+    try {
+      await rename(lockPath, quarantine);
+    } catch (error) {
+      if (error?.code === "ENOENT") return true;
+      throw error;
+    }
+    const movedStat = await lstat(quarantine);
     await rm(quarantine, { force: true });
-    return false;
+    return movedStat.dev === claimedStat.dev && movedStat.ino === claimedStat.ino;
+  } finally {
+    await releaseOwnedLock(claimPath, owner.nonce);
   }
 }
 
-async function confirmsLockOwnership(lockPath, nonce) {
+function isReclaimableLock(record, stat, malformedStaleMs) {
+  if (record) return record.hostname === hostname() && !pidIsAlive(record.pid);
+  return Date.now() - stat.mtimeMs > malformedStaleMs;
+}
+
+async function confirmsUnclaimedLockOwnership(root, lockPath, nonce) {
+  if (await activeReclaimClaimExists(root)) return false;
   try {
     return parseLockRecord(await readFile(lockPath, "utf8"))?.nonce === nonce;
   } catch (error) {
     if (error?.code === "ENOENT") return false;
     throw error;
   }
+}
+
+async function activeReclaimClaimExists(root) {
+  const claimNames = (await readdir(safePath(root, ".cairn")))
+    .filter((name) => name.startsWith("state.lock.reclaim."));
+  for (const name of claimNames) {
+    const claimPath = safePath(root, `.cairn/${name}`);
+    let stat;
+    let record;
+    try {
+      [stat, record] = await Promise.all([lstat(claimPath), readFile(claimPath, "utf8").then(parseLockRecord)]);
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      throw error;
+    }
+    if (stat.isSymbolicLink()) throw symlinkError(claimPath);
+    if (record?.hostname === hostname() && !pidIsAlive(record.pid)) {
+      await releaseOwnedLock(claimPath, record.nonce);
+      continue;
+    }
+    return true;
+  }
+  return false;
 }
 
 async function releaseOwnedLock(lockPath, nonce) {

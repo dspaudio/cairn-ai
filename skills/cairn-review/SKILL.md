@@ -17,7 +17,7 @@ At the start and after compaction, restart, delegation, or handoff, restore cont
 
 When subagent tools are available, each agent may recursively delegate bounded review sub-tasks to subagents. Every child subagent reads project-root `MEMORY.md` when present and continues when absent, keeps the assigned scope, and preserves others' edits.
 
-Resolve any `cairn://...` resource through `references/cairn-runtime.json` next to this `SKILL.md` (or this skill's `../..` source root during development). Never look for Cairn runtime resources in the target repository.
+Resolve any `cairn://...` resource through `references/cairn-runtime.json` next to this `SKILL.md` (or this skill's `../..` source root during development). Never look for Cairn runtime resources in the target repository. If the shared runtime or locator is missing, unreadable, or inconsistent, stop every dependent mirror and recover from the published/global package with `cairn doctor` followed by `cairn upgrade`; do not use another mirror as a repair source.
 
 ## Procedure
 

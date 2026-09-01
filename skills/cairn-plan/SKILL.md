@@ -23,7 +23,7 @@ At the start and after compaction, restart, or handoff, restore context in this 
 
 ## Runtime Location
 
-Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's `scripts/`, `templates/`, commands, agents, and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never search the target repository for Cairn scripts, templates, or model guidance, and never derive the plugin root from the current working directory.
+Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's `scripts/`, `templates/`, commands, agents, and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never search the target repository for Cairn scripts, templates, or model guidance, and never derive the plugin root from the current working directory. If the shared runtime or locator is missing, unreadable, or inconsistent, stop every dependent mirror and recover from the published/global package with `cairn doctor` followed by `cairn upgrade`; do not use another mirror as a repair source.
 
 Use logical resource IDs such as `cairn://templates/work-plan.md` and `cairn://docs/model-guidance/codex.md` in repository plans. Resolve those IDs through `pluginRoot` only while executing. Keep `repoRoot` separate and pass it explicitly as `--root <repoRoot>`.
 
@@ -72,8 +72,8 @@ Use the current Codex hook `session_id` when it is available. If the surface doe
 - Models always inherit the host/user default; never configure or override them.
 - Light Path planning, implementation, and verification request `medium`.
 - Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
-- Every module task records `Requested reasoning effort` and `Effective reasoning effort` in `docs/plan/<topic>.md`.
-- Pass requested effort only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Omit model overrides. For an unsupported host or value, record effective reasoning effort `inherited` with the reason and leave model/global config unchanged.
+- Every module task records `Requested reasoning effort` and `Effective reasoning effort` in `docs/plan/<topic>.md`. Requested is Cairn's desired profile; Effective is what the dispatch result confirms.
+- Pass requested effort only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Omit model overrides. Effective `inherited` means no task-level override was confirmed, not proof of missing host capability. Describe capability only from the exposed interface or dispatch response, distinguish Cairn non-integration from host non-support, and leave model/global config unchanged.
 - On every route change, synchronize the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before mutation. Completed task profiles are preserved as audit history; incomplete task profiles are recalculated for the new path.
 
 ## Complexity Triage
