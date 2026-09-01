@@ -66,7 +66,7 @@ test("host mirror inventory semantically covers two agents and four skills", asy
 });
 
 test("CI is least-privilege, bounded, SHA-pinned, and packs without rerunning prepack", async () => {
-  const ci = await read(".github/workflows/ci.yml");
+  const ci = (await read(".github/workflows/ci.yml")).replace(/\r\n/g, "\n");
   assert.match(ci, /^permissions:\n\s+contents:\s*read$/m);
   assert.match(ci, /^\s+timeout-minutes:\s*\d+$/m);
   assert.match(ci, /actions\/checkout@[0-9a-f]{40}\s+# v4/);
