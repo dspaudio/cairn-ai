@@ -5,6 +5,7 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, write
 import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createRuntimeLocator } from "../scripts/cairn-paths.mjs";
+import { createLifecycleLock } from "../scripts/cairn-lifecycle-lock.mjs";
 import {
   DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS,
   parseCodexFeatureList,
@@ -113,6 +114,72 @@ test("lifecycle lock recovers a dead owner and rejects a live owner or nonce rep
     const raced = run("upgrade", { ...env, CAIRN_TEST_REPLACE_LOCK_AFTER_ACQUIRE: "1" });
     assert.equal(raced.status, 1);
     assert.match(raced.stderr, /ownership changed after acquisition/);
+  });
+});
+
+test("a stale lifecycle observer never displaces a confirmed live lifecycle owner", { timeout: 5_000 }, async () => {
+  await withHome(async ({ paths }) => {
+    // Given
+    const lockPath = join(paths.marketplace, ".cairn", "lifecycle.lock");
+    await mkdir(dirname(lockPath), { recursive: true });
+    await writeFile(lockPath, `${JSON.stringify({
+      schemaVersion: 1,
+      pid: 99999999,
+      hostname: hostname(),
+      nonce: "original-stale",
+      acquiredAt: new Date().toISOString(),
+    })}\n`);
+    const staleObserved = deferred();
+    const letStaleObserverContinue = deferred();
+    const reclaimInterlocked = deferred();
+    const letReclaimerContinue = deferred();
+    const liveOwnerEntered = deferred();
+    const letLiveOwnerExit = deferred();
+    let staleObservationBlocked = false;
+
+    // When
+    const staleObserver = createLifecycleLock({ lifecycleLockPath: lockPath }).withLifecycleLock(async () => {}, {
+      timeoutMs: 1_000,
+      retryMs: 5,
+      testHooks: {
+        async afterStaleObserved() {
+          if (staleObservationBlocked) return;
+          staleObservationBlocked = true;
+          staleObserved.resolve();
+          await letStaleObserverContinue.promise;
+        },
+        async afterReclaimInterlock() {
+          reclaimInterlocked.resolve();
+          await letReclaimerContinue.promise;
+        },
+      },
+    });
+    await staleObserved.promise;
+    const liveOwner = createLifecycleLock({ lifecycleLockPath: lockPath }).withLifecycleLock(async () => {
+      liveOwnerEntered.resolve();
+      await letLiveOwnerExit.promise;
+    }, { timeoutMs: 1_000, retryMs: 5 });
+    await liveOwnerEntered.promise;
+    letStaleObserverContinue.resolve();
+    await reclaimInterlocked.promise;
+
+    const contenderOutcome = deferred();
+    const contender = createLifecycleLock({ lifecycleLockPath: lockPath }).withLifecycleLock(async () => {}, {
+      timeoutMs: 1_000,
+      retryMs: 5,
+      testHooks: {
+        afterLockWritten() { contenderOutcome.resolve("wrote-lock"); },
+        beforeContendedLockConfirmation() { contenderOutcome.resolve("contended"); },
+      },
+    });
+    const outcome = await contenderOutcome.promise;
+    letReclaimerContinue.resolve();
+    letLiveOwnerExit.resolve();
+    const results = await Promise.allSettled([staleObserver, liveOwner, contender]);
+
+    // Then
+    assert.equal(outcome, "contended", "a contender must still observe the confirmed live lifecycle owner's lock");
+    assert.deepEqual(results.map((result) => result.status), ["fulfilled", "fulfilled", "fulfilled"]);
   });
 });
 
@@ -761,6 +828,12 @@ async function withHome(fn) {
     ownership: join(marketplace, ".cairn", "lifecycle.json"),
   };
   try { await fn({ temp, env, paths }); } finally { await rm(temp, { recursive: true, force: true }); }
+}
+
+function deferred() {
+  let resolvePromise;
+  const promise = new Promise((resolve) => { resolvePromise = resolve; });
+  return { promise, resolve: resolvePromise };
 }
 
 function run(command, env) {
