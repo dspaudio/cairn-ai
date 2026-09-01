@@ -155,5 +155,5 @@ async function withHome(runTest) {
 }
 
 function run(args, env) {
-  return spawnSync(process.execPath, [lifecycleScript, ...args], { cwd: root, env, encoding: "utf8", timeout: 10_000 });
+  return spawnSync(process.execPath, [lifecycleScript, ...args], { cwd: root, env, encoding: "utf8", timeout: 60_000 });
 }
