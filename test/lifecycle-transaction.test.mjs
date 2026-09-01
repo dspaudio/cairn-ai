@@ -5,6 +5,7 @@ import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, write
 import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createRuntimeLocator } from "../scripts/cairn-paths.mjs";
+import { createLifecycleLock } from "../scripts/cairn-lifecycle-lock.mjs";
 import {
   DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS,
   parseCodexFeatureList,
@@ -54,7 +55,7 @@ test("install creates custom source, versioned runtime, ownership, and current A
     assert.equal(result.status, 0, result.stderr);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
     assert.equal(ownership.schemaVersion, 1);
-    assert.equal(ownership.version, "0.2.6");
+    assert.equal(ownership.version, "0.2.7");
     assert.ok(ownership.targets.length > 20);
     await stat(paths.source);
     await stat(paths.versioned);
@@ -113,6 +114,72 @@ test("lifecycle lock recovers a dead owner and rejects a live owner or nonce rep
     const raced = run("upgrade", { ...env, CAIRN_TEST_REPLACE_LOCK_AFTER_ACQUIRE: "1" });
     assert.equal(raced.status, 1);
     assert.match(raced.stderr, /ownership changed after acquisition/);
+  });
+});
+
+test("a stale lifecycle observer never displaces a confirmed live lifecycle owner", { timeout: 5_000 }, async () => {
+  await withHome(async ({ paths }) => {
+    // Given
+    const lockPath = join(paths.marketplace, ".cairn", "lifecycle.lock");
+    await mkdir(dirname(lockPath), { recursive: true });
+    await writeFile(lockPath, `${JSON.stringify({
+      schemaVersion: 1,
+      pid: 99999999,
+      hostname: hostname(),
+      nonce: "original-stale",
+      acquiredAt: new Date().toISOString(),
+    })}\n`);
+    const staleObserved = deferred();
+    const letStaleObserverContinue = deferred();
+    const reclaimInterlocked = deferred();
+    const letReclaimerContinue = deferred();
+    const liveOwnerEntered = deferred();
+    const letLiveOwnerExit = deferred();
+    let staleObservationBlocked = false;
+
+    // When
+    const staleObserver = createLifecycleLock({ lifecycleLockPath: lockPath }).withLifecycleLock(async () => {}, {
+      timeoutMs: 1_000,
+      retryMs: 5,
+      testHooks: {
+        async afterStaleObserved() {
+          if (staleObservationBlocked) return;
+          staleObservationBlocked = true;
+          staleObserved.resolve();
+          await letStaleObserverContinue.promise;
+        },
+        async afterReclaimInterlock() {
+          reclaimInterlocked.resolve();
+          await letReclaimerContinue.promise;
+        },
+      },
+    });
+    await staleObserved.promise;
+    const liveOwner = createLifecycleLock({ lifecycleLockPath: lockPath }).withLifecycleLock(async () => {
+      liveOwnerEntered.resolve();
+      await letLiveOwnerExit.promise;
+    }, { timeoutMs: 1_000, retryMs: 5 });
+    await liveOwnerEntered.promise;
+    letStaleObserverContinue.resolve();
+    await reclaimInterlocked.promise;
+
+    const contenderOutcome = deferred();
+    const contender = createLifecycleLock({ lifecycleLockPath: lockPath }).withLifecycleLock(async () => {}, {
+      timeoutMs: 1_000,
+      retryMs: 5,
+      testHooks: {
+        afterLockWritten() { contenderOutcome.resolve("wrote-lock"); },
+        beforeContendedLockConfirmation() { contenderOutcome.resolve("contended"); },
+      },
+    });
+    const outcome = await contenderOutcome.promise;
+    letReclaimerContinue.resolve();
+    letLiveOwnerExit.resolve();
+    const results = await Promise.allSettled([staleObserver, liveOwner, contender]);
+
+    // Then
+    assert.equal(outcome, "contended", "a contender must still observe the confirmed live lifecycle owner's lock");
+    assert.deepEqual(results.map((result) => result.status), ["fulfilled", "fulfilled", "fulfilled"]);
   });
 });
 
@@ -299,11 +366,11 @@ test("an owned 0.2.4 installation upgrades with mutable shared config changes", 
     assert.match(upgraded, /enabled = true/);
     assert.match(upgraded, /# added after 0\.2\.4 install\n\[profiles\.user\]\nmodel = "custom"/);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.2.6");
+    assert.equal(ownership.version, "0.2.7");
   });
 });
 
-test("an owned 0.2.2 installation upgrades to 0.2.6 and removes only the previous runtime", async () => {
+test("an owned 0.2.2 installation upgrades to 0.2.7 and removes only the previous runtime", async () => {
   await withHome(async ({ env, paths }) => {
     assert.equal(run("install", env).status, 0);
     const oldRuntime = await rewriteOwnedVersion(paths, "0.2.2");
@@ -312,7 +379,7 @@ test("an owned 0.2.2 installation upgrades to 0.2.6 and removes only the previou
     await assert.rejects(stat(oldRuntime));
     await stat(paths.versioned);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.2.6");
+    assert.equal(ownership.version, "0.2.7");
     assert.equal(ownership.targets.find((record) => record.id === "codex-runtime").path, paths.versioned);
     assert.equal(ownership.targets.some((record) => record.id === "previous-codex-runtime"), false);
   });
@@ -484,7 +551,7 @@ test("an exact legacy 0.2.2 tree is adopted once and upgraded transactionally", 
     const result = run("upgrade", env);
     assert.equal(result.status, 0, result.stderr);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.2.6");
+    assert.equal(ownership.version, "0.2.7");
     assert.ok(ownership.targets.some((target) => target.id === "codex-source"));
     await stat(paths.versioned);
   });
@@ -631,7 +698,7 @@ test("Codex A/B gate proves the versioned custom cache is required", async (cont
     const installed = withVersion.installed.find((entry) => entry.pluginId === "cairn@cairn");
     assert.equal(installed?.installed, true);
     assert.equal(installed?.enabled, true);
-    assert.equal(installed?.version, "0.2.6");
+    assert.equal(installed?.version, "0.2.7");
   });
 });
 
@@ -757,10 +824,16 @@ async function withHome(fn) {
   const paths = {
     marketplace,
     source: join(marketplace, "plugins", "cairn"),
-    versioned: join(marketplace, "cairn", "0.2.6"),
+    versioned: join(marketplace, "cairn", "0.2.7"),
     ownership: join(marketplace, ".cairn", "lifecycle.json"),
   };
   try { await fn({ temp, env, paths }); } finally { await rm(temp, { recursive: true, force: true }); }
+}
+
+function deferred() {
+  let resolvePromise;
+  const promise = new Promise((resolve) => { resolvePromise = resolve; });
+  return { promise, resolve: resolvePromise };
 }
 
 function run(command, env) {

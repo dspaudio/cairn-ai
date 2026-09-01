@@ -65,7 +65,7 @@ harness 会在目标 repository root 创建并维护这些文件。
 
 - `MEMORY.md`: persistent domain knowledge 的短索引。
 - `docs/memory/*.md`: 按 domain 记录的详细 knowledge。
-- `.cairn/state.json`: 用于中断恢复和 scoped stop gate 的 git-ignored goal/task/evidence-record 状态。
+- `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/state.json`: user-home 中按 project/worktree 隔离的 active goal/task/evidence 状态，用于中断恢复和 scoped stop gate。project working tree 不拥有 runtime state。
 - `PLAN.md`: active 和 completed work topics 的短索引。
 - `docs/plan/*.md`: detailed execution plans。
 
@@ -101,6 +101,7 @@ cairn toolcheck
 - `cairn doctor`: 只读验证 ownership digests、effective Codex features、真实 plugin status 和 runtime locators。
 - `cairn uninstall`: 只删除未修改的 managed entry；modified 或 unmanaged target 会 preserve 并报告 conflict。
 - `cairn toolcheck`: 检测 repository stacks 和 required tools；只执行已批准的 supported installer，否则返回 `installer-unavailable`。
+- `cairn cleanup --root <repo>`: 默认只读报告 legacy project-local `.cairn` residue。`--yes` 将 valid active state 迁移/协调到 user-home store，只删除 known state/lock/tool residue，保留 unknown files，并且仅在目录为空时清理目录。
 - `cairn-memory`: 探索 domain knowledge 并更新 `MEMORY.md`。
 - `cairn-plan`: 在 `docs/plan/` 下创建 decision-complete plan。
 - `cairn-work`: 执行当前 `PLAN.md` 中的下一个 module task，并收集两个 verification gates。
@@ -108,7 +109,7 @@ cairn toolcheck
 
 custom marketplace lifecycle 将 source 与 versioned runtime 分离。每次 commit 前执行 staged validation，ownership manifest 绑定全部 managed digests，失败时执行 reverse-order rollback。modified 或 unmanaged artifacts 会 preserve 并报告 conflict。Cairn 只修改自身 TOML sections，不强制 public feature/agent settings。
 
-Clean uninstall 仅在所有 managed scaffold directory 均为空时删除 Cairn marketplace cache root，并保留任何 unmanaged content。它不会自动删除 source repository 及其 state、全局 `cairn-ai` package、package-manager cache，或当前 ownership manifest 之外的 legacy backup/settings。
+Clean uninstall 仅在所有 managed scaffold directory 均为空时删除 Cairn marketplace cache root，并保留任何 unmanaged content。它不会自动删除 source repository、repository `MEMORY.md`/`PLAN.md`、user-home Cairn goal state、全局 `cairn-ai` package、package-manager cache，或当前 ownership manifest 之外的 legacy backup/settings。
 
 Codex 使用 `skills/` 和 `commands/`。Claude Code 使用 `.claude/` 下的 mirrored commands 和 agent definitions。Antigravity 使用 `.agents/workflows` 和 global skills mirrors。
 

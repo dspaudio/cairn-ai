@@ -17,7 +17,7 @@ When subagent tools are available, each agent may recursively delegate bounded s
 
 ## Runtime Location
 
-Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's `scripts/`, `templates/`, commands, agents, and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never look for Cairn runtime files in the target repository or derive the plugin root from the current working directory.
+Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md`. Its `pluginRoot` contains Cairn's `scripts/`, `templates/`, commands, agents, and model guidance. In a source checkout where the locator does not exist, resolve the plugin root from this `SKILL.md` location (`../..`). Never look for Cairn runtime files in the target repository or derive the plugin root from the current working directory. If the shared runtime or locator is missing, unreadable, or inconsistent, stop every dependent mirror and recover from the published/global package with `cairn doctor` followed by `cairn upgrade`; do not use another mirror as a repair source.
 
 Keep the target repository root separate. Pass it explicitly with `--root <repoRoot>` when invoking the installed runtime. Repository artifacts include `MEMORY.md`, `PLAN.md`, `docs/memory/`, and `docs/plan/`; runtime goal state lives only under the user-home Cairn directory.
 

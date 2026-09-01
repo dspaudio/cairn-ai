@@ -18,5 +18,6 @@ Actions:
 - Install `cairn-*` commands and agents mirror files for Claude Code.
 - Install `cairn-*` skills and workflows mirror files for Antigravity IDE/CLI.
 - Write runtime locators so all mirrors resolve scripts, templates, and model guidance from the installed plugin root.
-- Record every managed destination and digest in the ownership manifest under the custom marketplace, and rollback committed phases in reverse order on failure.
+- Record every current managed destination and digest in the ownership manifest under the custom marketplace, and rollback committed phases in reverse order on failure.
+- Use the separate pinned SHA-256 release 0.2.2 file-hash allowlist only to validate that exact legacy file set; it is not the current package file list or a cryptographic signature.
 - Adopt an exact, unmodified supported legacy install only after release-integrity validation; preserve and reject modified or unknown artifacts.

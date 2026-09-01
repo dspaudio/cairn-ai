@@ -65,7 +65,7 @@ Das harness erstellt und pflegt diese files im Ziel-repository root.
 
 - `MEMORY.md`: kurzer Index persistent domain knowledge.
 - `docs/memory/*.md`: detailliertes Wissen je domain.
-- `.cairn/state.json`: git-ignorierter Goal-, Task- und Evidence-Record-Status für Wiederaufnahme und scoped stop gates.
+- `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/state.json`: user-home Active-Goal/Task/Evidence-State, getrennt nach Projekt und Worktree, für Wiederaufnahme und scoped stop gates. Der Working Tree besitzt keinen Runtime-State.
 - `PLAN.md`: kurzer Index aktiver und abgeschlossener work topics.
 - `docs/plan/*.md`: detailed execution plans.
 
@@ -101,6 +101,7 @@ cairn toolcheck
 - `cairn doctor`: prüft ownership digests, effektive Codex features, den tatsächlichen plugin status und runtime locators ohne Reparatur.
 - `cairn uninstall`: entfernt nur unveränderte verwaltete Einträge; modified oder unmanaged Ziele bleiben als conflict erhalten.
 - `cairn toolcheck`: erkennt repository stacks und prüft required tools; Installation läuft nur für einen genehmigten unterstützten installer, sonst gilt `installer-unavailable`.
+- `cairn cleanup --root <repo>`: meldet standardmäßig read-only legacy projektlokale `.cairn`-Reste. `--yes` migriert/gleicht gültigen active state mit dem user-home store ab, entfernt nur bekannte state/lock/tool-Reste, bewahrt unbekannte Dateien und entfernt das Verzeichnis nur, wenn es leer ist.
 - `cairn-memory`: erkundet domain knowledge und aktualisiert `MEMORY.md`.
 - `cairn-plan`: erstellt einen decision-complete plan unter `docs/plan/`.
 - `cairn-work`: führt den nächsten module task im aktuellen `PLAN.md` mit zwei verification gates aus.
@@ -108,7 +109,7 @@ cairn toolcheck
 
 Der custom marketplace lifecycle hält source und versioned runtime getrennt. Staged validation geht jedem commit voraus, das ownership manifest bindet alle managed digests, und ein Fehler führt zu reverse-order rollback. Modified oder unmanaged artifacts werden preserved und als conflict gemeldet. Cairn ändert nur eigene TOML sections und erzwingt keine öffentlichen feature/agent settings.
 
-Clean uninstall entfernt den Cairn marketplace cache root nur, wenn alle managed scaffold directories leer sind; unmanaged Inhalte bleiben erhalten. Source repository und repository state, das globale `cairn-ai` package, package-manager caches sowie legacy backups/settings außerhalb des aktuellen ownership manifest werden nicht automatisch gelöscht.
+Clean uninstall entfernt den Cairn marketplace cache root nur, wenn alle managed scaffold directories leer sind; unmanaged Inhalte bleiben erhalten. Source repository, repository `MEMORY.md`/`PLAN.md` und user-home Cairn goal state, das globale `cairn-ai` package, package-manager caches sowie legacy backups/settings außerhalb des aktuellen ownership manifest werden nicht automatisch gelöscht.
 
 Codex verwendet `skills/` und `commands/`. Claude Code verwendet gespiegelte commands und agent definitions unter `.claude/`. Antigravity verwendet `.agents/workflows` und globale skills mirrors.
 

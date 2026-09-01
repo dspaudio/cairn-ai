@@ -28,7 +28,7 @@ Cairn은 실행 정책에서는 LazyCodex와 다릅니다. LazyCodex의 role-cha
 
 선택된 path와 근거는 계획 산출물이 있을 때 `docs/plan/<topic>.md`에 기록합니다. Light Path에서도 두 검증 게이트는 유지됩니다. subagent 도구가 없으면 main agent가 implementation을 직접 인계하고, 그 takeover를 evidence에 기록합니다.
 
-Cairn은 host/user model을 상속하고 reasoning effort만 라우팅합니다. Light 계획·구현·검증은 `medium`, Heavy 계획·검토·구현은 `high`, 최종 검증·검토는 `xhigh`를 요청합니다. 각 task는 requested/effective effort를 기록하며, 새로 dispatch하는 task/worker에만 host가 지원하는 effort option을 전달합니다. 미지원 host/value는 model/global config를 바꾸지 않고 `effective: inherited`로 남깁니다. path가 바뀌면 plan artifact, 저장소 goal task roadmap, native UI plan, effort profile을 함께 동기화하고 완료 profile은 보존하며 미완료 profile은 재계산합니다.
+Cairn은 host/user model을 상속하고 reasoning effort만 라우팅합니다. Light 계획·구현·검증은 `medium`, Heavy 계획·검토·구현은 `high`, 최종 검증·검토는 `xhigh`를 요청합니다. Requested는 Cairn이 원하는 profile이고 Effective는 dispatch 결과가 확인한 적용값입니다. `effective: inherited`는 task별 override가 확인되지 않았다는 뜻이지 host capability 부재의 증거가 아닙니다. Host capability는 노출된 interface 또는 dispatch 응답으로만 판단하고, Cairn이 option을 통합/사용하지 않기로 한 선택과 host 미지원은 구분합니다. path가 바뀌면 plan artifact, 저장소 goal task roadmap, native UI plan, effort profile을 함께 동기화하고 완료 profile은 보존하며 미완료 profile은 재계산합니다.
 
 subagent 도구가 progress-reporting channel을 제공하면 subagent는 작업 시작, 방향 결정/확인, 주기적 진행, 완료 시점에 orchestrator에게 상태를 보고합니다. orchestrator는 받은 status event를 즉시 사용자에게 전달합니다. mid-run reporting channel이 없으면 orchestrator는 할당, 대기, 최종 완료처럼 관측 가능한 event를 사용자에게 전달합니다.
 
@@ -75,9 +75,9 @@ Cairn은 Claude-family와 Codex-family 모델에만 모델별 조정을 적용�
 - `docs/memory/*.md`: 도메인별 상세 지식.
 - `PLAN.md`: 활성/완료 작업 주제의 짧은 색인.
 - `docs/plan/*.md`: 상세 실행 계획.
-- `.cairn/state.json`: 중단 재개와 범위가 제한된 종료 게이트에 쓰는 git-ignored 버전드 goal/task/증거 기록 상태.
+- `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/state.json`: 중단 재개와 범위가 제한된 종료 게이트에 쓰는 사용자 홈의 프로젝트/워크트리별 활성 goal/task/증거 상태입니다. 프로젝트 작업 트리는 런타임 상태를 소유하지 않습니다.
 
-런타임 script, template, command, agent, model guidance는 설치된 플러그인 루트에 유지합니다. 각 표면의 locator가 같은 설치본을 가리키므로 대상 저장소에 Cairn 내부 파일을 복사하지 않습니다.
+런타임 script, template, command, agent, model guidance는 설치된 플러그인 루트에 유지합니다. 각 표면의 locator가 같은 설치본을 가리키므로 대상 저장소에 Cairn 내부 파일을 복사하지 않습니다. 공유 런타임 또는 locator가 없거나 읽을 수 없거나 불일치하면 이를 가리키는 모든 mirror 사용을 중단하고 게시 패키지에서 `bunx cairn-ai@latest doctor` 후 `bunx cairn-ai@latest upgrade`를 실행해 복구합니다. 다른 host mirror나 대상 저장소를 복구 원본으로 사용하지 않습니다.
 
 ## Commands
 
@@ -107,6 +107,7 @@ cairn toolcheck
 - `cairn doctor`: ownership manifest, managed digest, 유효 Codex feature, 실제 plugin installed/enabled/version, mirror/runtime locator를 수정 없이 진단합니다.
 - `cairn uninstall`: 수정되지 않은 ownership manifest 항목만 제거·복원한 뒤 빈 managed cache scaffold를 정리합니다. modified/unmanaged target과 그 상위 디렉터리는 보존하고 commit 전 실패는 rollback합니다.
 - `cairn toolcheck`: 저장소 스택과 필요한 LSP·검증 도구를 확인하며, 승인된 지원 installer만 실행합니다.
+- `cairn cleanup --root <repo>`: 기본값은 legacy 프로젝트 로컬 `.cairn` 잔여물을 읽기 전용으로 보고합니다. `--yes`는 유효한 활성 상태를 사용자 홈 저장소로 조정·이관하고 알려진 상태/lock/tool 잔여물만 제거하며, 알 수 없는 파일은 보존하고 비었을 때만 디렉터리를 정리합니다.
 - `cairn goal ...`: 저장소의 영속 goal을 시작·조회·일시정지·재개·차단·취소·완료합니다. 기본 tool-bound 정책은 `goal verify -- <argv>`가 명령을 직접 실행해 성공 증거를 기록합니다. `goal receipt`는 기존 선언 증거를 가져오는 호환 명령입니다.
 - `cairn-memory`: 도메인 지식을 탐색하고 `MEMORY.md`를 갱신합니다.
 - `cairn-plan`: `docs/plan/` 아래에 decision-complete plan을 만듭니다.
@@ -115,11 +116,11 @@ cairn toolcheck
 
 모든 `UserPromptSubmit`에서 Cairn은 구현 또는 계속 실행 요청 자체가 goal 생성 권한이며 사용자가 “goal”을 직접 말할 필요가 없다는 모델 가시 지침을 주입합니다. 에이전트는 먼저 트리아지를 active task로 둔 초기 저장소 계획을 작성하고, 탐색·트리아지 전에 가능한 경우 Codex `update_plan`과 `create_goal`로 같은 roadmap을 UI에 표시한 뒤 저장소 Cairn goal을 시작합니다. 트리아지 결과로 두 계획을 decision-complete 구현 계획으로 갱신한 뒤에만 구현합니다. 활성 goal은 전체 순서형 roadmap, 각 상태, 현재 task를 hook 컨텍스트에 유지하므로 곁가지 질문 뒤 원래 작업으로 돌아갈 수 있습니다. 상담·설명·계획 전용 요청은 goal 없이 처리합니다.
 
-토큰 효율 실행에서는 구현보다 먼저 요구사항·불변식·경계·실패 모드로 집중 실행 test contract를 설계하는 데 추론을 배분합니다. 구현에는 실패 계약과 제한된 파일 범위만 전달하고 통과에 필요한 최소 변경을 요구합니다. 성공 여부는 도구 exit code와 기계적 요약으로 판정하며 성공 출력은 축약하고 실패할 때만 컨텍스트를 확장합니다. package 검증 전 lifecycle script를 검사하고 기본적으로 정상 `npm pack --dry-run`을 실행합니다. content-producing 또는 미분류 script에는 `--ignore-scripts`를 사용하면 안 되며, script가 없거나 content-neutral임을 입증했고 전체 검사 증거가 여전히 유효할 때만 사용할 수 있습니다. 성공한 상태 변경은 `--quiet`를 지원하므로 커지는 goal JSON이 대화 토큰을 소모하지 않습니다.
+토큰 효율 실행에서는 구현보다 먼저 요구사항·불변식·경계·실패 모드로 집중 실행 test contract를 설계하는 데 추론을 배분합니다. 구현에는 실패 계약과 제한된 파일 범위만 전달하고 통과에 필요한 최소 변경을 요구합니다. 성공 여부는 도구 exit code와 기계적 요약으로 판정하며 성공 출력은 축약하고 실패할 때만 컨텍스트를 확장합니다. 명시적 `--watch`가 없으면 Git fingerprint는 ignored file을 제외하므로 주장에 필요한 ignored artifact는 각각 `--watch <path>` 또는 명시적인 상위 디렉터리로 지정해야 합니다. package 검증 전 lifecycle script를 검사하고 기본적으로 정상 `npm pack --dry-run`을 실행합니다. content-producing 또는 미분류 script에는 `--ignore-scripts`를 사용하면 안 되며, script가 없거나 content-neutral임을 입증했고 전체 검사 증거가 여전히 유효할 때만 사용할 수 있습니다. 성공한 상태 변경은 `--quiet`를 지원하므로 커지는 goal JSON이 대화 토큰을 소모하지 않습니다.
 
-`install`과 `upgrade`는 custom marketplace lifecycle을 유지하며 `codex plugin add`를 호출하지 않습니다. candidate를 staging에서 검증한 뒤 commit하고, 모든 managed destination과 digest를 ownership manifest에 기록하며 실패 시 완료된 phase를 역순 rollback합니다. 수정되지 않은 지원 legacy 설치만 release-integrity 검증 뒤 인수하고, 수정되거나 알 수 없는 artifact는 보존한 채 거부합니다. Cairn-owned TOML section만 편집하고 public feature/agent 설정은 강제하지 않습니다. lifecycle command는 교체 대상 cache copy가 아니라 게시/전역 package에서 실행해야 합니다.
+`install`과 `upgrade`는 custom marketplace lifecycle을 유지하며 `codex plugin add`를 호출하지 않습니다. candidate를 staging에서 검증한 뒤 commit하고, 현재 managed destination과 digest를 ownership manifest에 기록하며 실패 시 완료된 phase를 역순 rollback합니다. 별도의 고정된 SHA-256 release 0.2.2 file-hash allowlist는 정확한 legacy file set 검증 전용이며 현재 package file list나 암호학적 서명이 아닙니다. 수정되지 않은 지원 legacy 설치만 release-integrity 검증 뒤 인수하고, 수정되거나 알 수 없는 artifact는 보존한 채 거부합니다. Cairn-owned TOML section만 편집하고 public feature/agent 설정은 강제하지 않습니다. lifecycle command는 교체 대상 cache copy가 아니라 게시/전역 package에서 실행해야 합니다.
 
-Clean uninstall은 모든 managed scaffold가 비었을 때만 recursive 삭제 없이 빈 디렉터리 제거로 Cairn marketplace cache root를 정리합니다. 소스 저장소와 저장소의 `MEMORY.md`/`PLAN.md`/`.cairn` 상태, 전역 `cairn-ai` package, package-manager download cache, legacy backup, 현재 ownership manifest 밖의 legacy shared setting은 지우지 않으며 별도의 명시적 정리 판단이 필요합니다.
+Clean uninstall은 모든 managed scaffold가 비었을 때만 recursive 삭제 없이 빈 디렉터리 제거로 Cairn marketplace cache root를 정리합니다. 소스 저장소와 저장소의 `MEMORY.md`/`PLAN.md`, 사용자 홈 Cairn goal 상태, 전역 `cairn-ai` package, package-manager download cache, legacy backup, 현재 ownership manifest 밖의 legacy shared setting은 지우지 않으며 별도의 명시적 정리 판단이 필요합니다.
 
 Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `.claude/` 아래의 mirror command와 agent definition을 사용합니다. Antigravity는 `.agents/workflows`와 global skills mirror를 사용합니다.
 

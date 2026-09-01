@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -8,8 +8,17 @@ import { parseRootArgs, resolvePluginRoot } from "./cairn-paths.mjs";
 
 const pluginRoot = resolvePluginRoot(import.meta.url);
 const scriptDir = join(pluginRoot, "scripts");
+const version = JSON.parse(readFileSync(join(pluginRoot, "package.json"), "utf8")).version;
 
 export async function main(command = "help", args = [], { runner = spawnSync } = {}) {
+  if (command === "help" || command === "--help") {
+    console.log(message("usage"));
+    return;
+  }
+  if (command === "version" || command === "--version") {
+    console.log(`cairn ${version}`);
+    return;
+  }
   if (["install", "upgrade", "doctor", "uninstall"].includes(command)) {
     const result = runner(process.execPath, [join(scriptDir, "cairn-lifecycle.mjs"), command, ...args], { stdio: "inherit" });
     process.exitCode = result.status ?? 1;
@@ -40,7 +49,7 @@ export async function main(command = "help", args = [], { runner = spawnSync } =
     console.log(message(command));
     return;
   }
-  console.log(message("usage"));
+  throw new Error(`unknown command: ${command}`);
 }
 
 export function message(key, locale = localeValue()) {
@@ -140,5 +149,10 @@ const messages = {
 
 if (isCliEntry()) {
   const [command = "help", ...args] = process.argv.slice(2);
-  await main(command, args);
+  try {
+    await main(command, args);
+  } catch (error) {
+    console.error(`Cairn error: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 2;
+  }
 }
