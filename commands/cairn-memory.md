@@ -2,7 +2,7 @@
 
 Use the `cairn-memory` skill.
 
-Prerequisite: resolve the installed Cairn runtime from the plugin or skill locator. If `cairn doctor` fails, restore it with the published/global lifecycle command. Never look for Cairn scripts in the target repository.
+Prerequisite: resolve the installed Cairn runtime from the plugin or skill locator. If the shared runtime or locator is missing, unreadable, or inconsistent, stop every dependent mirror; run published/global `cairn doctor`, then `cairn upgrade` to recover it. Never repair through another mirror or look for Cairn scripts in the target repository.
 
 Goal: create or update repository memory without asking the user for discoverable facts.
 

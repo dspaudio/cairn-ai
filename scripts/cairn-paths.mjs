@@ -134,11 +134,23 @@ export function createRuntimeLocator(pluginRoot) {
 }
 
 export function runtimeRequiredPaths(locator) {
-  if (!locator || locator.schemaVersion !== RUNTIME_LOCATOR_SCHEMA_VERSION || locator.plugin !== "cairn") return [];
+  if (!locator || locator.schemaVersion !== RUNTIME_LOCATOR_SCHEMA_VERSION || locator.plugin !== "cairn"
+      || typeof locator.pluginRoot !== "string") return [];
+  const root = locator.pluginRoot;
   return [
+    join(root, "package.json"),
+    join(root, "hooks", "hooks.json"),
     locator.entrypoints?.cli,
+    locator.entrypoints?.lifecycle,
     locator.entrypoints?.state,
     locator.entrypoints?.toolcheck,
+    join(root, "scripts", "cairn-cleanup.mjs"),
+    join(root, "scripts", "cairn-goal.mjs"),
+    join(root, "scripts", "cairn-lifecycle-config.mjs"),
+    join(root, "scripts", "cairn-lifecycle-mirror.mjs"),
+    join(root, "scripts", "cairn-paths.mjs"),
+    join(root, "scripts", "cairn-safe-fs.mjs"),
+    join(root, "scripts", "release-integrity-0.2.2.json"),
     locator.resources?.commands,
     locator.resources?.agents,
     locator.resources?.skills,

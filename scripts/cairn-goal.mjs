@@ -1,13 +1,20 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, readFileSync, readlinkSync, realpathSync, readdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { lstat, readFile, rename, rm } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { runGoalCli } from "./cairn-goal-cli.mjs";
+import {
+  normalizeVerificationArgv,
+  normalizeWatchPaths,
+  runVerificationEvidence,
+  workspaceFingerprint,
+} from "./cairn-goal-evidence.mjs";
 import { assertNoSymlinkComponents, safeMkdir, safeWriteFile, withStateLock } from "./cairn-safe-fs.mjs";
 import { cairnHome, goalStateDirectory, worktreeId } from "./cairn-paths.mjs";
 
+export { workspaceFingerprint } from "./cairn-goal-evidence.mjs";
 export { worktreeId } from "./cairn-paths.mjs";
 
 export const GOAL_STATE_VERSION = 2;
@@ -16,6 +23,15 @@ export const TASK_STATUSES = new Set(["pending", "active", "blocked", "completed
 export const PLAN_ID_MAX_LENGTH = 128;
 export const TASK_ID_MAX_LENGTH = 64;
 export const RECOVERY_REFERENCE_MAX_LENGTH = 160;
+export const GOAL_STATE_CONTRACT = Object.freeze({
+  completionCriteria: Object.freeze({ behavior: "advisory", enforced: false }),
+  terminal: Object.freeze({
+    statuses: Object.freeze(["cancelled", "completed"]),
+    persistence: "deleted",
+    readAfterTransition: null,
+    transitionResult: "terminal-snapshot",
+  }),
+});
 
 const terminalGoalStatuses = new Set(["cancelled", "completed"]);
 const evidencePolicies = new Set(["declared", "tool-bound"]);
@@ -40,16 +56,9 @@ export function goalStatePath(root = process.cwd()) {
 }
 
 export async function readGoalState({ root = process.cwd() } = {}) {
-  try {
-    const path = goalStatePath(root);
-    await assertNoSymlinkComponents(cairnHome(), path);
-    const text = await readFile(path, "utf8");
-    return validateState(migrateState(JSON.parse(text)));
-  } catch (error) {
-    if (error?.code === "ENOENT") return migrateLegacyGoalState(root);
-    if (error instanceof SyntaxError) throw new Error(`Cairn goal state is invalid JSON: ${error.message}`);
-    throw error;
-  }
+  const state = await readCurrentGoalState(root);
+  if (state) return state;
+  return withGoalStateLock(root, () => readGoalStateUnlocked(root));
 }
 
 export async function startGoal({ root = process.cwd(), goal, planId, tasks, completionCriteria = [], requiredEvidence = defaultGoalEvidence, ownerSessionId = null, evidencePolicy = "tool-bound" } = {}) {
@@ -58,7 +67,7 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
   if (!Array.isArray(tasks) || tasks.length === 0) throw new Error("tasks must contain at least one task");
 
   return withGoalStateLock(root, async () => {
-    let existing = await readGoalState({ root });
+    let existing = await readGoalStateUnlocked(root);
     const currentWorktreeId = worktreeId(root);
     if (existing && existing.goal.worktreeId !== currentWorktreeId) {
       const path = goalStatePath(root);
@@ -105,7 +114,7 @@ export async function reconcileWorktreeState({ root = process.cwd() } = {}) {
     return { state: initial, removed: false };
   }
   return withGoalStateLock(root, async () => {
-    const state = await readGoalState({ root });
+    const state = await readGoalStateUnlocked(root);
     if (!state || state.goal.worktreeId === worktreeId(root)) {
       return { state, removed: false };
     }
@@ -140,7 +149,7 @@ export async function transitionGoal({ root = process.cwd(), status, blocker } =
   const nextStatus = validGoalStatus(status);
   if (terminalGoalStatuses.has(nextStatus)) {
     return withGoalStateLock(root, async () => {
-      const state = await readGoalState({ root });
+      const state = await readGoalStateUnlocked(root);
       if (!state) throw new Error("No Cairn goal state exists; start a goal first");
       const next = applyGoalTransition(structuredClone(state), nextStatus, blocker, root);
       next.revision += 1;
@@ -320,10 +329,10 @@ export async function verifyAndRecord({
   scope = "task",
   argv,
   watchPaths = [],
-  runner = spawnSync,
+  runner,
   timeoutMs = 600_000,
 } = {}) {
-  const normalizedArgv = validArgv(argv);
+  const normalizedArgv = normalizeVerificationArgv(argv);
   const normalizedWatchPaths = normalizeWatchPaths(root, watchPaths);
   const normalizedScope = validReceiptScope(scope);
   const normalizedKind = requiredText(kind, "evidence kind");
@@ -342,26 +351,13 @@ export async function verifyAndRecord({
     taskStatus: initialTask?.status,
     taskAgentId: initialTask?.assignedAgentId,
   };
-  const initialFingerprint = workspaceFingerprint(root, normalizedWatchPaths);
-  const result = runner(normalizedArgv[0], normalizedArgv.slice(1), {
-    cwd: resolve(root),
-    encoding: "utf8",
-    maxBuffer: 16 * 1024 * 1024,
-    shell: false,
-    timeout: validTimeout(timeoutMs),
+  const evidence = runVerificationEvidence({
+    root,
+    argv: normalizedArgv,
+    watchPaths: normalizedWatchPaths,
+    runner,
+    timeoutMs,
   });
-  if (result.error?.code === "ETIMEDOUT") throw new Error(`Verification timed out after ${timeoutMs}ms`);
-  if (result.error) throw new Error(`Verification could not start: ${result.error.message}`);
-  const exitCode = Number.isInteger(result.status) ? result.status : 1;
-  const output = combinedOutput(result.stdout, result.stderr);
-  if (exitCode !== 0) {
-    const detail = boundedText(output, 2000);
-    throw new Error(`Verification failed with exit ${exitCode}${detail ? `:\n${detail}` : ""}`);
-  }
-
-  const outputDigest = sha256(output);
-  const fingerprint = workspaceFingerprint(root, normalizedWatchPaths);
-  if (fingerprint !== initialFingerprint) throw new Error("Watched workspace changed during verification; evidence was not recorded");
   const postState = await readGoalState({ root });
   if (!postState || postState.goal.id !== identity.goalId || postState.goal.planId !== identity.planId) {
     throw new Error("Goal identity changed during verification; evidence was not recorded");
@@ -372,38 +368,25 @@ export async function verifyAndRecord({
       throw new Error("Verification task changed during verification; evidence was not recorded");
     }
   }
-  const command = normalizedArgv.map((value) => JSON.stringify(value)).join(" ");
   const state = await recordEvidence({
     root,
     taskId: normalizedTaskId,
     kind: normalizedKind,
     scope: normalizedScope,
-    command,
+    command: evidence.command,
     exitCode: 0,
     source: "tool",
-    argv: normalizedArgv,
-    outputDigest,
-    summary: successSummary(output),
-    workspaceFingerprint: fingerprint,
-    watchPaths: normalizedWatchPaths,
+    argv: evidence.argv,
+    outputDigest: evidence.outputDigest,
+    summary: evidence.summary,
+    workspaceFingerprint: evidence.workspaceFingerprint,
+    watchPaths: evidence.watchPaths,
     goalId: identity.goalId,
     planId: identity.planId,
     expectedIdentity: identity,
-    expectedFingerprint: fingerprint,
+    expectedFingerprint: evidence.workspaceFingerprint,
   });
   return { state, evidence: state.receipts.at(-1) };
-}
-
-export function workspaceFingerprint(root = process.cwd(), watchPaths = []) {
-  const workspaceRoot = resolve(root);
-  const normalizedWatchPaths = normalizeWatchPaths(workspaceRoot, watchPaths);
-  const gitPaths = normalizedWatchPaths.length === 0 ? listGitWorkspacePaths(workspaceRoot, normalizedWatchPaths) : null;
-  const paths = normalizedWatchPaths.length > 0
-    ? listFilesystemPaths(workspaceRoot, normalizedWatchPaths)
-    : (gitPaths ?? listFilesystemPaths(workspaceRoot, normalizedWatchPaths));
-  const hash = createHash("sha256");
-  for (const path of [...new Set(paths)].sort()) hashWorkspacePath(hash, workspaceRoot, path);
-  return `sha256:${hash.digest("hex")}`;
 }
 
 export function currentTask(state) {
@@ -441,102 +424,25 @@ export function evaluateStop(state, { subagent = false, agentId } = {}) {
 }
 
 export async function handleGoalCli(args = process.argv.slice(2), { stdout = console.log } = {}) {
-  const [firstCommand = "help", ...remaining] = args;
-  const [command = "help", ...rest] = firstCommand === "goal" ? remaining : [firstCommand, ...remaining];
-  const { options, positional, passthrough } = parseArgs(rest, command);
-  const root = options.root ?? process.cwd();
-  const emit = options.quiet ? () => {} : stdout;
-  if (command === "start") {
-    const tasks = parseTasks(options.tasks ?? positional.slice(0));
-    const state = await startGoal({
-      root,
-      goal: options.goal,
-      planId: options.plan,
-      tasks,
-      completionCriteria: splitValues(options.criteria),
-      requiredEvidence: options.requiredEvidence ? splitValues(options.requiredEvidence) : defaultGoalEvidence,
-      ownerSessionId: options.session,
-      evidencePolicy: options.evidencePolicy ?? options["evidence-policy"] ?? "tool-bound",
-    });
-    emit(JSON.stringify(state));
-    return state;
-  }
-  if (command === "status") {
-    const state = await readGoalState({ root });
-    stdout(JSON.stringify(state));
-    return state;
-  }
-  if (command === "task") {
-    const taskAction = taskStatusFromAction(positional[0]);
-    const state = await setTaskStatus({
-      root,
-      taskId: options.task ?? (taskAction ? positional[1] : positional[0]),
-      status: options.status ?? taskAction ?? positional[1],
-      blocker: options.reason,
-    });
-    emit(JSON.stringify(state));
-    return state;
-  }
-  if (command === "replan") {
-    const state = await replanGoal({ root, tasks: parseTasks(options.tasks ?? positional.slice(0)) });
-    emit(JSON.stringify(state));
-    return state;
-  }
-  if (command === "assign") {
-    const state = await assignTask({ root, taskId: options.task ?? positional[0], agentId: options.agent ?? positional[1] ?? null });
-    emit(JSON.stringify(state));
-    return state;
-  }
-  if (command === "receipt") {
-    const state = await recordReceipt({
-      root,
-      taskId: options.task ?? positional[0],
-      kind: options.kind,
-      scope: options.scope,
-      command: options.command,
-      exitCode: numberOption(options.exitCode ?? options["exit-code"] ?? options.exit),
-      timestamp: options.timestamp,
-      goalId: options.goalId ?? options["goal-id"],
-      planId: options.plan,
-    });
-    emit(JSON.stringify(state));
-    return state;
-  }
-  if (command === "verify") {
-    const result = await verifyAndRecord({
-      root,
-      taskId: options.task ?? positional[0],
-      kind: options.kind,
-      scope: options.scope,
-      watchPaths: splitValues(options.watch),
-      argv: passthrough,
-      timeoutMs: options["timeout-ms"] === undefined ? 600_000 : positiveIntegerOption(options["timeout-ms"], "timeout-ms"),
-    });
-    emit(JSON.stringify({
-      id: result.evidence.id,
-      scope: result.evidence.scope,
-      kind: result.evidence.kind,
-      exitCode: result.evidence.exitCode,
-      outputDigest: result.evidence.outputDigest,
-      workspaceFingerprint: result.evidence.workspaceFingerprint,
-    }));
-    return result.state;
-  }
-  if (["pause", "resume", "block", "cancel", "complete"].includes(command)) {
-    const state = await transitionGoal({
-      root,
-      status: { pause: "paused", resume: "active", block: "blocked", cancel: "cancelled", complete: "completed" }[command],
-      blocker: options.reason,
-    });
-    emit(JSON.stringify(state));
-    return state;
-  }
-  throw new Error("Usage: cairn-goal start|status|task|replan|assign|receipt|verify|pause|resume|block|cancel|complete [--root PATH]");
+  return runGoalCli(args, {
+    stdout,
+    defaultGoalEvidence,
+    operations: {
+      assignTask,
+      readGoalState,
+      recordReceipt,
+      replanGoal,
+      setTaskStatus,
+      startGoal,
+      transitionGoal,
+      verifyAndRecord,
+    },
+  });
 }
 
 async function mutateGoal(root, mutate) {
   return withGoalStateLock(root, async () => {
-    const state = await readGoalState({ root });
+    const state = await readGoalStateUnlocked(root);
     if (!state) throw new Error("No Cairn goal state exists; start a goal first");
     const next = await mutate(structuredClone(state));
     next.revision += 1;
@@ -566,6 +472,22 @@ async function ensureGoalStateDirectory(root) {
     }
   }
   await safeMkdir(existingAncestor, relative(existingAncestor, goalStateDirectory(root)));
+}
+
+async function readGoalStateUnlocked(root) {
+  return await readCurrentGoalState(root) ?? migrateLegacyGoalState(root);
+}
+
+async function readCurrentGoalState(root) {
+  try {
+    const path = goalStatePath(root);
+    await assertNoSymlinkComponents(cairnHome(), path);
+    return validateState(migrateState(JSON.parse(await readFile(path, "utf8"))));
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    if (error instanceof SyntaxError) throw new Error(`Cairn goal state is invalid JSON: ${error.message}`);
+    throw error;
+  }
 }
 
 async function migrateLegacyGoalState(root) {
@@ -781,19 +703,6 @@ function validTaskStatus(value) {
   return value;
 }
 
-function taskStatusFromAction(value) {
-  return {
-    start: "active",
-    activate: "active",
-    active: "active",
-    complete: "completed",
-    completed: "completed",
-    block: "blocked",
-    blocked: "blocked",
-    pending: "pending",
-  }[value] ?? null;
-}
-
 function validReceiptScope(value) {
   if (value !== "task" && value !== "goal") throw new Error(`Invalid evidence scope: ${value}`);
   return value;
@@ -823,7 +732,7 @@ function normalizeCriteria(criteria) {
 }
 
 function normalizeToolEvidence({ argv, outputDigest, summary, fingerprint, watchPaths }) {
-  const normalizedArgv = validArgv(argv);
+  const normalizedArgv = normalizeVerificationArgv(argv);
   const normalizedOutputDigest = validSha256(outputDigest, "evidence outputDigest");
   const normalizedSummary = requiredText(summary, "evidence summary");
   const normalizedFingerprint = validSha256(fingerprint, "evidence workspaceFingerprint");
@@ -838,136 +747,11 @@ function normalizeToolEvidence({ argv, outputDigest, summary, fingerprint, watch
   };
 }
 
-function validArgv(argv) {
-  if (!Array.isArray(argv) || argv.length === 0) throw new Error("verification command must follow -- as argv");
-  return argv.map((item, index) => {
-    if (typeof item !== "string") throw new Error(`verification argv[${index}] must be a string`);
-    if (index === 0 && item.trim().length === 0) throw new Error("verification executable must be a non-empty string");
-    return item;
-  });
-}
-
 function validSha256(value, label) {
   if (typeof value !== "string" || !/^sha256:[a-f0-9]{64}$/.test(value)) {
     throw new Error(`${label} must be a sha256 digest`);
   }
   return value;
-}
-
-function normalizeWatchPaths(root, watchPaths) {
-  if (!Array.isArray(watchPaths)) throw new Error("watchPaths must be an array");
-  const workspaceRoot = resolve(root);
-  return [...new Set(watchPaths.map((item, index) => {
-    const source = requiredText(item, `watchPaths[${index}]`);
-    const absolutePath = resolve(workspaceRoot, source);
-    const relativePath = relative(workspaceRoot, absolutePath);
-    if (relativePath === ".." || relativePath.startsWith(`..${sep}`)) {
-      throw new Error(`watch path must remain inside the workspace: ${source}`);
-    }
-    const normalizedPath = relativePath === "" ? "." : relativePath.split(sep).join("/");
-    if (isInternalStatePath(normalizedPath)) throw new Error(`watch path cannot target internal Cairn or Git state: ${source}`);
-    return normalizedPath;
-  }))];
-}
-
-function listGitWorkspacePaths(root, watchPaths) {
-  const args = ["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"];
-  if (watchPaths.length > 0) args.push("--", ...watchPaths);
-  const result = spawnSync("git", args, { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
-  if (result.status !== 0 || result.error) return null;
-  const paths = result.stdout.split("\0").filter(Boolean).filter((path) => !isInternalStatePath(path));
-  for (const watchPath of watchPaths) {
-    try {
-      if (!lstatSync(join(root, ...watchPath.split("/"))).isDirectory() && !paths.includes(watchPath)) paths.push(watchPath);
-    } catch (error) {
-      if (error?.code === "ENOENT") paths.push(watchPath);
-      else throw error;
-    }
-  }
-  return paths;
-}
-
-function listFilesystemPaths(root, watchPaths) {
-  const paths = [];
-  const visit = (relativePath) => {
-    if (isInternalStatePath(relativePath)) return;
-    const absolutePath = relativePath === "." ? root : join(root, ...relativePath.split("/"));
-    let stat;
-    try {
-      stat = lstatSync(absolutePath);
-    } catch (error) {
-      if (error?.code === "ENOENT") {
-        paths.push(relativePath);
-        return;
-      }
-      throw error;
-    }
-    if (!stat.isDirectory()) {
-      paths.push(relativePath);
-      return;
-    }
-    const entries = readdirSync(absolutePath).sort();
-    if (entries.length === 0) paths.push(relativePath);
-    for (const entry of entries) {
-      const child = relativePath === "." ? entry : `${relativePath}/${entry}`;
-      visit(child);
-    }
-  };
-  for (const path of watchPaths.length > 0 ? watchPaths : ["."]) visit(path);
-  return paths;
-}
-
-function hashWorkspacePath(hash, root, relativePath) {
-  const absolutePath = relativePath === "." ? root : join(root, ...relativePath.split("/"));
-  hash.update(`${relativePath}\0`);
-  let stat;
-  try {
-    stat = lstatSync(absolutePath);
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      hash.update("missing\0");
-      return;
-    }
-    throw error;
-  }
-  hash.update(`${stat.mode}\0`);
-  if (stat.isSymbolicLink()) {
-    hash.update(`symlink\0${readlinkSync(absolutePath)}\0`);
-  } else if (stat.isFile()) {
-    hash.update("file\0");
-    hash.update(readFileSync(absolutePath));
-    hash.update("\0");
-  } else if (stat.isDirectory()) {
-    hash.update("directory\0");
-  } else {
-    hash.update("other\0");
-  }
-}
-
-function isInternalStatePath(path) {
-  const firstSegment = path.split("/")[0];
-  return firstSegment === ".git" || firstSegment === ".cairn";
-}
-
-function combinedOutput(stdout, stderr) {
-  return [stdout, stderr].filter((value) => typeof value === "string" && value.length > 0).join("\n").trim();
-}
-
-function boundedText(value, maxLength) {
-  const text = String(value ?? "").trim();
-  if (text.length <= maxLength) return text;
-  return `…${text.slice(-(maxLength - 1))}`;
-}
-
-function successSummary(output) {
-  const text = String(output ?? "");
-  const outputBytes = Buffer.byteLength(text);
-  const outputLines = text.length === 0 ? 0 : text.split(/\r?\n/).length;
-  return `verification passed; outputBytes=${outputBytes}; outputLines=${outputLines}`;
-}
-
-function sha256(value) {
-  return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
 function optionalText(value, label) {
@@ -976,114 +760,6 @@ function optionalText(value, label) {
 
 function timestamp() {
   return new Date().toISOString();
-}
-
-function parseArgs(args, command) {
-  const options = {};
-  const positional = [];
-  const passthrough = [];
-  const booleanOptions = new Set(["quiet"]);
-  const allowed = allowedOptions(command);
-  const seenCanonicalOptions = new Set();
-  for (let index = 0; index < args.length; index += 1) {
-    const value = args[index];
-    if (value === "--") {
-      passthrough.push(...args.slice(index + 1));
-      break;
-    }
-    if (!value.startsWith("--")) {
-      positional.push(value);
-      continue;
-    }
-    const option = value.slice(2);
-    const equalsIndex = option.indexOf("=");
-    const key = equalsIndex === -1 ? option : option.slice(0, equalsIndex);
-    const inline = equalsIndex === -1 ? undefined : option.slice(equalsIndex + 1);
-    if (!allowed.has(key)) throw new Error(`Unknown option for ${command}: --${key}`);
-    const canonicalKey = canonicalOptionKey(key);
-    if (seenCanonicalOptions.has(canonicalKey)) throw new Error(`--${canonicalKey} may only be provided once`);
-    seenCanonicalOptions.add(canonicalKey);
-    if (inline !== undefined) {
-      if (!booleanOptions.has(key) && inline.length === 0) throw new Error(`--${key} requires a value`);
-      if (booleanOptions.has(key) && !["true", "false"].includes(inline)) throw new Error(`--${key} must be true or false`);
-      options[key] = booleanOptions.has(key) ? inline !== "false" : inline;
-    }
-    else if (booleanOptions.has(key)) options[key] = true;
-    else {
-      const next = args[index + 1];
-      if (next === undefined || next === "--" || next.startsWith("--")) throw new Error(`--${key} requires a value`);
-      options[key] = next;
-      index += 1;
-    }
-  }
-  return { options, positional, passthrough };
-}
-
-function canonicalOptionKey(key) {
-  return {
-    exitCode: "exit-code",
-    exit: "exit-code",
-    goalId: "goal-id",
-    evidencePolicy: "evidence-policy",
-  }[key] ?? key;
-}
-
-function allowedOptions(command) {
-  const common = ["root", "quiet"];
-  const byCommand = {
-    start: ["goal", "plan", "tasks", "criteria", "requiredEvidence", "session", "evidencePolicy", "evidence-policy"],
-    status: [],
-    task: ["task", "status", "reason"],
-    replan: ["tasks"],
-    assign: ["task", "agent"],
-    receipt: ["task", "kind", "scope", "command", "exitCode", "exit-code", "exit", "timestamp", "goalId", "goal-id", "plan"],
-    verify: ["task", "kind", "scope", "watch", "timeout-ms"],
-    pause: [],
-    resume: [],
-    block: ["reason"],
-    cancel: [],
-    complete: [],
-    help: [],
-  };
-  return new Set([...common, ...(byCommand[command] ?? [])]);
-}
-
-function parseTasks(value) {
-  if (Array.isArray(value)) return value;
-  if (typeof value !== "string" || value.trim().length === 0) throw new Error("Provide tasks with --tasks JSON or positional task titles");
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) throw new Error("--tasks JSON must be an array");
-    return parsed;
-  } catch (error) {
-    if (error instanceof SyntaxError) return value.split("|").map((item) => item.trim()).filter(Boolean);
-    throw error;
-  }
-}
-
-function splitValues(value) {
-  if (!value) return [];
-  return String(value).split("|").map((item) => item.trim()).filter(Boolean);
-}
-
-function numberOption(value) {
-  if (value === undefined) return undefined;
-  const result = Number(value);
-  if (!Number.isInteger(result)) throw new Error("exitCode must be an integer");
-  return result;
-}
-
-function positiveIntegerOption(value, label) {
-  const result = Number(value);
-  if (!Number.isSafeInteger(result) || result <= 0 || result > 3_600_000) {
-    throw new Error(`${label} must be an integer between 1 and 3600000`);
-  }
-  return result;
-}
-
-function validTimeout(value) {
-  if (!Number.isSafeInteger(value) || value <= 0) throw new Error("timeoutMs must be a positive integer");
-  return value;
 }
 
 function isCliEntry() {

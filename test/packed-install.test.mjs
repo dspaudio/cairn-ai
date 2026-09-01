@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
+import { runtimeRequiredPaths } from "../scripts/cairn-paths.mjs";
+import { targetDigest } from "../scripts/cairn-lifecycle.mjs";
 
 const sourceRoot = resolve(".");
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const lifecycleScript = join(sourceRoot, "scripts", "cairn-lifecycle.mjs");
 
 test("packed install remains self-contained after the npm package source is removed", async () => {
   const temp = await mkdtemp(join(tmpdir(), "cairn-packed-install-"));
@@ -64,7 +67,7 @@ test("packed install remains self-contained after the npm package source is remo
     assert.equal(lifecycleInstall.status, 0, lifecycleInstall.stderr);
 
     const marketplaceSource = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn");
-    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.6");
+    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.7");
     const installedCli = join(installedRoot, "scripts", "cairn.mjs");
     await stat(join(marketplaceSource, ".codex-plugin", "plugin.json"));
     const installedManifest = JSON.parse(await readFile(join(installedRoot, ".codex-plugin", "plugin.json"), "utf8"));
@@ -88,6 +91,7 @@ test("packed install remains self-contained after the npm package source is remo
     assert.equal(installedLocator.entrypoints.cli, installedCli);
     assert.equal(installedLocator.resources.modelGuidance, join(installedRoot, "docs", "model-guidance"));
     await rm(packageRoot, { recursive: true, force: true });
+    await assertPackedLocatorRemovalMatrix({ installedRoot, installedLocator, env, temp, unrelated });
 
     const init = run(process.execPath, [installedCli, "init", "--root", project], { cwd: unrelated, env });
     assert.equal(init.status, 0, init.stderr);
@@ -168,6 +172,48 @@ test("packed install remains self-contained after the npm package source is remo
     await rm(temp, { recursive: true, force: true });
   }
 });
+
+async function assertPackedLocatorRemovalMatrix({ installedRoot, installedLocator, env, temp, unrelated }) {
+  const executableClosure = [
+    "package.json",
+    "hooks/hooks.json",
+    "scripts/cairn.mjs",
+    "scripts/cairn-cleanup.mjs",
+    "scripts/cairn-goal.mjs",
+    "scripts/cairn-lifecycle.mjs",
+    "scripts/cairn-lifecycle-config.mjs",
+    "scripts/cairn-lifecycle-mirror.mjs",
+    "scripts/cairn-paths.mjs",
+    "scripts/cairn-safe-fs.mjs",
+    "scripts/cairn-state.mjs",
+    "scripts/cairn-toolcheck.mjs",
+    "scripts/release-integrity-0.2.2.json",
+  ];
+  const required = new Set(runtimeRequiredPaths(installedLocator).map((path) => relative(installedRoot, path)));
+  for (const path of executableClosure) assert.equal(required.has(path), true, `runtime locator closure includes ${path}`);
+
+  const ownershipPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", ".cairn", "lifecycle.json");
+  const originalOwnership = await readFile(ownershipPath, "utf8");
+  const quarantineRoot = join(temp, "locator-removal-matrix");
+  for (const [index, relativePath] of executableClosure.entries()) {
+    const requiredPath = join(installedRoot, relativePath);
+    const quarantine = join(quarantineRoot, String(index));
+    await mkdir(dirname(quarantine), { recursive: true });
+    await rename(requiredPath, quarantine);
+    try {
+      const ownership = JSON.parse(originalOwnership);
+      ownership.targets.find((record) => record.id === "codex-runtime").installedDigest = await targetDigest(installedRoot, "tree");
+      await writeFile(ownershipPath, `${JSON.stringify(ownership, null, 2)}\n`);
+
+      const doctor = run(process.execPath, [lifecycleScript, "doctor"], { cwd: unrelated, env });
+      assert.match(doctor.stdout, /^OK ownership digests$/m, `${relativePath}\n${doctor.stdout}\n${doctor.stderr}`);
+      assert.match(doctor.stdout, /^FAIL installed runtime locator$/m, `${relativePath}\n${doctor.stdout}\n${doctor.stderr}`);
+    } finally {
+      await rename(quarantine, requiredPath);
+      await writeFile(ownershipPath, originalOwnership);
+    }
+  }
+}
 
 function run(command, args, { cwd, env, input } = {}) {
   return spawnSync(command, args, {

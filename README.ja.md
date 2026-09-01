@@ -65,7 +65,7 @@ harness は対象 repository root に次の files を作成して維持します
 
 - `MEMORY.md`: persistent domain knowledge の短い index。
 - `docs/memory/*.md`: domain ごとの詳細 knowledge。
-- `.cairn/state.json`: 再開と scoped stop gate のための git-ignored goal/task/evidence-record 状態。
+- `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/state.json`: 中断復旧と scoped stop gate に使う user-home の project/worktree 別 active goal/task/evidence 状態。project working tree は runtime state を所有しません。
 - `PLAN.md`: active/completed work topics の短い index。
 - `docs/plan/*.md`: detailed execution plans。
 
@@ -101,6 +101,7 @@ cairn toolcheck
 - `cairn doctor`: ownership digests、effective Codex features、実際の plugin status、runtime locators を修復せず診断します。
 - `cairn uninstall`: 未変更の managed entry だけを削除し、modified または unmanaged target は conflict として preserve します。
 - `cairn toolcheck`: repository stacks と required tools を確認し、承認済み supported installer だけを実行します。それ以外は `installer-unavailable` です。
+- `cairn cleanup --root <repo>`: 既定では legacy project-local `.cairn` residue を read-only で報告します。`--yes` は valid active state を user-home store に移行・調整し、known state/lock/tool residue のみ削除し、unknown files を保持して空の場合だけ directory を削除します。
 - `cairn-memory`: domain knowledge を探索し `MEMORY.md` を更新します。
 - `cairn-plan`: `docs/plan/` に decision-complete plan を作成します。
 - `cairn-work`: 現在の `PLAN.md` の次の module task を実行し、2 つの verification gates を取得します。
@@ -108,7 +109,7 @@ cairn toolcheck
 
 custom marketplace lifecycle は source と versioned runtime を分離します。各 commit 前に staged validation を行い、ownership manifest が全 managed digest を結び、失敗時は reverse-order rollback します。modified または unmanaged artifacts は preserve して conflict として報告します。Cairn-owned TOML sections だけを変更し、public feature/agent settings は強制しません。
 
-Clean uninstall は、すべての managed scaffold directory が空の場合に限り Cairn marketplace cache root を削除し、unmanaged content は保持します。source repository と repository state、global `cairn-ai` package、package-manager cache、現在の ownership manifest 外の legacy backup/settings は自動削除しません。
+Clean uninstall は、すべての managed scaffold directory が空の場合に限り Cairn marketplace cache root を削除し、unmanaged content は保持します。source repository と repository `MEMORY.md`/`PLAN.md`、user-home Cairn goal state、global `cairn-ai` package、package-manager cache、現在の ownership manifest 外の legacy backup/settings は自動削除しません。
 
 Codex は `skills/` と `commands/` を使います。Claude Code は `.claude/` 配下の mirrored commands と agent definitions を使います。Antigravity は `.agents/workflows` と global skills mirrors を使います。
 

@@ -7,7 +7,7 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 ## Application Order
 
 1. Identify the active model name. If the model name is not directly exposed, infer it from the user's default model setting and agent role frontmatter.
-2. Resolve this installed guidance root from the active skill's `references/cairn-runtime.json` or the source skill's location. Never look for Cairn model guidance in the target repository.
+2. Resolve this installed guidance root from the active skill's `references/cairn-runtime.json` or the source skill's location. Never look for Cairn model guidance in the target repository. If the shared runtime or locator is missing, unreadable, or inconsistent, stop using every dependent mirror; run published/global `cairn doctor`, then `cairn upgrade` for recovery, rather than repairing through another mirror.
 3. For Claude-family models, apply `cairn://docs/model-guidance/claude.md`.
 4. For Codex-family models, apply `cairn://docs/model-guidance/codex.md`.
 5. If the model is not clearly classified, apply only the common rules and skip model-specific adjustment.
@@ -32,7 +32,7 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - Treat missing, failed, skipped, stale, or placeholder evidence as failure. Task evidence records must be bound to the current goal, task, and plan.
 - Treat the repository Cairn state as the fail-closed transition authority. Advance the matching Codex UI plan step only after the evidence-gated repository task transition succeeds.
 - Spend reasoning on a focused executable test contract before implementation: requirements, invariants, boundaries, and failure modes. Give implementation only that contract, failing evidence, file scope, and constraints; require the minimum passing change.
-- Run verification through `goal verify -- ...`; its default timeout is 600,000 ms and its maximum is 3,600,000 ms. Treat tool exit codes and bounded machine summaries as authoritative. Record evidence only when the starting goal/task identity and pre/post watched fingerprint still match, and choose the watch set and command at the semantic boundary that proves the claim. Compress success output and expand context only for failing tests and related code.
+- Run verification through `goal verify -- ...`; its default timeout is 600,000 ms and its maximum is 3,600,000 ms. Treat tool exit codes and bounded machine summaries as authoritative. Record evidence only when the starting goal/task identity and pre/post watched fingerprint still match, and choose the watch set and command at the semantic boundary that proves the claim. The default Git fingerprint excludes ignored files; explicitly pass every ignored artifact needed by the claim with `--watch`. Compress success output and expand context only for failing tests and related code.
 - Use a verification ladder: focused contract tests, one full check after the final change, then package dry-run while the full check remains fresh. Inspect package lifecycle scripts first and run normal `npm pack --dry-run` by default. Content-producing or unknown lifecycle scripts must never use `--ignore-scripts`; only absent or proven content-neutral scripts may use it.
 - Every implementation task must pass module acceptance verification and surface integration verification.
 - Before mutating external state, run the closest available dry-run, check, plan, diff, validate, or equivalent command.
@@ -53,9 +53,9 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - Models always inherit the host or user default; Cairn never selects or overrides a model.
 - Light Path planning, implementation, and verification request `medium`.
 - Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
-- Every plan task records `Requested reasoning effort` and `Effective reasoning effort`.
+- Every plan task records `Requested reasoning effort` and `Effective reasoning effort`. Requested is Cairn's desired profile; Effective is the value confirmed by the dispatch result.
 - Only a newly dispatched task or worker may receive the requested value, and only through a host-exposed reasoning-effort option or host-native equivalent. Omit every model override.
-- For an unsupported host or value, record `Effective reasoning effort: inherited` with the reason. Do not change the model or global config and do not silently choose a nearby value.
+- For an unsupported host or value, use `Effective reasoning effort: inherited`; this means no task-level override was confirmed and does not prove the host lacks the capability. Describe host capability only from an exposed interface or dispatch result, and distinguish Cairn's choice not to integrate or use an option from host non-support. Do not change the model or global config and do not silently choose a nearby value.
 - A route change synchronizes the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Preserve completed task profiles as audit history and recalculate incomplete task profiles for the new path.
 
 ## Delegation Defaults

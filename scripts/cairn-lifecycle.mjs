@@ -1,19 +1,40 @@
 #!/usr/bin/env node
 import { createHash, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { constants as fsConstants, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import {
   copyFile, cp, lstat, mkdir, mkdtemp, open, readFile, readdir, rename, rm, rmdir, writeFile,
 } from "node:fs/promises";
 import { homedir, hostname, tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep, win32 } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolvePluginRoot } from "./cairn-paths.mjs";
 import {
-  RUNTIME_LOCATOR_SCHEMA_VERSION,
-  createRuntimeLocator,
-  resolvePluginRoot,
-  runtimeRequiredPaths,
-} from "./cairn-paths.mjs";
+  cairnConfigProjection,
+  canonical,
+  ensureSetting,
+  hasSetting,
+  hookHash,
+  readSharedConfigSnapshot,
+  removeCairnConfig,
+  splitSections,
+  trustedHookStates,
+  updateConfig as projectConfig,
+} from "./cairn-lifecycle-config.mjs";
+import {
+  antigravityRuntimeLocatorPath,
+  antigravitySkillLocatorPath,
+  installedSkillLocatorPath,
+  quoteShellArg,
+  renderInstalledMirror as projectMirror,
+  renderMirrorFile,
+  validLegacyLocator,
+  validRuntimeLocator,
+  validateAntigravitySkills,
+  writeLocator,
+} from "./cairn-lifecycle-mirror.mjs";
+
+export { canonical, ensureSetting, hasSetting, hookHash, quoteShellArg, removeCairnConfig, splitSections };
 
 const pluginRoot = resolvePluginRoot(import.meta.url);
 const homeRoot = process.env.HOME ?? process.env.USERPROFILE ?? homedir() ?? ".";
@@ -41,17 +62,97 @@ const versionedPluginRoot = join(marketplaceRoot, pluginName, releaseVersion);
 const installedRuntimeLocatorPath = join(versionedPluginRoot, ".cairn-runtime.json");
 const phases = ["codex", "claude", "antigravity", "config", "cleanup"];
 export const DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS = 60_000;
+const MAX_LIFECYCLE_LOCK_TIMEOUT_MS = 2_147_483_647;
 
 if (isCliEntry()) {
   try {
-    const command = process.argv[2] ?? "help";
-    if (command === "install" || command === "upgrade") await withLifecycleLock(() => install(command));
-    else if (command === "doctor") await doctor();
-    else if (command === "uninstall") await withLifecycleLock(uninstall, { afterRelease: pruneUninstallRoots });
-    else help();
+    const command = parseLifecycleInvocation(process.argv.slice(2));
+    if (command === "install" || command === "upgrade") {
+      const timeoutMs = lifecycleLockTimeout();
+      await assertLifecycleMutationPaths();
+      await withLifecycleLock(() => install(command), { timeoutMs });
+    } else if (command === "doctor") {
+      const timeoutMs = lifecycleLockTimeout();
+      await assertNoSymlinkAncestor(codexHome, lifecycleLockPath);
+      await withLifecycleLock(doctor, { timeoutMs, afterRelease: pruneUninstallRoots });
+    } else if (command === "uninstall") {
+      const timeoutMs = lifecycleLockTimeout();
+      await assertLifecycleMutationPaths();
+      await withLifecycleLock(uninstall, { timeoutMs, afterRelease: pruneUninstallRoots });
+    } else help();
   } catch (error) {
     console.error(`Cairn lifecycle error: ${error.message}`);
     process.exitCode = 1;
+  }
+}
+
+function parseLifecycleInvocation(args) {
+  if (args.length === 0) return "help";
+  const [command, ...trailing] = args;
+  if (!["install", "upgrade", "doctor", "uninstall", "help"].includes(command)) {
+    throw new Error(`Unknown lifecycle command: ${command}`);
+  }
+  if (trailing.length > 0) throw new Error(`Lifecycle command ${command} does not accept arguments: ${trailing.join(" ")}`);
+  return command;
+}
+
+function lifecycleLockTimeout() {
+  const raw = process.env.CAIRN_LIFECYCLE_LOCK_TIMEOUT_MS;
+  if (raw === undefined) return DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(`CAIRN_LIFECYCLE_LOCK_TIMEOUT_MS must be an integer between 1 and ${MAX_LIFECYCLE_LOCK_TIMEOUT_MS}`);
+  }
+  const timeoutMs = Number(raw);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs > MAX_LIFECYCLE_LOCK_TIMEOUT_MS) {
+    throw new Error(`CAIRN_LIFECYCLE_LOCK_TIMEOUT_MS must be an integer between 1 and ${MAX_LIFECYCLE_LOCK_TIMEOUT_MS}`);
+  }
+  return timeoutMs;
+}
+
+async function assertLifecycleMutationPaths() {
+  const roots = [
+    [codexHome, lifecycleLockPath],
+    [codexHome, installedPluginRoot],
+    [codexHome, versionedPluginRoot],
+    [codexHome, marketplaceJsonPath],
+    [isInside(codexHome, configPath) ? codexHome : dirname(configPath), configPath],
+    [claudeHome, join(claudeHome, "commands")],
+    [claudeHome, join(claudeHome, "agents")],
+    [claudeHome, claudeRuntimeLocatorPath],
+    [antigravityHome, join(antigravityHome, "skills")],
+    ...skillNames().map((name) => [antigravityHome, join(antigravityHome, "skills", name)]),
+    [antigravityHome, join(antigravityHome, "workflows")],
+    [antigravityHome, antigravityRuntimeLocatorPath(antigravityHome)],
+    [antigravityCliHome, join(antigravityCliHome, "skills")],
+    [antigravityCliHome, join(antigravityCliHome, "workflows")],
+    [antigravityCliHome, antigravityRuntimeLocatorPath(antigravityCliHome)],
+    [legacyAntigravityHome, join(legacyAntigravityHome, "skills")],
+    [legacyAntigravityHome, join(legacyAntigravityHome, "workflows")],
+  ];
+  for (const [root, destination] of roots) await assertNoSymlinkAncestor(root, destination);
+}
+
+async function assertNoSymlinkAncestor(root, destination) {
+  const relation = relative(root, destination);
+  if (relation === ".." || relation.startsWith(`..${sep}`) || isAbsolute(relation)) return;
+  const paths = [resolve(root)];
+  let current = resolve(root);
+  for (const segment of relation.split(sep).filter(Boolean)) {
+    current = join(current, segment);
+    paths.push(current);
+  }
+  for (const path of paths) {
+    let info;
+    try {
+      info = await lstat(path);
+    } catch (error) {
+      if (error?.code === "ENOENT") continue;
+      throw error;
+    }
+    if (info.isSymbolicLink()) {
+      if (path === configPath) throw new Error(`Managed config is not a regular file: ${path}`);
+      throw new Error(`Lifecycle path ancestor must not be a symlink: ${path}`);
+    }
   }
 }
 
@@ -63,6 +164,7 @@ async function install(mode) {
   const transaction = await createTransaction();
   try {
     const targets = await stageInstall(transaction.stageRoot);
+    if (process.env.CAIRN_TEST_CRASH_AFTER_STAGE === "1") process.exit(87);
     targets.push(...await legacyMigrationTargets());
     let ownership = await readOwnership();
     if (ownership) {
@@ -162,15 +264,15 @@ async function doctor() {
   checks.push(["marketplace", await exists(marketplaceJsonPath)]);
   checks.push(["installed hooks manifest field", (await readJson(join(versionedPluginRoot, ".codex-plugin", "plugin.json")))?.hooks === "./hooks/hooks.json"]);
   checks.push(["hooks file", await exists(join(versionedPluginRoot, "hooks", "hooks.json"))]);
-  checks.push(["installed runtime locator", await validRuntimeLocator(installedRuntimeLocatorPath)]);
-  checks.push(["installed skill locators", (await Promise.all(skillNames().map((name) => validRuntimeLocator(installedSkillLocatorPath(name))))).every(Boolean)]);
+  checks.push(["installed runtime locator", await validRuntimeLocator(installedRuntimeLocatorPath, versionedPluginRoot)]);
+  checks.push(["installed skill locators", (await Promise.all(skillNames().map((name) => validRuntimeLocator(installedSkillLocatorPath(versionedPluginRoot, name), versionedPluginRoot)))).every(Boolean)]);
   checks.push(["installed CLI script", await exists(join(versionedPluginRoot, "scripts", "cairn.mjs"))]);
   checks.push(["installed plan template", await exists(join(versionedPluginRoot, "templates", "work-plan.md"))]);
   checks.push(["installed model guidance", await exists(join(versionedPluginRoot, "docs", "model-guidance", "codex.md"))]);
   const config = (await readSharedConfigSnapshot(configPath)).text;
   checks.push(["config marketplace", splitSections(config).some((section) => section.header === "marketplaces.cairn")]);
   checks.push(["config plugin enabled", hasSetting(config, 'plugins."cairn@cairn"', "enabled", "true")]);
-  checks.push(["Claude runtime locator", await validRuntimeLocator(claudeRuntimeLocatorPath)]);
+  checks.push(["Claude runtime locator", await validRuntimeLocator(claudeRuntimeLocatorPath, versionedPluginRoot)]);
   checks.push(["Antigravity IDE skills", await exists(join(antigravityHome, "skills", "cairn-plan", "SKILL.md"))]);
   checks.push(["Antigravity CLI flat skills", await exists(join(antigravityCliHome, "skills", "cairn-plan.md"))]);
 
@@ -188,7 +290,7 @@ async function doctor() {
 
   const agy = spawnSync("agy", ["--version"], { encoding: "utf8", env: process.env });
   checks.push(["Antigravity CLI readiness", !agy.error && agy.status === 0 && /^\d+\.\d+\.\d+/.test(agy.stdout.trim())]);
-  checks.push(["Antigravity CLI skill validation", await validateAntigravitySkills()]);
+  checks.push(["Antigravity CLI skill validation", await validateAntigravitySkills(antigravityCliHome, skillNames(), versionedPluginRoot)]);
   for (const [name, ok] of checks) console.log(`${ok ? "OK" : "FAIL"} ${name}`);
   if (checks.some(([, ok]) => !ok)) process.exitCode = 1;
 }
@@ -226,12 +328,12 @@ async function stageInstall(stageRoot) {
   add("claude-runtime", "claude", claudeRuntimeLocatorPath, claudeLocator, "file");
   for (const name of commandNames()) {
     const staged = join(stageRoot, "claude-commands", `cairn-${name}.md`);
-    await renderMirrorFile(join(runtimeStage, ".claude", "commands", `cairn-${name}.md`), staged, claudeRuntimeLocatorPath);
+    await renderMirrorFile(join(runtimeStage, ".claude", "commands", `cairn-${name}.md`), staged, { locatorPath: claudeRuntimeLocatorPath, runtimeRoot: versionedPluginRoot });
     add(`claude-command-${name}`, "claude", join(claudeHome, "commands", `cairn-${name}.md`), staged, "file");
   }
-  for (const name of ["explorer", "worker"]) {
+  for (const name of agentNames()) {
     const staged = join(stageRoot, "claude-agents", `cairn-${name}.md`);
-    await renderMirrorFile(join(runtimeStage, ".claude", "agents", `${name}.md`), staged, claudeRuntimeLocatorPath);
+    await renderMirrorFile(join(runtimeStage, ".claude", "agents", `${name}.md`), staged, { locatorPath: claudeRuntimeLocatorPath, runtimeRoot: versionedPluginRoot });
     add(`claude-agent-${name}`, "claude", join(claudeHome, "agents", `cairn-${name}.md`), staged, "file");
   }
 
@@ -255,19 +357,23 @@ async function stageAntigravity(targets, stageRoot, runtimeStage, destinationRoo
   for (const name of skillNames()) {
     if (flatSkills) {
       const staged = join(stageRoot, `${label}-skills`, `${name}.md`);
-      await renderMirrorFile(join(runtimeStage, "skills", name, "SKILL.md"), staged, locatorPath, { includeLocatorNotice: true });
+      await renderMirrorFile(join(runtimeStage, "skills", name, "SKILL.md"), staged, { locatorPath, runtimeRoot: versionedPluginRoot, includeLocatorNotice: true });
       targets.push({ id: `${label}-skill-${name}`, phase: "antigravity", path: join(destinationRoot, "skills", `${name}.md`), staged, type: "file" });
     } else {
       const staged = join(stageRoot, `${label}-skills`, name);
       await cp(join(runtimeStage, "skills", name), staged, { recursive: true });
-      await renderMirrorFile(join(runtimeStage, "skills", name, "SKILL.md"), join(staged, "SKILL.md"), antigravitySkillLocatorPath(destinationRoot, name), { includeLocatorNotice: true });
+      await renderMirrorFile(join(runtimeStage, "skills", name, "SKILL.md"), join(staged, "SKILL.md"), {
+        locatorPath: antigravitySkillLocatorPath(destinationRoot, name),
+        runtimeRoot: versionedPluginRoot,
+        includeLocatorNotice: true,
+      });
       await writeLocator(join(staged, "references", "cairn-runtime.json"), versionedPluginRoot);
       targets.push({ id: `${label}-skill-${name}`, phase: "antigravity", path: join(destinationRoot, "skills", name), staged, type: "tree" });
     }
   }
   for (const name of commandNames()) {
     const staged = join(stageRoot, `${label}-workflows`, `cairn-${name}.md`);
-    await renderMirrorFile(join(runtimeStage, ".agents", "workflows", `cairn-${name}.md`), staged, locatorPath);
+    await renderMirrorFile(join(runtimeStage, ".agents", "workflows", `cairn-${name}.md`), staged, { locatorPath, runtimeRoot: versionedPluginRoot });
     targets.push({ id: `${label}-workflow-${name}`, phase: "antigravity", path: join(destinationRoot, "workflows", `cairn-${name}.md`), staged, type: "file" });
   }
 }
@@ -312,24 +418,24 @@ async function copyPluginTree(source, destination) {
 }
 
 async function createTransaction() {
-  const root = await mkdtemp(join(tmpdir(), "cairn-lifecycle-"));
+  const id = randomUUID();
+  const root = join(transactionRoot, id);
   const transaction = {
     schemaVersion: 1,
-    id: randomUUID(),
+    id,
     state: "active",
     root,
     stageRoot: join(root, "stage"),
-    backupRoot: "",
+    backupRoot: join(root, "backup"),
     entries: [],
   };
-  transaction.backupRoot = join(transactionRoot, transaction.id, "backup");
   await mkdir(transaction.backupRoot, { recursive: true });
   await writeTransactionJournal(transaction);
   return transaction;
 }
 
 async function withLifecycleLock(operation, {
-  timeoutMs = Number(process.env.CAIRN_LIFECYCLE_LOCK_TIMEOUT_MS ?? DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS),
+  timeoutMs = DEFAULT_LIFECYCLE_LOCK_TIMEOUT_MS,
   retryMs = 25,
   malformedStaleMs = 30_000,
   afterRelease,
@@ -338,6 +444,7 @@ async function withLifecycleLock(operation, {
   if (process.env.CAIRN_TEST_PRUNE_LOCK_PARENT_BEFORE_ACQUIRE === "1") await rmdir(dirname(lifecycleLockPath));
   const owner = { schemaVersion: 1, pid: process.pid, hostname: hostname(), nonce: randomUUID(), acquiredAt: new Date().toISOString() };
   const deadline = Date.now() + timeoutMs;
+  let waitReported = false;
   while (true) {
     try {
       await writeFile(lifecycleLockPath, `${JSON.stringify(owner)}\n`, { flag: "wx" });
@@ -346,6 +453,10 @@ async function withLifecycleLock(operation, {
       }
       const acquired = parseLifecycleLock(await readFile(lifecycleLockPath, "utf8"));
       if (acquired?.nonce !== owner.nonce) throw new Error("Cairn lifecycle lock ownership changed after acquisition");
+      if (process.env.CAIRN_TEST_HOLD_LOCK_STDIN === "1") {
+        console.log("CAIRN_TEST_LOCK_ACQUIRED");
+        await new Promise((resolvePromise) => process.stdin.once("data", resolvePromise));
+      }
       break;
     } catch (error) {
       if (error?.code === "ENOENT") {
@@ -354,6 +465,10 @@ async function withLifecycleLock(operation, {
         continue;
       }
       if (error?.code !== "EEXIST") throw error;
+      if (!waitReported && process.env.CAIRN_TEST_REPORT_LOCK_WAIT === "1") {
+        console.log("CAIRN_TEST_LOCK_WAIT");
+        waitReported = true;
+      }
       if (await reclaimLifecycleLock(malformedStaleMs)) continue;
       if (Date.now() >= deadline) throw new Error(`Timed out waiting for Cairn lifecycle lock after ${timeoutMs}ms`);
       await delay(Math.min(retryMs, Math.max(1, deadline - Date.now())));
@@ -493,6 +608,13 @@ async function replaceTarget(target, transaction) {
   };
   transaction.entries.push(entry);
   await writeTransactionJournal(transaction);
+  if (process.env.CAIRN_TEST_MUTATE_AFTER_PREFLIGHT_ID === target.id) {
+    await writeFile(target.path, process.env.CAIRN_TEST_MUTATION_CONTENT ?? "concurrent mutation\n");
+  }
+  if (target.type !== "config" && target.preflightDigest !== undefined
+      && await targetDigest(target.path, target.type) !== target.preflightDigest) {
+    throw new Error(`Managed artifact changed after lifecycle preflight: ${target.path}`);
+  }
   if (target.type === "config" && process.env.CAIRN_TEST_APPEND_CONFIG_BEFORE_REPLACE) {
     const snapshot = await readSharedConfigSnapshot(target.path);
     await writeFile(target.path, `${snapshot.text}${process.env.CAIRN_TEST_APPEND_CONFIG_BEFORE_REPLACE}`);
@@ -503,7 +625,7 @@ async function replaceTarget(target, transaction) {
   if (target.type === "config") {
     let capturedExists = true;
     try {
-      await rename(target.path, backup);
+      await renameLifecycleTarget(target.path, backup, target.id);
     } catch (error) {
       if (error?.code !== "ENOENT") throw error;
       capturedExists = false;
@@ -516,11 +638,29 @@ async function replaceTarget(target, transaction) {
     entry.previousDigest = capturedExists ? await targetDigest(backup, target.type) : "missing";
     entry.expectedNewDigest = await targetDigest(target.staged, target.type);
     await writeTransactionJournal(transaction);
-  } else if (existed) await rename(target.path, backup);
+  } else if (existed) await renameLifecycleTarget(target.path, backup, target.id);
   await mkdir(dirname(target.path), { recursive: true });
-  await rename(target.staged, target.path);
+  await renameStagedLifecycleTarget(target.staged, target.path, target.id);
   entry.status = "applied";
   await writeTransactionJournal(transaction);
+}
+
+async function renameStagedLifecycleTarget(source, destination, targetId) {
+  if (process.env.CAIRN_TEST_FORCE_EXDEV_ID === targetId) {
+    throw new Error(`Cross-device replacement is not supported safely for lifecycle target: ${targetId}`);
+  }
+  await renameLifecycleTarget(source, destination, targetId);
+}
+
+async function renameLifecycleTarget(source, destination, targetId) {
+  try {
+    await rename(source, destination);
+  } catch (error) {
+    if (error?.code === "EXDEV") {
+      throw new Error(`Cross-device replacement is not supported safely for lifecycle target: ${targetId}`);
+    }
+    throw error;
+  }
 }
 
 async function removeManagedTarget(target, transaction) {
@@ -541,7 +681,7 @@ async function removeManagedTarget(target, transaction) {
   };
   transaction.entries.push(entry);
   await writeTransactionJournal(transaction);
-  await rename(target.path, backup);
+  await renameLifecycleTarget(target.path, backup, target.id);
   entry.status = "applied";
   await writeTransactionJournal(transaction);
 }
@@ -549,7 +689,6 @@ async function removeManagedTarget(target, transaction) {
 async function rollback(transaction) {
   await rollbackEntries(transaction);
   await rm(transaction.root, { recursive: true, force: true });
-  await rm(join(transactionRoot, transaction.id), { recursive: true, force: true });
   await rm(transactionPath, { force: true });
 }
 
@@ -562,7 +701,6 @@ async function finishTransaction(transaction) {
     throw error;
   }
   await rm(transaction.root, { recursive: true, force: true });
-  await rm(join(transactionRoot, transaction.id), { recursive: true, force: true });
   await rm(transactionPath, { force: true });
 }
 
@@ -696,7 +834,7 @@ async function rollbackEntries(transaction) {
       }
       await mkdir(dirname(entry.path), { recursive: true });
       await rename(entry.backup, entry.path);
-    } else if (entry.type === "config" && entry.status === "prepared" && !destinationExists) {
+    } else if (entry.status === "prepared") {
       continue;
     } else if (!entry.existed) {
       if (destinationExists) {
@@ -728,7 +866,12 @@ function injectFailure(point) {
 async function assertTargetsReplaceable(targets, ownership) {
   const records = new Map((ownership?.targets ?? []).map((record) => [record.id, record]));
   for (const target of targets) {
-    if (!(await exists(target.path))) continue;
+    if (!(await exists(target.path))) {
+      target.preflightDigest = "missing";
+      continue;
+    }
+    const current = await targetDigest(target.path, target.type);
+    target.preflightDigest = current;
     if (target.id === "previous-codex-runtime") {
       const previous = records.get("codex-runtime");
       if (!previous || previous.path !== target.path || previous.type !== target.type) throw new Error("Previous runtime does not match ownership manifest.");
@@ -743,7 +886,6 @@ async function assertTargetsReplaceable(targets, ownership) {
       throw new Error(`Refusing to overwrite unmanaged current-version runtime: ${target.path}`);
     }
     if (record.path !== target.path || record.type !== target.type) throw new Error(`Ownership manifest target mismatch: ${target.id}`);
-    const current = await targetDigest(target.path, target.type);
     if (target.type !== "config" && current !== record.installedDigest) throw new Error(`Managed artifact was modified: ${target.path}`);
   }
 }
@@ -898,7 +1040,7 @@ export async function verifyLegacy022Root(root) {
   const allowedGenerated = new Set([".cairn-runtime.json", ...skillNames().map((name) => `skills/${name}/references/cairn-runtime.json`)]);
   const actual = await regularFiles(root);
   const expected = new Set([...Object.keys(integrity.files), ...allowedGenerated]);
-  if (actual.length !== expected.size || actual.some((file) => !expected.has(file))) throw new Error("Legacy Cairn 0.2.2 root file set does not match the signed release allowlist.");
+  if (actual.length !== expected.size || actual.some((file) => !expected.has(file))) throw new Error("Legacy Cairn 0.2.2 root file set does not match the pinned SHA-256 file-hash allowlist.");
   for (const [path, expectedHash] of Object.entries(integrity.files)) {
     const content = await readFile(join(root, path));
     if (path === ".codex-plugin/plugin.json") {
@@ -914,14 +1056,6 @@ export async function verifyLegacy022Root(root) {
   }
 }
 
-function validLegacyLocator(locator, root) {
-  const expected = createRuntimeLocator(root);
-  return locator?.schemaVersion === RUNTIME_LOCATOR_SCHEMA_VERSION
-    && locator.pluginRoot === expected.pluginRoot
-    && JSON.stringify(locator.entrypoints) === JSON.stringify(expected.entrypoints)
-    && JSON.stringify(locator.resources) === JSON.stringify(expected.resources);
-}
-
 async function verifyLegacyMirror(target) {
   // Legacy mirrors are accepted only when byte-identical to a deterministic render
   // from the verified release tree. Unknown or user-modified mirrors are preserved.
@@ -930,19 +1064,23 @@ async function verifyLegacyMirror(target) {
     const expected = join(temp, "expected");
     if (target.id.startsWith("claude-command-")) {
       const name = target.id.slice("claude-command-".length);
-      await renderMirrorFile(join(installedPluginRoot, ".claude", "commands", `cairn-${name}.md`), expected, claudeRuntimeLocatorPath, {}, installedPluginRoot);
+      await renderMirrorFile(join(installedPluginRoot, ".claude", "commands", `cairn-${name}.md`), expected, { locatorPath: claudeRuntimeLocatorPath, runtimeRoot: installedPluginRoot });
     } else if (target.id.startsWith("claude-agent-")) {
       const name = target.id.slice("claude-agent-".length);
-      await renderMirrorFile(join(installedPluginRoot, ".claude", "agents", `${name}.md`), expected, claudeRuntimeLocatorPath, {}, installedPluginRoot);
+      await renderMirrorFile(join(installedPluginRoot, ".claude", "agents", `${name}.md`), expected, { locatorPath: claudeRuntimeLocatorPath, runtimeRoot: installedPluginRoot });
     } else if (target.id.startsWith("ide-skill-")) {
       const name = target.id.slice("ide-skill-".length);
       await cp(join(installedPluginRoot, "skills", name), expected, { recursive: true });
       const locator = antigravitySkillLocatorPath(antigravityHome, name);
-      await renderMirrorFile(join(installedPluginRoot, "skills", name, "SKILL.md"), join(expected, "SKILL.md"), locator, { includeLocatorNotice: true }, installedPluginRoot);
+      await renderMirrorFile(join(installedPluginRoot, "skills", name, "SKILL.md"), join(expected, "SKILL.md"), { locatorPath: locator, runtimeRoot: installedPluginRoot, includeLocatorNotice: true });
       await writeLocator(join(expected, "references", "cairn-runtime.json"), installedPluginRoot);
     } else if (target.id.startsWith("cli-skill-")) {
       const name = target.id.slice("cli-skill-".length);
-      await renderMirrorFile(join(installedPluginRoot, "skills", name, "SKILL.md"), expected, antigravityRuntimeLocatorPath(antigravityCliHome), { includeLocatorNotice: true }, installedPluginRoot);
+      await renderMirrorFile(join(installedPluginRoot, "skills", name, "SKILL.md"), expected, {
+        locatorPath: antigravityRuntimeLocatorPath(antigravityCliHome),
+        runtimeRoot: installedPluginRoot,
+        includeLocatorNotice: true,
+      });
     } else if (target.id.startsWith("legacy-ide-skill-") || target.id.startsWith("legacy-cli-skill-")) {
       const isIde = target.id.startsWith("legacy-ide-skill-");
       const prefix = isIde ? "legacy-ide-skill-" : "legacy-cli-skill-";
@@ -950,17 +1088,20 @@ async function verifyLegacyMirror(target) {
       const root = isIde ? legacyAntigravityHome : antigravityCliHome;
       const locator = antigravitySkillLocatorPath(root, name);
       await cp(join(installedPluginRoot, "skills", name), expected, { recursive: true });
-      await renderMirrorFile(join(installedPluginRoot, "skills", name, "SKILL.md"), join(expected, "SKILL.md"), locator, { includeLocatorNotice: true }, installedPluginRoot);
+      await renderMirrorFile(join(installedPluginRoot, "skills", name, "SKILL.md"), join(expected, "SKILL.md"), { locatorPath: locator, runtimeRoot: installedPluginRoot, includeLocatorNotice: true });
       await writeLocator(join(expected, "references", "cairn-runtime.json"), installedPluginRoot);
     } else if (target.id.startsWith("legacy-ide-workflow-")) {
       const name = target.id.slice("legacy-ide-workflow-".length);
-      await renderMirrorFile(join(installedPluginRoot, ".agents", "workflows", `cairn-${name}.md`), expected, antigravityRuntimeLocatorPath(legacyAntigravityHome), {}, installedPluginRoot);
+      await renderMirrorFile(join(installedPluginRoot, ".agents", "workflows", `cairn-${name}.md`), expected, {
+        locatorPath: antigravityRuntimeLocatorPath(legacyAntigravityHome),
+        runtimeRoot: installedPluginRoot,
+      });
     } else if (target.id.startsWith("ide-workflow-") || target.id.startsWith("cli-workflow-")) {
       const isIde = target.id.startsWith("ide-workflow-");
       const prefix = isIde ? "ide-workflow-" : "cli-workflow-";
       const name = target.id.slice(prefix.length);
       const root = isIde ? antigravityHome : antigravityCliHome;
-      await renderMirrorFile(join(installedPluginRoot, ".agents", "workflows", `cairn-${name}.md`), expected, antigravityRuntimeLocatorPath(root), {}, installedPluginRoot);
+      await renderMirrorFile(join(installedPluginRoot, ".agents", "workflows", `cairn-${name}.md`), expected, { locatorPath: antigravityRuntimeLocatorPath(root), runtimeRoot: installedPluginRoot });
     } else {
       throw new Error(`Legacy mirror target is not recognized: ${target.id}`);
     }
@@ -1009,144 +1150,8 @@ function sha(value) {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
-export function updateConfig(config, hookStates, { marketplacePath = marketplaceRoot } = {}) {
-  let next = removeCairnConfig(config);
-  next = append(next, `[marketplaces.cairn]\nlast_updated = ${JSON.stringify(new Date().toISOString().replace(/\.\d{3}Z$/, "Z"))}\nsource_type = "local"\nsource = ${JSON.stringify(marketplacePath)}\n`);
-  next = append(next, '[plugins."cairn@cairn"]\nenabled = true\n');
-  for (const state of hookStates) next = append(next, `[hooks.state.${JSON.stringify(state.key)}]\ntrusted_hash = ${JSON.stringify(state.trustedHash)}\n`);
-  return next;
-}
-
-export function removeCairnConfig(config) {
-  return splitSections(config).map((section) => isCairnConfigSection(section)
-    ? splitTrailingTomlTrivia(section.text).trivia
-    : section.text).join("");
-}
-
-function cairnConfigProjection(config) {
-  return splitSections(config).filter(isCairnConfigSection)
-    .map((section) => splitTrailingTomlTrivia(section.text).body).join("");
-}
-
-function isCairnConfigSection(section) {
-  return section.header === "marketplaces.cairn"
-    || section.header === 'plugins."cairn@cairn"'
-    || (section.header?.startsWith("hooks.state.") && section.header.includes("cairn@cairn:"));
-}
-
-function splitTrailingTomlTrivia(text) {
-  const lines = text.split(/(?<=\n)/);
-  let boundary = lines.length;
-  while (boundary > 0) {
-    const line = lines[boundary - 1];
-    if (line.length === 0 || line.trim().length === 0 || line.trimStart().startsWith("#")) boundary -= 1;
-    else break;
-  }
-  return { body: lines.slice(0, boundary).join(""), trivia: lines.slice(boundary).join("") };
-}
-
-async function readSharedConfigSnapshot(path) {
-  let pathInfo;
-  try {
-    pathInfo = await lstat(path);
-  } catch (error) {
-    if (error?.code === "ENOENT") return { exists: false, text: "", digest: "missing" };
-    throw error;
-  }
-  if (pathInfo.isSymbolicLink() || !pathInfo.isFile()) throw new Error(`Managed config is not a regular file: ${path}`);
-  let handle;
-  try {
-    const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0);
-    handle = await open(path, flags);
-  } catch (error) {
-    if (["ELOOP", "EFTYPE", "ENXIO"].includes(error?.code)) throw new Error(`Managed config is not a regular file: ${path}`);
-    throw error;
-  }
-  try {
-    const openedInfo = await handle.stat();
-    if (!openedInfo.isFile() || openedInfo.dev !== pathInfo.dev || openedInfo.ino !== pathInfo.ino) {
-      throw new Error(`Managed config changed identity while opening: ${path}`);
-    }
-    const text = await handle.readFile("utf8");
-    return { exists: true, text, digest: sha(text) };
-  } finally {
-    await handle.close();
-  }
-}
-
-export function ensureSetting(config, sectionName, key, value) {
-  const sections = splitSections(config);
-  const index = sections.findIndex((section) => section.header === sectionName);
-  if (index === -1) return append(config, `[${sectionName}]\n${key} = ${value}\n`);
-  const lines = sections[index].text.trimEnd().split("\n");
-  const settingIndex = lines.findIndex((line) => line.trim().startsWith(`${key} =`));
-  if (settingIndex === -1) lines.push(`${key} = ${value}`);
-  else lines[settingIndex] = `${key} = ${value}`;
-  sections[index].text = `${lines.join("\n")}\n`;
-  return sections.map((section) => section.text).join("");
-}
-
-export function hasSetting(config, sectionName, key, value) {
-  const section = splitSections(config).find((candidate) => candidate.header === sectionName);
-  return section?.text.split("\n").some((line) => line.trim() === `${key} = ${value}`) ?? false;
-}
-
-export function splitSections(config) {
-  const result = [];
-  let current = { header: null, text: "" };
-  let multiline = null;
-  for (const line of config.split(/(?<=\n)/)) {
-    const delimiterCount = (delimiter) => line.split(delimiter).length - 1;
-    if (multiline) {
-      current.text += line;
-      if (delimiterCount(multiline) % 2 === 1) multiline = null;
-      continue;
-    }
-    const doubleCount = delimiterCount('"""');
-    const singleCount = delimiterCount("'''");
-    const match = line.trim().match(/^\[([^\]]+)\]$/);
-    if (match) {
-      if (current.text.length > 0) result.push(current);
-      current = { header: match[1], text: line };
-    } else current.text += line;
-    if (doubleCount % 2 === 1) multiline = '"""';
-    else if (singleCount % 2 === 1) multiline = "'''";
-  }
-  if (current.text.length > 0) result.push(current);
-  return result;
-}
-
-async function trustedHookStates(root) {
-  const parsed = await readJson(join(root, "hooks", "hooks.json"));
-  const states = [];
-  const labels = { SessionStart: "session_start", UserPromptSubmit: "user_prompt_submit", PostToolUse: "post_tool_use", Stop: "stop", SubagentStop: "subagent_stop" };
-  for (const [eventName, groups] of Object.entries(parsed?.hooks ?? {})) {
-    const eventLabel = labels[eventName];
-    if (!eventLabel || !Array.isArray(groups)) continue;
-    for (const [groupIndex, group] of groups.entries()) for (const [handlerIndex, handler] of (group.hooks ?? []).entries()) {
-      states.push({ key: `cairn@cairn:hooks/hooks.json:${eventLabel}:${groupIndex}:${handlerIndex}`, trustedHash: hookHash(eventLabel, group.matcher, handler) });
-    }
-  }
-  return states;
-}
-
-export function hookHash(eventName, matcher, handler) {
-  const normalized = { type: "command", command: handler.command, timeout: Math.max(Number(handler.timeout ?? 600), 1), async: false };
-  if (typeof handler.statusMessage === "string") normalized.statusMessage = handler.statusMessage;
-  const identity = { event_name: eventName, hooks: [normalized] };
-  if (typeof matcher === "string") identity.matcher = matcher;
-  return sha(JSON.stringify(canonical(identity)));
-}
-
-export function canonical(value) {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value === null || typeof value !== "object") return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
-}
-
-function append(config, block) {
-  if (config.length === 0) return `${block.trimEnd()}\n`;
-  return `${config}${config.endsWith("\n") ? "" : "\n"}${block.trimEnd()}\n`;
+export function updateConfig(config, hookStates, options = {}) {
+  return projectConfig(config, hookStates, { marketplacePath: options.marketplacePath ?? marketplaceRoot });
 }
 
 export function pathHasSegment(path, segment) { return path.split(/[\\/]+/).includes(segment); }
@@ -1169,41 +1174,15 @@ export function shouldCopyPluginPath(source) {
 }
 export function samePath(left, right) { try { return realpathSync(left) === realpathSync(right); } catch { return resolve(left) === resolve(right); } }
 export function commandNames() { return ["install", "upgrade", "doctor", "uninstall", "memory", "plan", "work", "review", "toolcheck"]; }
+export function agentNames() { return ["explorer", "worker"]; }
 export function skillNames() { return ["cairn-memory", "cairn-plan", "cairn-work", "cairn-review"]; }
 
-export function renderInstalledMirror(content, { runtimeRoot = versionedPluginRoot, locatorPath = installedRuntimeLocatorPath, platform = process.platform } = {}) {
-  const platformJoin = platform === "win32" ? win32.join : posix.join;
-  const quotedCli = quoteShellArg(platformJoin(runtimeRoot, "scripts", "cairn.mjs"), platform);
-  let rendered = content.replaceAll("{{CAIRN_RUNTIME_LOCATOR_JSON}}", JSON.stringify(locatorPath))
-    .replace(/\bnode\s+scripts\/cairn\.mjs\b/g, `node ${quotedCli}`)
-    .replace(/\bnode\s+scripts\/([A-Za-z0-9._/-]+)/g, (_, path) => `node ${quoteShellArg(join(runtimeRoot, "scripts", path), platform)}`);
-  rendered = rendered.replace(/(^|[\s`("'=])(commands|agents|templates|docs\/model-guidance)\/([A-Za-z0-9._<>/-]+)/gm,
-    (_, prefix, directory, suffix) => `${prefix}${platformJoin(runtimeRoot, directory, suffix)}`);
-  return rendered;
-}
-
-export function quoteShellArg(value, platform = process.platform) { return platform === "win32" ? `"${value.replaceAll('"', '""')}"` : `'${value.replaceAll("'", "'\\''")}'`; }
-function antigravityRuntimeLocatorPath(root) { return join(root, "cairn", "runtime.json"); }
-function installedSkillLocatorPath(name) { return join(versionedPluginRoot, "skills", name, "references", "cairn-runtime.json"); }
-function antigravitySkillLocatorPath(root, name) { return join(root, "skills", name, "references", "cairn-runtime.json"); }
-
-async function writeLocator(path, root) { await mkdir(dirname(path), { recursive: true }); await writeFile(path, `${JSON.stringify(createRuntimeLocator(root), null, 2)}\n`); }
-async function validRuntimeLocator(path) {
-  try {
-    const locator = await readJson(path);
-    const expected = createRuntimeLocator(versionedPluginRoot);
-    if (locator?.schemaVersion !== RUNTIME_LOCATOR_SCHEMA_VERSION || resolve(locator.pluginRoot ?? ".") !== resolve(versionedPluginRoot)) return false;
-    for (const [name, value] of Object.entries(expected.entrypoints)) if (locator.entrypoints?.[name] !== value) return false;
-    for (const [name, value] of Object.entries(expected.resources)) if (locator.resources?.[name] !== value) return false;
-    return (await Promise.all(runtimeRequiredPaths(locator).map(exists))).every(Boolean);
-  } catch { return false; }
-}
-
-async function renderMirrorFile(source, destination, locatorPath, { includeLocatorNotice = false } = {}, runtimeRoot = versionedPluginRoot) {
-  const content = await readFile(source, "utf8");
-  const notice = includeLocatorNotice ? `\n\n## Installed Cairn runtime\n\nRead the structured runtime locator at \`${JSON.stringify(locatorPath)}\`. Resolve Cairn scripts and static resources from its absolute paths, never from the target project.\n` : "";
-  await mkdir(dirname(destination), { recursive: true });
-  await writeFile(destination, `${renderInstalledMirror(content, { runtimeRoot, locatorPath }).trimEnd()}${notice}`);
+export function renderInstalledMirror(content, options = {}) {
+  return projectMirror(content, {
+    runtimeRoot: options.runtimeRoot ?? versionedPluginRoot,
+    locatorPath: options.locatorPath ?? installedRuntimeLocatorPath,
+    platform: options.platform ?? process.platform,
+  });
 }
 
 function hostJson(args, extraEnv = {}) {
@@ -1225,20 +1204,6 @@ export function parseCodexFeatureList(output) {
     if (match) features[match[1]] = match[2] === "true";
   }
   return Object.keys(features).length > 0 ? features : null;
-}
-
-async function validateAntigravitySkills() {
-  try {
-    if (!(await validRuntimeLocator(antigravityRuntimeLocatorPath(antigravityCliHome)))) return false;
-    for (const name of skillNames()) {
-      const content = await readFile(join(antigravityCliHome, "skills", `${name}.md`), "utf8");
-      if (!/^---\r?\n[\s\S]*?\r?\n---\r?\n/.test(content) || !/^name:\s*\S+/m.test(content) || !/^description:\s*\S+/m.test(content)) return false;
-      if (!content.includes(JSON.stringify(antigravityRuntimeLocatorPath(antigravityCliHome)))) return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function readJson(path) { if (!(await exists(path))) return null; return JSON.parse(await readFile(path, "utf8")); }

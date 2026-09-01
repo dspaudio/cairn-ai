@@ -119,6 +119,8 @@ const planTemplateKo = `# PLAN
 - 두 번 실패한 뒤에는 blocker를 \`docs/plan/<topic>.md\`에 기록합니다.
 `;
 
+const recoverableGoalStatuses = new Set(["active", "paused", "blocked"]);
+
 const contextLimits = {
   goalTitle: 64,
   roadmapTaskId: 24,
@@ -163,7 +165,7 @@ export async function runStateResult(event = "manual", {
   if (event === "session-start" || event === "user-prompt-submit") {
     const reconciled = await reconcileWorktreeState({ root: resolvedRoot });
     const state = reconciled.state;
-    if (state?.goal?.status === "active" && !isGoalOwnedBySession(state, payload?.session_id)) {
+    if (recoverableGoalStatuses.has(state?.goal?.status) && !isGoalOwnedBySession(state, payload?.session_id)) {
       return foreignSessionContextResult({ ko, event });
     }
     const result = contextResult({ ko, state, event });
@@ -250,7 +252,7 @@ function prependContext(result, notice) {
 }
 
 function contextResult({ ko, state, event }) {
-  const base = ko ? "Cairn kernel: 루트 MEMORY.md는 선택 사항이며, 있으면 읽으세요." : "Cairn kernel: root MEMORY.md is optional; read it when present.";
+  const base = kernelBase(ko);
   const idlePolicy = event === "user-prompt-submit"
     ? (ko
       ? " 비단순 구현이나 계획된 작업 재개는 cairn-plan과 plan/task를 복원·생성하세요. 대상이 확정된 Git/GitHub 상태·fetch·checkout·merge·push·PR 작업은 코드 수정·충돌 해결·파괴적 복구·릴리스/배포·설계가 필요하지 않으면 plan/goal 없이 실행하세요. 상담·설명·계획 전용도 goal 없이 처리하세요."
@@ -261,6 +263,9 @@ function contextResult({ ko, state, event }) {
   const failClosed = ko
     ? " active state와 그 skill·plan·required task reference가 없거나 읽을 수 없거나 일치하지 않을 때만 중단하세요."
     : " Stop only if active state and its skill, plan, or required task ref is missing, unreadable, or inconsistent.";
+  if (state && (state.goal.status === "paused" || state.goal.status === "blocked")) {
+    return interruptedContextResult(event, ko, state);
+  }
   if (!state || state.goal.status !== "active") return contextHookResult({ event, message: `${base}${idlePolicy}${failClosed}` });
   const task = state.tasks.find((item) => item.status === "active")
     ?? state.tasks.find((item) => item.status === "pending")
@@ -295,6 +300,29 @@ function contextResult({ ko, state, event }) {
         : `After a side question, resume ${taskId} unless asked to pause, stop, or switch.`))
     : "";
   return contextHookResult({ event, message: [activeHeader, taskRoadmap(ko, state), continuation, resume].filter(Boolean).join("\n") });
+}
+
+function kernelBase(ko) {
+  return ko ? "Cairn kernel: 루트 MEMORY.md는 선택 사항이며, 있으면 읽으세요." : "Cairn kernel: root MEMORY.md is optional; read it when present.";
+}
+
+function interruptedContextResult(event, ko, state) {
+  const task = state.tasks.find((item) => item.status === "active")
+    ?? state.tasks.find((item) => item.status === "pending")
+    ?? state.tasks.find((item) => item.status === "blocked");
+  const taskContext = task
+    ? (ko
+      ? `현재 task: ${task.id} (${clipText(task.title, contextLimits.taskTitle)}), 상태 ${task.status}.`
+      : `Current task: ${task.id} (${clipText(task.title, contextLimits.taskTitle)}), status ${task.status}.`)
+    : (ko ? "현재 task: 없음." : "Current task: none.");
+  const blocker = state.goal.blocker ?? task?.blocker ?? (ko ? "없음" : "none");
+  const recovery = ko
+    ? "자동으로 재개하지 마세요. 정확한 context를 복원하고 원인을 처리한 뒤 명시적으로 resume하세요."
+    : "Do not resume automatically. Restore this exact context, address the interruption, then resume explicitly.";
+  const message = ko
+    ? `${kernelBase(ko)} 정확한 plan: ${state.goal.planId}. ${taskContext} Goal 상태: ${state.goal.status}. Blocker: ${blocker}. ${recovery}`
+    : `${kernelBase(ko)} Exact plan: ${state.goal.planId}. ${taskContext} Goal status: ${state.goal.status}. Blocker: ${blocker}. ${recovery}`;
+  return contextHookResult({ event, message });
 }
 
 function foreignSessionContextResult({ ko, event }) {

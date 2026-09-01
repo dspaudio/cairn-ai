@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { accessSync, constants, realpathSync, statSync } from "node:fs";
+import { accessSync, constants, readFileSync, realpathSync, statSync } from "node:fs";
 import { lstat, readdir } from "node:fs/promises";
 import { delimiter, isAbsolute, join, posix, relative, resolve, sep, win32 } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -7,20 +7,30 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const DEFAULT_TIMEOUT_MS = 10_000;
 
+const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+const usage = "Usage: cairn toolcheck [--root PATH] [--json] [--install --yes]";
+
 if (isCliEntry()) {
+  const args = process.argv.slice(2);
   try {
-    const options = parseCliArgs(process.argv.slice(2));
-    const report = await createReport(options);
-
-    if (options.json) {
-      console.log(JSON.stringify(report, null, 2));
+    const options = parseCliArgs(args);
+    if (options.action === "help") {
+      console.log(usage);
+    } else if (options.action === "version") {
+      console.log(`cairn ${version}`);
     } else {
-      printReport(report);
+      const report = await createReport(options);
+      if (options.json) console.log(JSON.stringify(report, null, 2));
+      else printReport(report);
+      if (report.install.refused || report.results.some((result) => !result.ok)) process.exitCode = 1;
     }
-
-    if (report.install.refused || report.results.some((result) => !result.ok)) process.exitCode = 1;
   } catch (error) {
-    console.error(`Cairn toolcheck error: ${error instanceof Error ? error.message : String(error)}`);
+    const message = error instanceof Error ? error.message : String(error);
+    if (args.includes("--json")) {
+      console.log(JSON.stringify({ schemaVersion: 1, error: { code: "CLI_USAGE", message } }, null, 2));
+    } else {
+      console.error(`Cairn toolcheck error: ${message}`);
+    }
     process.exitCode = 2;
   }
 }
@@ -30,25 +40,35 @@ export function parseCliArgs(args, cwd = process.cwd()) {
   let install = false;
   let yes = false;
   let json = false;
+  let action = "check";
+  const provided = new Set();
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
-    if (argument === "--install") install = true;
-    else if (argument === "--yes") yes = true;
-    else if (argument === "--json") json = true;
-    else if (argument === "--root") {
-      const value = args[index + 1];
+    if (["--help", "--version", "--install", "--yes", "--json"].includes(argument)) {
+      if (provided.has(argument)) throw new Error(`${argument} may only be provided once`);
+      provided.add(argument);
+      if (argument === "--help") action = "help";
+      else if (argument === "--version") action = "version";
+      else if (argument === "--install") install = true;
+      else if (argument === "--yes") yes = true;
+      else json = true;
+    } else if (argument === "--root" || argument.startsWith("--root=")) {
+      if (provided.has("--root")) throw new Error("--root may only be provided once");
+      provided.add("--root");
+      const value = argument === "--root" ? args[index + 1] : argument.slice("--root=".length);
       if (!value || value.startsWith("--")) throw new Error("--root requires a path");
       root = value;
-      index += 1;
-    } else if (argument.startsWith("--root=")) {
-      const value = argument.slice("--root=".length);
-      if (!value) throw new Error("--root requires a path");
-      root = value;
+      if (argument === "--root") index += 1;
+    } else {
+      throw new Error(`unknown option: ${argument}`);
     }
   }
 
-  return { root: resolve(cwd, root), install, yes, json };
+  if (provided.has("--help") && provided.has("--version")) {
+    throw new Error("--help and --version cannot be used together");
+  }
+  return { root: resolve(cwd, root), install, yes, json, action };
 }
 
 export async function createReport({
