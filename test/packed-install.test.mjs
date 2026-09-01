@@ -4,12 +4,18 @@ import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/p
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
-import { runtimeRequiredPaths } from "../scripts/cairn-paths.mjs";
+import { runtimeRequiredPaths, runtimeRequiredRelativePaths } from "../scripts/cairn-paths.mjs";
 import { targetDigest } from "../scripts/cairn-lifecycle.mjs";
 
 const sourceRoot = resolve(".");
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const lifecycleScript = join(sourceRoot, "scripts", "cairn-lifecycle.mjs");
+
+test("runtime locator includes extracted goal CLI dependency", () => {
+  const closure = new Set(runtimeRequiredRelativePaths(sourceRoot));
+
+  assert.equal(closure.has(join("scripts", "cairn-goal-cli.mjs")), true);
+});
 
 test("packed install remains self-contained after the npm package source is removed", async () => {
   const temp = await mkdtemp(join(tmpdir(), "cairn-packed-install-"));
@@ -174,28 +180,14 @@ test("packed install remains self-contained after the npm package source is remo
 });
 
 async function assertPackedLocatorRemovalMatrix({ installedRoot, installedLocator, env, temp, unrelated }) {
-  const executableClosure = [
-    "package.json",
-    "hooks/hooks.json",
-    "scripts/cairn.mjs",
-    "scripts/cairn-cleanup.mjs",
-    "scripts/cairn-goal.mjs",
-    "scripts/cairn-lifecycle.mjs",
-    "scripts/cairn-lifecycle-config.mjs",
-    "scripts/cairn-lifecycle-mirror.mjs",
-    "scripts/cairn-paths.mjs",
-    "scripts/cairn-safe-fs.mjs",
-    "scripts/cairn-state.mjs",
-    "scripts/cairn-toolcheck.mjs",
-    "scripts/release-integrity-0.2.2.json",
-  ];
-  const required = new Set(runtimeRequiredPaths(installedLocator).map((path) => relative(installedRoot, path)));
-  for (const path of executableClosure) assert.equal(required.has(path), true, `runtime locator closure includes ${path}`);
+  const executableClosure = runtimeRequiredRelativePaths(installedRoot);
+  const required = runtimeRequiredPaths(installedLocator).map((path) => relative(installedRoot, path));
+  for (const path of executableClosure) assert.equal(required.includes(path), true, `runtime locator closure includes ${path}`);
 
   const ownershipPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", ".cairn", "lifecycle.json");
   const originalOwnership = await readFile(ownershipPath, "utf8");
   const quarantineRoot = join(temp, "locator-removal-matrix");
-  for (const [index, relativePath] of executableClosure.entries()) {
+  for (const [index, relativePath] of required.entries()) {
     const requiredPath = join(installedRoot, relativePath);
     const quarantine = join(quarantineRoot, String(index));
     await mkdir(dirname(quarantine), { recursive: true });
