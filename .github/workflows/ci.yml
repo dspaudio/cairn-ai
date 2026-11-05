@@ -38,3 +38,15 @@ jobs:
       - run: npm pack --dry-run --ignore-scripts
         env:
           npm_config_cache: ${{ runner.temp }}/npm-cache
+  # Branch protection requires a single "check" context; matrix jobs report "check (<os>, <node>)".
+  # This summary job reports "check" and succeeds only when every matrix job succeeded.
+  check-summary:
+    name: check
+    if: always()
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: test "$MATRIX_RESULT" = "success"
+        env:
+          MATRIX_RESULT: ${{ needs.check.result }}
