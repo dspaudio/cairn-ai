@@ -10,7 +10,7 @@ test("package and plugin metadata expose the same machine-consumed version", asy
   const packageJson = await readJson("package.json");
   const pluginJson = await readJson(".codex-plugin/plugin.json");
 
-  assert.equal(packageJson.version, "0.2.7");
+  assert.equal(packageJson.version, "0.2.8");
   assert.equal(pluginJson.version, packageJson.version);
   assert.deepEqual(packageJson.bin, {
     cairn: "scripts/cairn.mjs",
