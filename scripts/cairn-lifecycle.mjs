@@ -30,6 +30,7 @@ export {
 const pluginRoot = resolvePluginRoot(import.meta.url);
 const homeRoot = process.env.HOME ?? process.env.USERPROFILE ?? homedir() ?? ".";
 const codexHome = resolve(process.env.CODEX_HOME ?? join(homeRoot, ".codex"));
+const claudeHomeOverridden = typeof process.env.CLAUDE_HOME === "string" && process.env.CLAUDE_HOME.length > 0;
 const claudeHome = resolve(process.env.CLAUDE_HOME ?? join(homeRoot, ".claude"));
 const antigravityHome = resolve(process.env.ANTIGRAVITY_HOME ?? join(homeRoot, ".gemini", "config"));
 const legacyAntigravityHome = resolve(process.env.CAIRN_LEGACY_ANTIGRAVITY_HOME ?? join(homeRoot, ".agents"));
@@ -45,6 +46,7 @@ const transactionPath = join(marketplaceRoot, ".cairn", "transaction.json");
 const transactionRoot = join(marketplaceRoot, ".cairn", "transactions");
 const lifecycleLockPath = join(marketplaceRoot, ".cairn", "lifecycle.lock");
 const claudeRuntimeLocatorPath = join(claudeHome, "cairn", "runtime.json");
+const claudePluginMarketplaceRoot = join(marketplaceRoot, "claude");
 const sourceManifest = JSON.parse(await readFile(join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8"));
 const releaseVersion = sourceManifest.version;
 const versionedPluginRoot = join(marketplaceRoot, pluginName, releaseVersion);
@@ -53,7 +55,8 @@ const phases = ["codex", "claude", "antigravity", "config", "cleanup"];
 const MAX_LIFECYCLE_LOCK_TIMEOUT_MS = 2_147_483_647;
 
 const lifecycleContext = {
-  agentNames, antigravityCliHome, antigravityHome, claudeHome, claudeRuntimeLocatorPath,
+  agentNames, antigravityCliHome, antigravityHome, claudeHome, claudeHomeOverridden,
+  claudePluginMarketplaceRoot, claudeRuntimeLocatorPath,
   codexHome, commandNames, configPath, installedPluginRoot, installedRuntimeLocatorPath,
   legacyAntigravityHome, lifecycleLockPath, marketplaceJsonPath, marketplaceName,
   marketplaceRoot, ownershipPath, phases, pluginName, pluginRoot, releaseVersion,
@@ -105,7 +108,7 @@ function lifecycleLockTimeout() {
 async function assertLifecycleMutationPaths() {
   const roots = [
     [codexHome, lifecycleLockPath], [codexHome, installedPluginRoot], [codexHome, versionedPluginRoot],
-    [codexHome, marketplaceJsonPath], [isInside(codexHome, configPath) ? codexHome : dirname(configPath), configPath],
+    [codexHome, marketplaceJsonPath], [codexHome, claudePluginMarketplaceRoot], [isInside(codexHome, configPath) ? codexHome : dirname(configPath), configPath],
     [claudeHome, join(claudeHome, "commands")], [claudeHome, join(claudeHome, "agents")],
     [claudeHome, claudeRuntimeLocatorPath], [antigravityHome, join(antigravityHome, "skills")],
     ...skillNames().map((name) => [antigravityHome, join(antigravityHome, "skills", name)]),

@@ -4,11 +4,12 @@ import { readSharedConfigSnapshot, trustedHookStates } from "./cairn-lifecycle-c
 import {
   antigravityRuntimeLocatorPath, antigravitySkillLocatorPath, renderMirrorFile, writeLocator,
 } from "./cairn-lifecycle-mirror.mjs";
+import { stageClaudePlugin } from "./cairn-lifecycle-claude.mjs";
 
 export function createStaging(context) {
   const {
-    agentNames, antigravityCliHome, antigravityHome, claudeHome,
-    claudeRuntimeLocatorPath, commandNames, configPath, installedPluginRoot,
+    agentNames, antigravityCliHome, antigravityHome, claudeHome, claudePluginMarketplaceRoot,
+    claudeRuntimeLocatorPath, commandNames, releaseVersion, configPath, installedPluginRoot,
     legacyAntigravityHome, marketplaceJsonPath, marketplaceName, pluginName,
     pluginRoot, skillNames, updateConfig, versionedPluginRoot, assertRegularTree,
   } = context;
@@ -43,6 +44,12 @@ async function stageInstall(stageRoot) {
     await renderMirrorFile(join(runtimeStage, ".claude", "agents", `${name}.md`), staged, { locatorPath: claudeRuntimeLocatorPath, runtimeRoot: versionedPluginRoot });
     add(`claude-agent-${name}`, "claude", join(claudeHome, "agents", `cairn-${name}.md`), staged, "file");
   }
+
+  const claudePluginStage = await stageClaudePlugin({
+    stageRoot, runtimeStage, destinationRoot: claudePluginMarketplaceRoot, versionedPluginRoot,
+    marketplaceName, pluginName, releaseVersion, skillNames: skillNames(),
+  });
+  add("claude-plugin", "claude", claudePluginMarketplaceRoot, claudePluginStage);
 
   await stageAntigravity(targets, stageRoot, runtimeStage, antigravityHome, "ide", false);
   await stageAntigravity(targets, stageRoot, runtimeStage, antigravityCliHome, "cli", true);

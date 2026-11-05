@@ -8,6 +8,7 @@ import { main } from "../scripts/cairn.mjs";
 import { quoteShellArg, renderInstalledMirror } from "../scripts/cairn-lifecycle.mjs";
 import { createRuntimeLocator, parseRootArgs, resolvePluginRoot } from "../scripts/cairn-paths.mjs";
 
+const fakeClaudeCli = resolve("test/fixtures/fake-claude.mjs");
 const sourceRoot = resolve(".");
 const lifecycleScript = join(sourceRoot, "scripts", "cairn-lifecycle.mjs");
 
@@ -73,7 +74,7 @@ test("installed mirrors resolve Cairn resources through runtime locators", async
   const env = isolatedEnvironment(temp);
   const project = join(temp, "target project");
   const unrelatedCwd = join(temp, "unrelated cwd");
-  const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.8");
+  const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.9");
   const claudeLocatorPath = join(env.CLAUDE_HOME, "cairn", "runtime.json");
 
   try {
@@ -175,6 +176,7 @@ function isolatedEnvironment(temp) {
     ...process.env,
     CODEX_HOME: join(temp, "Codex Home"),
     CLAUDE_HOME: join(temp, "Claude Home"),
+    CAIRN_CLAUDE_CLI: fakeClaudeCli,
     ANTIGRAVITY_HOME: join(temp, "Antigravity Home"),
     ANTIGRAVITY_CLI_HOME: join(temp, "Antigravity CLI Home"),
     HOME: join(temp, "Home"),
