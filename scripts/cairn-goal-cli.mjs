@@ -58,6 +58,11 @@ export async function runGoalCli(args, {
     emit(JSON.stringify(state));
     return state;
   }
+  if (command === "claim") {
+    const state = await operations.claimGoal({ root, sessionId: options.session });
+    emit(JSON.stringify(state));
+    return state;
+  }
   if (command === "assign") {
     const state = await operations.assignTask({
       root,
@@ -113,7 +118,7 @@ export async function runGoalCli(args, {
     emit(JSON.stringify(state));
     return state;
   }
-  throw new Error("Usage: cairn-goal start|status|task|replan|assign|receipt|verify|pause|resume|block|cancel|complete [--root PATH]");
+  throw new Error("Usage: cairn-goal start|status|task|replan|claim|assign|receipt|verify|pause|resume|block|cancel|complete [--root PATH]");
 }
 
 function parseArgs(args, command) {
@@ -173,6 +178,7 @@ function allowedOptions(command) {
     status: [],
     task: ["task", "status", "reason"],
     replan: ["tasks"],
+    claim: ["session"],
     assign: ["task", "agent"],
     receipt: ["task", "kind", "scope", "command", "exitCode", "exit-code", "exit", "timestamp", "goalId", "goal-id", "plan"],
     verify: ["task", "kind", "scope", "watch", "timeout-ms"],

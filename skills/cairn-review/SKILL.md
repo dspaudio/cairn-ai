@@ -13,7 +13,7 @@ Review is not another implementation loop. Confirm that the completed task satis
 
 Every review run and delegated review agent reads project-root `MEMORY.md` when present. If it is absent, continue without repository memory and do not invoke another memory service.
 
-At the start and after compaction, restart, delegation, or handoff, restore context in this order: optional root `MEMORY.md` → `cairn-review` → the active plan → completed/current-task references → model guidance recorded by the plan. Missing `MEMORY.md` is not an inconsistency. Confirm the remaining references agree with persisted goal state before reviewing. If any required reference is missing, unreadable, or inconsistent, do not approve, delegate, record final review, or complete the goal; report a blocker. Do not use a read-receipt field as evidence that a model understood a reference.
+At the start and after compaction, restart, delegation, or handoff, restore context in this order: optional root `MEMORY.md` → `cairn-review` → the active plan → completed/current-task references → model guidance recorded by the plan. Missing `MEMORY.md` is not an inconsistency. Confirm the remaining references agree with persisted goal state before reviewing. If any required reference is missing, unreadable, or inconsistent, do not approve, delegate, record final review, or complete the goal; report a blocker. Do not use a read-receipt field as evidence that a model understood a reference. Delegation means the delegated agent restores on its own entry; the orchestrator does not re-read this chain after dispatching or collecting a subagent, and within one unbroken context it rereads only references that changed, which keeps the cached prompt prefix stable.
 
 When subagent tools are available, each agent may recursively delegate bounded review sub-tasks to subagents. Every child subagent reads project-root `MEMORY.md` when present and continues when absent, keeps the assigned scope, and preserves others' edits.
 
@@ -23,7 +23,7 @@ Resolve any `cairn://...` resource through `references/cairn-runtime.json` next 
 
 1. Read the completed task in `docs/plan/<topic>.md`.
 2. Read `MEMORY.md` when present and relevant `docs/memory/*.md`; continue when repository memory is absent.
-3. Check changed files, tool readiness evidence, and evidence paths.
+3. Check changed files, tool readiness evidence, and evidence paths. Inspect test, fixture, and verification-command diffs and reject any weakening without a recorded plan reason. For defect fixes, confirm the same-rule sweep was performed and its result recorded.
 4. Delegate independent review when it materially improves speed or quality and the current tool policy allows it.
    - Use `explorer` for read-only impact analysis, pattern checks, and independent diff inspection.
    - Use `worker` for scoped verification command re-runs or QA artifact capture.
@@ -39,7 +39,7 @@ TASK: Review correctness, scope, and evidence for task <task-id>.
 EXPECTED OUTCOME: Findings ordered by severity with file and line references, or an explicit no-issue result with residual risk.
 REQUIRED TOOLS: Read-only diff inspection, tool readiness checks, verification command execution, plan/memory reading.
 MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Check tool readiness and install-attempt evidence. Check dry-run or check evidence when external state could change. Check both module evidence and surface evidence. Preserve proper nouns exactly. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
-MUST NOT DO: Edit files. Ask the user. Approve skipped LSP/typecheck/lint without install evidence. Approve missing evidence or open-ended verification loops.
+MUST NOT DO: Edit files. Ask the user. Approve skipped LSP/typecheck/lint without install evidence. Approve weakened, skipped, or deleted tests or verification commands without a recorded plan reason. Approve missing evidence or open-ended verification loops.
 CONTEXT: docs/plan/<topic>.md, MEMORY.md, relevant docs/memory notes, changed files.
 ```
 

@@ -33,7 +33,10 @@ For a non-trivial implementation request or continuation of already planned work
 node "<pluginRoot>/scripts/cairn.mjs" goal start --root "<repoRoot>" --goal "<objective>" --plan "docs/plan/<topic>.md" --tasks '[{"id":"triage-plan","title":"Run planned triage and finalize the plan","requiredEvidence":["planArtifact","triageDecision"]},{"id":"implement","title":"Implement the finalized plan"},{"id":"verify","title":"Verify and review the result"}]' --criteria "<completion criterion>" --session "<current session_id>"
 ```
 
-Use the current Codex hook `session_id` when it is available. If the surface does not expose a stable session ID, omit `--session` and record that the goal is repository-scoped. If Codex UI plan/goal tools are unavailable, record that limitation and continue with the repository plan and goal; never claim UI synchronization that did not occur.
+Pass `--session` only with a session ID the surface actually exposes to the model; never guess or invent one, because a mismatched owner makes every later hook treat the goal as foreign. If no stable session ID is exposed, omit `--session` and record that the goal is repository-scoped.
+
+If an unfinished repository goal already exists when a new implementation request, steer, or drift arrives, do not cancel it to start another. Fold the new work into it with `goal replan` (completed tasks and their evidence are preserved; resume a paused or blocked goal first), synchronize the plan artifact and native UI roadmap, and keep advancing until goal final review. Start a separate goal only when the user explicitly switches work. When a hook reports that another session owns the goal and this session continues that same work, take ownership with `goal claim --session <id>` using the ID shown by the hook.
+ If Codex UI plan/goal tools are unavailable, record that limitation and continue with the repository plan and goal; never claim UI synchronization that did not occur.
 
 ## Procedure
 

@@ -82,7 +82,14 @@ function listGitWorkspacePaths(root) {
     maxBuffer: 16 * 1024 * 1024,
   });
   if (result.status !== 0 || result.error) return null;
-  return result.stdout.split("\0").filter(Boolean).filter((path) => !isInternalStatePath(path));
+  return result.stdout.split("\0").filter(Boolean)
+    .filter((path) => !isInternalStatePath(path) && !isCairnRecordPath(path));
+}
+
+// Cairn records evidence in these artifacts after verification; including them in the default fingerprint would
+// make every recorded receipt stale. Pass --watch explicitly when a claim is about these files.
+function isCairnRecordPath(path) {
+  return path === "PLAN.md" || path === "MEMORY.md" || path.startsWith("docs/plan/") || path.startsWith("docs/memory/");
 }
 
 function listFilesystemPaths(root, watchPaths) {

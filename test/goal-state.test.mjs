@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   assignTask,
+  claimGoal,
   evaluateStop,
   goalStatePath,
   readGoalState,
@@ -694,7 +695,7 @@ test("active goal context includes the ordered task roadmap and side-question re
     assert.match(context, /Work steps:\n1\. inspect \[active\] Inspect the issue/);
     assert.match(context, /2\. implement \[pending\] Implement the fix/);
     assert.match(context, /3\. verify \[pending\] Verify the result/);
-    assert.match(context, /After a side question, resume inspect/);
+    assert.match(context, /After a side question or steer, resume inspect, then advance remaining tasks to final review/);
 
     const promptKo = await runStateResult("user-prompt-submit", {
       root,
@@ -703,7 +704,7 @@ test("active goal context includes the ordered task roadmap and side-question re
     });
     const contextKo = promptKo.hookOutput.hookSpecificOutput.additionalContext;
     assert.match(contextKo, /작업 단계:\n1\. inspect \[active\] Inspect the issue/);
-    assert.match(contextKo, /곁가지 질문 뒤.*inspect를 재개/);
+    assert.match(contextKo, /곁가지 질문·조향 뒤 inspect를 재개하고 남은 task를 최종 검토까지 진행/);
   });
 });
 
@@ -791,6 +792,92 @@ test("Stop returns the Codex continuation JSON only for an active current task",
     const paused = await runStateResult("stop", { root, locale: "en-US", payload: { cwd: root } });
     assert.deepEqual(paused.hookOutput, { continue: true });
     assert.equal(active.goal.status, "active");
+  });
+});
+
+test("Stop keeps blocking continued turns while the goal makes progress", async () => {
+  await withTempRoot(async (root) => {
+    await createTwoTaskGoal(root);
+    const payload = { cwd: root, session_id: "s1", turn_id: "t1" };
+    const first = await runStateResult("stop", { root, locale: "en-US", payload });
+    assert.equal(first.hookOutput.decision, "block");
+
+    const idleRepeat = await runStateResult("stop", { root, locale: "en-US", payload: { ...payload, stop_hook_active: true } });
+    assert.equal(idleRepeat.hookOutput.continue, true);
+    assert.match(idleRepeat.hookOutput.systemMessage, /still active and incomplete/);
+    assert.doesNotMatch(idleRepeat.hookOutput.systemMessage, /next session/);
+
+    await recordReceipt({ root, taskId: "first", kind: "moduleAcceptance", command: "check first", exitCode: 0 });
+    const progressed = await runStateResult("stop", { root, locale: "en-US", payload: { ...payload, stop_hook_active: true } });
+    assert.equal(progressed.hookOutput.decision, "block", "progress since the last continuation must keep driving the goal");
+
+    const repeat = await runStateResult("stop", { root, locale: "en-US", payload: { ...payload, stop_hook_active: true } });
+    assert.equal(repeat.hookOutput.continue, true, "a no-progress repeat must not loop forever");
+  });
+});
+
+test("hooks without a session id still drive a session-owned goal, and claim transfers ownership", async () => {
+  await withTempRoot(async (root) => {
+    await startGoal({
+      root,
+      goal: "Owned goal",
+      planId: "docs/plan/owned.md",
+      ownerSessionId: "owner",
+      evidencePolicy: "declared",
+      tasks: [{ id: "only", title: "Only task" }],
+    });
+    const anonymous = await runStateResult("user-prompt-submit", { root, locale: "en-US", payload: { cwd: root, prompt: "go" } });
+    assert.match(anonymous.hookOutput.hookSpecificOutput.additionalContext, /Current: only/);
+    const anonymousStop = await runStateResult("stop", { root, locale: "en-US", payload: { cwd: root } });
+    assert.equal(anonymousStop.hookOutput.decision, "block");
+
+    const foreign = await runStateResult("session-start", { root, locale: "en-US", payload: { cwd: root, session_id: "next-session" } });
+    assert.match(foreign.hookOutput.hookSpecificOutput.additionalContext, /cairn goal claim --session "next-session"/);
+
+    const cli = spawnSync(process.execPath, [cliScript, "goal", "claim", "--quiet", "--root", root, "--session", "next-session"], { encoding: "utf8", env: process.env });
+    assert.equal(cli.status, 0, cli.stderr);
+    const claimed = await runStateResult("user-prompt-submit", { root, locale: "en-US", payload: { cwd: root, session_id: "next-session", prompt: "continue" } });
+    assert.match(claimed.hookOutput.hookSpecificOutput.additionalContext, /Current: only/);
+    await claimGoal({ root, sessionId: "owner" });
+    assert.equal((await readGoalState({ root })).goal.ownerSessionId, "owner");
+  });
+});
+
+test("starting a goal over an unfinished goal points to replan instead of a false pause hint", async () => {
+  await withTempRoot(async (root) => {
+    await createTwoTaskGoal(root);
+    await transitionGoal({ root, status: "paused" });
+    await assert.rejects(
+      startGoal({ root, goal: "Drift", planId: "docs/plan/drift.md", tasks: ["x"] }),
+      /unfinished Cairn goal .*paused.*goal replan/,
+    );
+  });
+});
+
+test("hook failures emit JSON and read-only hooks create no user-home state", async () => {
+  await withTempRoot(async (root) => {
+    const idle = spawnSync(process.execPath, [stateScript, "stop"], { cwd: root, input: JSON.stringify({ cwd: root }), encoding: "utf8", env: process.env });
+    assert.equal(idle.status, 0, idle.stderr);
+    await assert.rejects(access(join(process.env.CAIRN_HOME, "projects")), "an idle hook must not create state directories");
+
+    await createTwoTaskGoal(root);
+    await writeFile(goalStatePath(root), "{not json");
+    const broken = spawnSync(process.execPath, [stateScript, "stop"], { cwd: root, input: JSON.stringify({ cwd: root }), encoding: "utf8", env: process.env });
+    assert.equal(broken.status, 0, broken.stderr);
+    assert.match(JSON.parse(broken.stdout).systemMessage, /could not read goal state.*do not treat an active goal as finished/);
+  });
+});
+
+test("default evidence fingerprint ignores Cairn plan and memory records", async () => {
+  await withTempRoot(async (root) => {
+    spawnSync("git", ["init", "-q", root]);
+    await writeFile(join(root, "app.txt"), "v1\n");
+    await startGoal({ root, goal: "Record evidence", planId: "docs/plan/record.md", tasks: [{ id: "only", title: "Only", requiredEvidence: ["moduleAcceptance"] }] });
+    await verifyAndRecord({ root, taskId: "only", kind: "moduleAcceptance", argv: [process.execPath, "-e", "process.exit(0)"] });
+    await mkdir(join(root, "docs", "plan"), { recursive: true });
+    await writeFile(join(root, "docs", "plan", "record.md"), "Evidence: recorded\n");
+    await writeFile(join(root, "PLAN.md"), "- record: done\n");
+    await setTaskStatus({ root, taskId: "only", status: "completed" });
   });
 });
 

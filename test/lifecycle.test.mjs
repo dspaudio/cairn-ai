@@ -82,6 +82,27 @@ test("removeCairnConfig removes only Cairn-owned sections", () => {
   assert.doesNotMatch(output, /marketplaces\.cairn/);
 });
 
+test("removeCairnConfig keeps array-of-tables and commented headers that follow Cairn sections", () => {
+  const input = [
+    'model = "x"',
+    "[marketplaces.cairn]",
+    'source = "/tmp/cairn"',
+    '[plugins."cairn@cairn"]',
+    "enabled = true",
+    "[[mcp_servers.list]]",
+    'name = "keep-me"',
+    '[projects."/x"] # trust',
+    'trust_level = "trusted"',
+    "",
+  ].join("\n");
+
+  const output = removeCairnConfig(input);
+
+  assert.match(output, /\[\[mcp_servers\.list\]\]\nname = "keep-me"/);
+  assert.match(output, /\[projects\."\/x"\] # trust\ntrust_level = "trusted"/);
+  assert.doesNotMatch(output, /marketplaces\.cairn|cairn@cairn/);
+});
+
 test("removeCairnConfig preserves trailing trivia that separates the next public section", () => {
   const publicSuffix = '\n# user profile separator\n[profiles.user]\nmodel = "custom"\n';
   const input = `[marketplaces.cairn]\nsource = "/tmp/cairn"\n${publicSuffix}`;

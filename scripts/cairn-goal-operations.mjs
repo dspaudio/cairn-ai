@@ -41,7 +41,7 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
       existing = null;
     }
     if (existing && !terminalGoalStatuses.has(existing.goal.status)) {
-      throw new Error(`An active Cairn goal already exists (${existing.goal.id}); pause, block, cancel, or complete it first`);
+      throw new Error(`An unfinished Cairn goal already exists (${existing.goal.id}, ${existing.goal.status}); add the new work to it with goal replan (resume it first if paused or blocked), or cancel or complete it before starting another goal`);
     }
     const now = timestamp();
     const normalizedTasks = tasks.map((task, index) => normalizeTask(task, index, index === 0 ? "active" : "pending"));
@@ -158,6 +158,16 @@ export async function replanGoal({ root = process.cwd(), tasks } = {}) {
     state.tasks = [...completedTasks, ...replacementTasks];
     state.receipts = state.receipts.filter((receipt) => receipt.scope === "task" && completedIds.has(receipt.taskId));
     state.goal.blocker = null;
+    state.goal.updatedAt = timestamp();
+    return state;
+  });
+}
+
+export async function claimGoal({ root = process.cwd(), sessionId } = {}) {
+  const normalizedSessionId = requiredText(sessionId, "sessionId");
+  return mutateGoal(root, (state) => {
+    assertGoalMutable(state);
+    state.goal.ownerSessionId = optionalText(normalizedSessionId, "ownerSessionId");
     state.goal.updatedAt = timestamp();
     return state;
   });

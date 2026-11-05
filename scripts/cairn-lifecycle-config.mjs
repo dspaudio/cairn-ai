@@ -99,10 +99,14 @@ export function splitSections(config) {
     }
     const doubleCount = delimiterCount('"""');
     const singleCount = delimiterCount("'''");
-    const match = line.trim().match(/^\[([^\]]+)\]$/);
-    if (match) {
+    // Array-of-tables and headers with trailing comments start a new section too; otherwise a foreign section
+    // after Cairn's would be absorbed into it and deleted on upgrade/uninstall.
+    const trimmed = line.trim();
+    const arrayMatch = trimmed.match(/^\[\[([^\[\]]+)\]\]\s*(?:#.*)?$/);
+    const match = arrayMatch ? null : trimmed.match(/^\[([^\[\]]+)\]\s*(?:#.*)?$/);
+    if (arrayMatch || match) {
       if (current.text.length > 0) result.push(current);
-      current = { header: match[1], text: line };
+      current = { header: arrayMatch ? `[${arrayMatch[1].trim()}]` : match[1].trim(), text: line };
     } else current.text += line;
     if (doubleCount % 2 === 1) multiline = '"""';
     else if (singleCount % 2 === 1) multiline = "'''";

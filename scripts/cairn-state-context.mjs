@@ -43,8 +43,8 @@ export function contextResult({ ko, state, event }) {
   const planId = state.goal.planId;
   const phase = task ? "cairn-work" : "cairn-review";
   const activeHeader = ko
-    ? `${base} ${phase}를 로드하고 정확한 plan ${planId}${task ? "과 아래 current task" : "의 완료 기준"}를 복원하세요. 압축·재시작·handoff·위임 뒤 다시 읽으세요.${failClosed}`
-    : `${base} Load ${phase}; restore exact plan ${planId}${task ? " and the current task below" : " completion criteria"}. Re-read after compaction/restart/handoff/delegation.${failClosed}`;
+    ? `${base} ${phase}를 로드하고 정확한 plan ${planId}${task ? "과 아래 current task" : "의 완료 기준"}를 복원하세요. 압축·재시작·handoff 뒤 다시 읽으세요.${failClosed}`
+    : `${base} Load ${phase}; restore exact plan ${planId}${task ? " and the current task below" : " completion criteria"}. Re-read after compaction/restart/handoff.${failClosed}`;
   if (!task) {
     return contextHookResult({
       event,
@@ -63,11 +63,11 @@ export function contextResult({ ko, state, event }) {
   const resume = event === "user-prompt-submit"
     ? (taskId.length > 48
       ? (ko
-        ? "곁가지 질문 뒤 일시정지·중단·전환 요청이 없으면 위의 정확한 task를 재개하세요."
-        : "Resume that exact task after side questions unless paused, stopped, or switched.")
+        ? "곁가지 질문·조향 뒤 위의 정확한 task를 재개하고 최종 검토까지 진행하세요(일시정지·중단·전환 요청 제외)."
+        : "After side questions or steers, resume that exact task; advance to final review unless paused, stopped, or switched.")
       : (ko
-        ? `곁가지 질문 뒤 일시정지·중단·전환 요청이 없으면 ${taskId}를 재개하세요.`
-        : `After a side question, resume ${taskId} unless asked to pause, stop, or switch.`))
+        ? `곁가지 질문·조향 뒤 ${taskId}를 재개하고 남은 task를 최종 검토까지 진행하세요(일시정지·중단·전환 요청 제외).`
+        : `After a side question or steer, resume ${taskId}, then advance remaining tasks to final review unless asked to pause, stop, or switch.`))
     : "";
   return contextHookResult({ event, message: [activeHeader, taskRoadmap(ko, state), continuation, resume].filter(Boolean).join("\n") });
 }
@@ -87,18 +87,23 @@ function interruptedContextResult(event, ko, state) {
     : (ko ? "현재 task: 없음." : "Current task: none.");
   const blocker = state.goal.blocker ?? task?.blocker ?? (ko ? "없음" : "none");
   const recovery = ko
-    ? "자동으로 재개하지 마세요. 정확한 context를 복원하고 원인을 처리한 뒤 명시적으로 resume하세요."
-    : "Do not resume automatically. Restore this exact context, address the interruption, then resume explicitly.";
+    ? "goal 상태를 자동으로 바꾸지 마세요. 정확한 context를 복원하고 원인을 처리한 뒤 goal resume을 명시적으로 실행하고 현재 task를 이어가세요."
+    : "Do not change goal status automatically. Restore this exact context, address the interruption, then run goal resume explicitly and continue the current task.";
   const message = ko
     ? `${kernelBase(ko)} 정확한 plan: ${state.goal.planId}. ${taskContext} Goal 상태: ${state.goal.status}. Blocker: ${blocker}. ${recovery}`
     : `${kernelBase(ko)} Exact plan: ${state.goal.planId}. ${taskContext} Goal status: ${state.goal.status}. Blocker: ${blocker}. ${recovery}`;
   return contextHookResult({ event, message });
 }
 
-export function foreignSessionContextResult({ ko, event }) {
+export function foreignSessionContextResult({ ko, event, sessionId }) {
+  const claim = typeof sessionId === "string" && sessionId.length > 0
+    ? (ko
+      ? ` 이 session이 같은 작업을 이어받는 경우(재개·압축·handoff·fork)에만 cairn goal claim --session ${JSON.stringify(sessionId)} --root <repoRoot>로 소유권을 넘겨받고 이어가세요.`
+      : ` Only if this session continues that same work (resume, compaction, handoff, fork), take ownership with cairn goal claim --session ${JSON.stringify(sessionId)} --root <repoRoot>, then continue.`)
+    : "";
   const message = ko
-    ? "Cairn kernel: 루트 MEMORY.md는 선택 사항이며, 있으면 읽으세요. 저장소 goal을 다른 session이 소유합니다. cairn goal status로 상태를 확인하고 소유권이 해결될 때까지 Cairn 작업을 시작·수정·위임·완료하지 마세요. 이 capsule은 goal, plan, task 상세를 노출하지 않습니다."
-    : "Cairn kernel: root MEMORY.md is optional; read it when present. A repository goal is owned by another session. Inspect cairn goal status; until ownership is resolved, do not start, edit, delegate, or complete Cairn work. This capsule does not expose goal, plan, or task details.";
+    ? `Cairn kernel: 루트 MEMORY.md는 선택 사항이며, 있으면 읽으세요. 저장소 goal을 다른 session이 소유합니다. cairn goal status로 상태를 확인하고 소유권이 해결될 때까지 Cairn 작업을 시작·수정·위임·완료하지 마세요.${claim} 이 capsule은 goal, plan, task 상세를 노출하지 않습니다.`
+    : `Cairn kernel: root MEMORY.md is optional; read it when present. A repository goal is owned by another session. Inspect cairn goal status; until ownership is resolved, do not start, edit, delegate, or complete Cairn work.${claim} This capsule does not expose goal, plan, or task details.`;
   return contextHookResult({ event, message });
 }
 
@@ -117,7 +122,10 @@ function taskRoadmap(ko, state) {
     : `Work steps (${state.tasks.length}; ${countSummary})`;
   const omission = ko ? `… ${omitted}개 단계 생략` : `… ${omitted} steps omitted`;
   const currentPosition = currentIndex + 1;
-  return `${header}. ${ko ? `현재 위치 ${currentPosition}` : `Current position ${currentPosition}`}; ${omission}`;
+  const upcoming = state.tasks.slice(currentIndex + 1).filter((task) => task.status === "pending").slice(0, 2)
+    .map((task) => clipText(task.id, contextLimits.roadmapTaskId));
+  const next = upcoming.length > 0 ? `; ${ko ? "다음" : "next"} ${upcoming.join(", ")}` : "";
+  return `${header}. ${ko ? `현재 위치 ${currentPosition}` : `Current position ${currentPosition}`}; ${omission}${next}`;
 }
 
 function contextHookResult({ event, message }) {

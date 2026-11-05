@@ -31,7 +31,8 @@ Keep the target repository root separate. Pass it explicitly with `--root <repoR
    - Recursive subagent delegation is allowed only for bounded sub-tasks when the current surface supports it.
 4. Write detailed facts to `docs/memory/<domain>.md`.
 5. Keep only one-line links and summaries in `MEMORY.md`.
-6. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
+6. When a lesson or correction recurs and is machine-checkable, encode it as a test, lint rule, script, or hook instead of more prose; memory keeps judgment rules and a pointer to the enforcing check.
+7. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
 ## Delegation Prompt Format
 

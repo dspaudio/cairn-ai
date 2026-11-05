@@ -199,7 +199,8 @@ test("active hook stays bounded for long goals and large roadmaps", async () => 
     assert.match(context, /omitted/i);
     assert.ok(context.includes(exactPlanId), "active hook must preserve the exact plan reference");
     assert.ok(context.includes(`Exact task: ${exactTaskId}.`), "active hook must preserve the exact current task id");
-    assert.match(context, /Resume that exact task after side questions/i);
+    assert.match(context, /After side questions or steers, resume that exact task; advance to final review/i);
+    assert.match(context, /next task-2, task-3/);
   });
 });
 
@@ -292,6 +293,32 @@ test("work guidance spends reasoning on tests and trusts bounded tool evidence",
   assert.match(work, /Light.*medium.*Heavy.*high.*xhigh/is);
   assert.match(work, /completed.*profiles?.*preserv/is);
   assert.match(work, /incomplete.*profiles?.*(?:recalculate|replace)/is);
+});
+
+test("work, review, and memory guidance protect the judge and close defects with evidence", async () => {
+  const read = (path) => readFile(path, "utf8");
+  const workSurfaces = ["skills/cairn-work/SKILL.md", "commands/cairn-work.md", ".agents/workflows/cairn-work.md", "agents/worker.md"];
+  for (const path of workSurfaces) {
+    const content = await read(path);
+    assert.match(content, /never edit, weaken, skip, or delete existing tests.*verification commands/is, `${path} judge protection`);
+    assert.match(content, /same rule or pattern/i, `${path} same-rule sweep`);
+  }
+
+  const work = await read("skills/cairn-work/SKILL.md");
+  assert.match(work, /reproduce.*before fixing/is);
+  assert.match(work, /one hypothesis at a time.*measurement/is);
+  assert.match(work, /feasibility.*experiment/is);
+
+  for (const path of ["skills/cairn-review/SKILL.md", "commands/cairn-review.md", ".agents/workflows/cairn-review.md"]) {
+    const content = await read(path);
+    assert.match(content, /test, fixture, and verification-command diffs/i, `${path} judge diff review`);
+    assert.match(content, /same-rule sweep/i, `${path} same-rule sweep review`);
+  }
+
+  for (const path of ["skills/cairn-memory/SKILL.md", "commands/cairn-memory.md", ".agents/workflows/cairn-memory.md"]) {
+    const content = await read(path);
+    assert.match(content, /machine-checkable.*(?:test|lint|script|hook)/is, `${path} executable lessons`);
+  }
 });
 
 test("agents and phase guidance restore required references and fail closed", async () => {

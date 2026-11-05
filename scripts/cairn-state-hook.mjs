@@ -1,12 +1,14 @@
-export function continuationReason(reason, payload) {
-  const continuation = payload?.stop_hook_active ? " This turn was already continued; the active goal remains persisted for the next session." : "";
-  return `${reason}${continuation}`;
+export function continuationReason(reason, payload, { progressed = false } = {}) {
+  if (!payload?.stop_hook_active || progressed) return reason;
+  return `${reason} This turn was already continued without new Cairn state progress, so the loop guard allows this stop. The goal is still active and incomplete: resume the current task on the next prompt; do not treat it as finished or deferred.`;
 }
 
-export function stopHookOutput(gate, payload) {
+// stop_hook_active alone would allow every second stop. Block again whenever the goal state advanced
+// since the previous continuation, so a steered turn keeps driving the goal; allow only a no-progress repeat.
+export function stopHookOutput(gate, payload, { progressed = false } = {}) {
   if (!gate.block) return { continue: true };
-  const reason = continuationReason(gate.reason, payload);
-  if (payload?.stop_hook_active) {
+  const reason = continuationReason(gate.reason, payload, { progressed });
+  if (payload?.stop_hook_active && !progressed) {
     return { continue: true, systemMessage: reason };
   }
   return { decision: "block", reason };

@@ -23,7 +23,7 @@ If the user asks a side question, status question, or narrow clarification while
 
 ## Re-entry and Required References
 
-At the start and after compaction, restart, delegation, or handoff, restore context in this order: optional root `MEMORY.md` → `cairn-work` → the active plan → current-task references → model guidance recorded by the plan. Confirm that the plan task, persisted current task, and worker assignment agree before acting. Missing `MEMORY.md` is not an inconsistency. If state, skill, plan, assignment, or another required reference is missing, unreadable, or inconsistent, do not edit, delegate, record completion evidence, or complete work; report a blocker to the orchestrator. Do not introduce read receipts as proof of model attention: current state, readable references, and fresh tool-bound evidence are the authority.
+At the start and after compaction, restart, delegation, or handoff, restore context in this order: optional root `MEMORY.md` → `cairn-work` → the active plan → current-task references → model guidance recorded by the plan. Confirm that the plan task, persisted current task, and worker assignment agree before acting. Missing `MEMORY.md` is not an inconsistency. If state, skill, plan, assignment, or another required reference is missing, unreadable, or inconsistent, do not edit, delegate, record completion evidence, or complete work; report a blocker to the orchestrator. Do not introduce read receipts as proof of model attention: current state, readable references, and fresh tool-bound evidence are the authority. Delegation means the delegated agent restores on its own entry; the orchestrator does not re-read this chain after dispatching or collecting a subagent, and within one unbroken context it rereads only references that changed, which keeps the cached prompt prefix stable.
 
 When subagent tools are available, each agent may recursively delegate bounded sub-tasks to subagents. Every child subagent reads project-root `MEMORY.md` when present and continues when absent, keeps the assigned scope, and preserves others' edits.
 
@@ -34,7 +34,9 @@ Resolve Cairn's read-only runtime from `references/cairn-runtime.json` next to t
 Use the installed CLI for durable state. Important forms are:
 
 ```sh
+node "<pluginRoot>/scripts/cairn.mjs" goal task status --root "<repoRoot>"
 node "<pluginRoot>/scripts/cairn.mjs" goal status --root "<repoRoot>"
+node "<pluginRoot>/scripts/cairn.mjs" goal claim --quiet --root "<repoRoot>" --session "<session-id-shown-by-hook>"
 node "<pluginRoot>/scripts/cairn.mjs" goal replan --quiet --root "<repoRoot>" --tasks '[{"id":"<task-id>","title":"<task-title>","requiredEvidence":["moduleAcceptance","surfaceIntegration"]}]'
 node "<pluginRoot>/scripts/cairn.mjs" goal assign --quiet --root "<repoRoot>" --task "<task-id>" --agent "<agent-id>"
 node "<pluginRoot>/scripts/cairn.mjs" goal verify --quiet --root "<repoRoot>" --task "<task-id>" --kind moduleAcceptance --watch "<path|path>" -- <tool> <arg> ...
@@ -65,6 +67,18 @@ Use this verification ladder:
 5. Run normal `npm pack --dry-run` by default. Content-producing or unknown lifecycle scripts must never be skipped with `--ignore-scripts`; their generated contents are part of the package contract.
 6. Only when lifecycle scripts are absent or proven content-neutral, the full check is still fresh, and the dry-run is only checking the file list may package verification use `npm pack --dry-run --ignore-scripts`.
 
+## Verification Integrity
+
+- The implementer must not be able to change the judge. Never edit, weaken, skip, or delete existing tests, fixtures, snapshots, or recorded verification commands to make a gate pass. When a contract genuinely changes, record the reason in `docs/plan/<topic>.md` before that edit; review rejects any judge change without a recorded reason.
+- Prefer executable checks (test, lint, script, hook) for machine-checkable rules; keep prose only for rules that need judgment.
+
+## Defect Investigation
+
+- Reproduce a reported defect with repository tools before fixing it; do not wait for more detail when a local reproduction is possible.
+- For unclear or non-reproducible failures, test one hypothesis at a time and close it with a measurement before changing code. Never fix on speculation.
+- Answer feasibility questions with a bounded experiment or measurement instead of an unverified "not possible". Stop and ask only when the experiment would bypass a security policy or mutate external state without approval.
+- After fixing a defect, search the repository for other implementations of the same rule or pattern. Fix them within the assigned scope or record them as follow-up in the plan.
+
 Any relevant mutation after a gate makes that result stale evidence. Rerun the affected focused gate and, when integration could change, the full gate. Use `--quiet` for successful Cairn state mutations so full state JSON does not consume conversation tokens. `goal status` is read-only and always returns state, including when `--quiet` is supplied.
 
 ## Reasoning Effort Routing
@@ -81,7 +95,7 @@ Any relevant mutation after a gate makes that result stale evidence. Rerun the a
 1. Read project-root `MEMORY.md` when present; continue without repository memory when absent.
 2. Read `PLAN.md`, the selected `docs/plan/<topic>.md`, and relevant memory notes.
 3. Read the `cairn://docs/model-guidance/*.md` inputs recorded in the plan through the installed runtime.
-4. Read user-home, project/worktree-scoped state through `cairn goal status --root "<repoRoot>"`. Select only the active goal's current task. If implementation was requested but no goal exists, create one from the decision-complete plan before editing.
+4. Read the current task through `cairn goal task status --root "<repoRoot>"`; the hook capsule already carries the roadmap. Read full `cairn goal status` only when receipts or the complete roadmap are needed, because its output grows with every receipt. Select only the active goal's current task. If a new implementation request or steer arrives while a goal is unfinished, add the work through `goal replan` instead of cancelling the goal, then keep advancing to goal final review. If implementation was requested but no goal exists, create one from the decision-complete plan before editing.
 5. Confirm that required LSP, typecheck, lint, dry-run, and verification tools are available from the plan's tool readiness section.
 6. If a required tool is missing, do not install it implicitly. Obtain explicit user approval, then run the installed runtime's `toolcheck --install --yes --root "<repoRoot>"` only for pinned/supported installers or run the approved repository-native command. Otherwise record a blocker.
 7. Confirm the selected Light Path or Heavy Path in the plan. If the plan lacks complexity triage, stop and update the plan before mutating files.
@@ -110,7 +124,7 @@ Any relevant mutation after a gate makes that result stale evidence. Rerun the a
 TASK: Implement task <task-id> for <topic>.
 EXPECTED OUTCOME: Minimal code or documentation change satisfying the task contract.
 REQUIRED TOOLS: Scoped file editing, tool readiness checks, existing test/build commands, surface QA commands.
-MUST DO: Read the project-root `MEMORY.md` before doing assigned work and follow its policy. Stay within the listed file scope and ownership. Assume you are not alone in the codebase; do not revert others' edits. Treat the user-called/main agent as the orchestrator; delegate actual implementation edits to `worker` whenever subagent tools are available, regardless of Light Path or Heavy Path. When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence. When subagent tools are available, recursively delegate only bounded sub-tasks and pass these same constraints to every child subagent. Obtain explicit user approval before installing missing tools. Run dry-run or check mode before external-state mutation when available. Provide module evidence, surface evidence, and a structured handoff scoped to the assigned goal/task. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work and follow its policy. Stay within the listed file scope and ownership. Assume you are not alone in the codebase; do not revert others' edits. Treat the user-called/main agent as the orchestrator; delegate actual implementation edits to `worker` whenever subagent tools are available, regardless of Light Path or Heavy Path. When the subagent tool provides a progress-reporting channel, require subagents to report status to the orchestrator when starting work, when deciding or confirming direction, during periodic progress, and when finishing; the orchestrator must immediately relay received status events to the user. If no mid-run reporting channel exists, relay observable events such as assignment, waiting, and final completion. Require delegated subagents to provide a final report before leaving; after capturing final report and evidence, close or release the completed subagent, then review the final report and evidence before marking the work complete. If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence. When subagent tools are available, recursively delegate only bounded sub-tasks and pass these same constraints to every child subagent. Obtain explicit user approval before installing missing tools. Run dry-run or check mode before external-state mutation when available. Provide module evidence, surface evidence, and a structured handoff scoped to the assigned goal/task. Never edit, weaken, skip, or delete existing tests, fixtures, or verification commands to pass a gate without a reason recorded in the plan. After a defect fix, search for other implementations of the same rule or pattern and report them. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
 MUST NOT DO: Ask the user. Skip LSP/typecheck/lint because a tool is missing without attempting installation. Refactor unrelated code. Continue an open-ended verification loop. Treat a side question as permission to abandon the active task. Delegate vague or unbounded work. Claim completion without evidence. Modify files outside the assigned ownership.
 CONTEXT: docs/plan/<topic>.md task, relevant docs/memory notes, applied model guidance, exact files, verification commands.
 ```
@@ -156,5 +170,7 @@ Run the closest available dry-run or check mode before commands that mutate exte
 - Dry-run or check evidence exists when the task could mutate external state, or the plan records why no dry-run exists.
 - The required Light Path or Heavy Path flow was followed.
 - The model guidance recorded in the plan was applied.
+- No existing test, fixture, or verification command was weakened without a recorded plan reason.
+- Defect fixes record the same-rule sweep result.
 - Evidence was recorded in `docs/plan/<topic>.md`.
 - `PLAN.md` status was updated only after evidence existed.
