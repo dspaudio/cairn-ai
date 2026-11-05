@@ -16,6 +16,7 @@ Actions:
 - Add the `hooks/hooks.json` link to the installed manifest.
 - Register only Cairn-owned marketplace, plugin, and hook trust sections in `~/.codex/config.toml`; do not rewrite public feature or agent settings.
 - Install `cairn-*` commands and agents mirror files for Claude Code.
+- Generate the Claude Code plugin `cairn@cairn` (four skills plus hooks that call the installed runtime) in the Cairn-owned local marketplace, then register it with `claude plugin marketplace add` and `claude plugin install cairn@cairn --scope user` after the files commit. Skip with a manual command when the `claude` CLI is missing, and never touch a different marketplace named `cairn`.
 - Install `cairn-*` skills and workflows mirror files for Antigravity IDE/CLI.
 - Write runtime locators so all mirrors resolve scripts, templates, and model guidance from the installed plugin root.
 - Record every current managed destination and digest in the ownership manifest under the custom marketplace, and rollback committed phases in reverse order on failure.

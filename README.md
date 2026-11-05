@@ -117,7 +117,7 @@ cairn uninstall
 cairn toolcheck
 ```
 
-- `cairn install`: transactionally installs the custom marketplace source, versioned Codex runtime cache, Cairn-owned config sections, Claude Code mirrors, and current Antigravity IDE/CLI skill surfaces.
+- `cairn install`: transactionally installs the custom marketplace source, versioned Codex runtime cache, Cairn-owned config sections, Claude Code mirrors and plugin, and current Antigravity IDE/CLI skill surfaces.
 - `cairn upgrade`: replaces only ownership-manifest entries whose installed digests still match, with staged validation and reverse-order rollback on failure.
 - `cairn doctor`: validates the ownership manifest, managed digests, effective Codex features, actual installed/enabled/version plugin state, and mirror/runtime locators without repairing them.
 - `cairn uninstall`: verifies every non-config ownership-manifest entry against its installed digest first and refuses the whole uninstall, changing nothing, if any managed artifact was modified or removed. Otherwise it removes or restores the managed entries, prunes empty managed cache scaffolds, preserves unmanaged targets and their parent directories, and rolls back pre-commit failures.
@@ -137,7 +137,9 @@ Install and upgrade keep the custom marketplace lifecycle; they do not invoke `c
 
 Clean uninstall removes the Cairn marketplace cache root only when every managed scaffold is empty, using empty-directory removal rather than recursive deletion. It does not delete the source repository, repository `MEMORY.md`/`PLAN.md`, user-home Cairn goal state, the global `cairn-ai` package, package-manager download caches, legacy backups, or legacy shared settings outside the current ownership manifest; those require a separate explicit cleanup decision.
 
-Codex uses `skills/` and `commands/`. Claude Code uses mirrored commands and agent definitions under `.claude/`. Antigravity uses `.agents/workflows` and global skills mirrors.
+Codex uses `skills/` and `commands/`. Claude Code uses mirrored commands and agent definitions under `~/.claude/` plus a Claude Code plugin, `cairn@cairn`. Antigravity uses `.agents/workflows` and global skills mirrors.
+
+The Claude Code plugin is generated in a Cairn-owned local marketplace at `~/.codex/plugins/cache/cairn/claude` and carries the four Cairn skills and the SessionStart, UserPromptSubmit, PostToolUse, Stop, and SubagentStop hooks, which call the installed versioned runtime by absolute path. After the files commit, `cairn install`/`upgrade` registers it through `claude plugin marketplace add` and `claude plugin install cairn@cairn --scope user`, so it appears in the Claude Code terminal, desktop app, and IDE plugin lists from the next session. Registration is skipped with a manual command when the `claude` CLI is missing, and a different marketplace already named `cairn` is never touched. `cairn uninstall` unregisters only Cairn's own marketplace before removing files, and re-registers it if the uninstall rolls back. `cairn doctor` reports `Claude plugin files`, `Claude plugin registered`, and `Claude plugin enabled`.
 
 ## Antigravity Compatibility
 

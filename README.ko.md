@@ -109,7 +109,7 @@ cairn uninstall
 cairn toolcheck
 ```
 
-- `cairn install`: custom marketplace source, versioned Codex runtime cache, Cairn-owned config section, Claude Code mirror, 현재 Antigravity IDE/CLI skill 표면을 transaction으로 설치합니다.
+- `cairn install`: custom marketplace source, versioned Codex runtime cache, Cairn-owned config section, Claude Code mirror와 플러그인, 현재 Antigravity IDE/CLI skill 표면을 transaction으로 설치합니다.
 - `cairn upgrade`: ownership manifest의 installed digest와 현재 값이 같은 항목만 교체하며, staged validation과 역순 rollback을 적용합니다.
 - `cairn doctor`: ownership manifest, managed digest, 유효 Codex feature, 실제 plugin installed/enabled/version, mirror/runtime locator를 수정 없이 진단합니다.
 - `cairn uninstall`: 먼저 config 외 모든 ownership manifest 항목을 설치 digest와 대조하고, 수정되거나 삭제된 managed artifact가 하나라도 있으면 아무것도 바꾸지 않고 uninstall 전체를 거부합니다. 그렇지 않으면 managed 항목을 제거·복원하고 빈 managed cache scaffold를 정리하며, unmanaged target과 그 상위 디렉터리는 보존하고 commit 전 실패는 rollback합니다.
@@ -129,7 +129,9 @@ cairn toolcheck
 
 Clean uninstall은 모든 managed scaffold가 비었을 때만 recursive 삭제 없이 빈 디렉터리 제거로 Cairn marketplace cache root를 정리합니다. 소스 저장소와 저장소의 `MEMORY.md`/`PLAN.md`, 사용자 홈 Cairn goal 상태, 전역 `cairn-ai` package, package-manager download cache, legacy backup, 현재 ownership manifest 밖의 legacy shared setting은 지우지 않으며 별도의 명시적 정리 판단이 필요합니다.
 
-Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `.claude/` 아래의 mirror command와 agent definition을 사용합니다. Antigravity는 `.agents/workflows`와 global skills mirror를 사용합니다.
+Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `~/.claude/` 아래의 mirror command·agent definition과 Claude Code 플러그인 `cairn@cairn`을 사용합니다. Antigravity는 `.agents/workflows`와 global skills mirror를 사용합니다.
+
+Claude Code 플러그인은 Cairn이 소유한 로컬 marketplace `~/.codex/plugins/cache/cairn/claude`에 생성되며, Cairn skill 4개와 SessionStart·UserPromptSubmit·PostToolUse·Stop·SubagentStop hook을 담습니다. hook은 설치된 버전 런타임을 절대경로로 호출합니다. 파일 commit 뒤 `cairn install`/`upgrade`가 `claude plugin marketplace add`와 `claude plugin install cairn@cairn --scope user`로 등록하므로 다음 세션부터 Claude Code 터미널·데스크톱 앱·IDE 플러그인 목록에 표시됩니다. `claude` CLI가 없으면 등록을 건너뛰고 수동 명령을 안내하며, 이미 `cairn`이라는 다른 marketplace가 있으면 건드리지 않습니다. `cairn uninstall`은 파일 제거 전에 Cairn 소유 marketplace만 등록 해제하고, uninstall이 rollback되면 다시 등록합니다. `cairn doctor`는 `Claude plugin files`, `Claude plugin registered`, `Claude plugin enabled`를 보고합니다.
 
 ## Antigravity Compatibility
 

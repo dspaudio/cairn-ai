@@ -5,11 +5,12 @@ import { hasSetting, readSharedConfigSnapshot, removeCairnConfig, splitSections 
 import {
   installedSkillLocatorPath, validRuntimeLocator, validateAntigravitySkills,
 } from "./cairn-lifecycle-mirror.mjs";
+import { createClaudeRegistration } from "./cairn-lifecycle-claude.mjs";
 
 export function createCommands(context) {
   const {
-    antigravityCliHome, antigravityHome, claudeRuntimeLocatorPath,
-    codexHome, configPath, installedPluginRoot, installedRuntimeLocatorPath,
+    antigravityCliHome, antigravityHome, claudeHome, claudeHomeOverridden, claudePluginMarketplaceRoot,
+    claudeRuntimeLocatorPath, codexHome, marketplaceName, configPath, installedPluginRoot, installedRuntimeLocatorPath,
     marketplaceJsonPath, ownershipPath, phases, pluginName, pluginRoot,
     pruneUninstallScaffolds, releaseVersion, samePath, skillNames, t, transaction,
     versionedPluginRoot, staging, integrity,
@@ -19,6 +20,9 @@ export function createCommands(context) {
     removeManagedTarget, replaceTarget, rollback,
   } = transaction;
   const { legacyMigrationTargets, stageInstall } = staging;
+  const claudeRegistration = createClaudeRegistration({
+    claudeHome, claudeHomeOverridden, marketplaceRoot: claudePluginMarketplaceRoot, marketplaceName, pluginName,
+  });
   const {
     adoptLegacy, anyManagedArtifactExists, assertOwnershipDigests,
     assertTargetsReplaceable, ownershipDigestsValid, readOwnership, targetDigest,
@@ -80,6 +84,24 @@ async function install(mode) {
     if (transaction.state !== "committed") await rollback(transaction);
     throw error;
   }
+  reportClaudeRegistration();
+}
+
+// Files are committed first; registering with Claude Code is idempotent, and a failure leaves the files
+// installed with a manual command to finish, instead of rolling back a working Codex/Antigravity install.
+function reportClaudeRegistration() {
+  const manual = `claude plugin marketplace add ${JSON.stringify(claudePluginMarketplaceRoot)} && claude plugin install ${claudeRegistration.pluginId} --scope user`;
+  try {
+    const result = claudeRegistration.register();
+    if (result.registered) {
+      console.log(`Claude Code plugin: ${claudeRegistration.pluginId} (${claudePluginMarketplaceRoot})`);
+      return;
+    }
+    console.log(`Claude Code plugin not registered: ${result.reason}. To register: ${manual}`);
+  } catch (error) {
+    console.log(`Claude Code plugin registration failed: ${error.message}. To register: ${manual}`);
+    process.exitCode = 1;
+  }
 }
 
 async function uninstall() {
@@ -92,6 +114,8 @@ async function uninstall() {
     if (record.type !== "config" && current !== record.installedDigest) conflicts.push(record.path);
   }
   if (conflicts.length > 0) throw new Error(`Refusing to uninstall modified managed artifacts: ${conflicts.join(", ")}`);
+  // Unregister before removing files so Claude Code never points at a deleted plugin; a failure aborts with nothing changed.
+  const unregistered = claudeRegistration.unregister().unregistered;
   const transaction = await createTransaction();
   try {
     const configRecord = ownership.targets.find((record) => record.type === "config");
@@ -114,7 +138,13 @@ async function uninstall() {
     await finishTransaction(transaction);
     injectFailure("uninstall-after-commit");
   } catch (error) {
-    if (transaction.state !== "committed") await rollback(transaction);
+    if (transaction.state !== "committed") {
+      await rollback(transaction);
+      // The rollback restored the plugin files, so restore the Claude Code registration that preceded them.
+      if (unregistered) {
+        try { claudeRegistration.register(); } catch (registrationError) { console.error(`Claude Code plugin re-registration failed: ${registrationError.message}`); }
+      }
+    }
     throw error;
   }
   await pruneUninstallScaffolds();
@@ -141,6 +171,14 @@ async function doctor() {
   checks.push(["config marketplace", splitSections(config).some((section) => section.header === "marketplaces.cairn")]);
   checks.push(["config plugin enabled", hasSetting(config, 'plugins."cairn@cairn"', "enabled", "true")]);
   checks.push(["Claude runtime locator", await validRuntimeLocator(claudeRuntimeLocatorPath, versionedPluginRoot)]);
+  const claudePluginManifest = await readJson(join(claudePluginMarketplaceRoot, pluginName, ".claude-plugin", "plugin.json"));
+  checks.push(["Claude plugin files", claudePluginManifest?.version === releaseVersion
+    && await exists(join(claudePluginMarketplaceRoot, ".claude-plugin", "marketplace.json"))
+    && await exists(join(claudePluginMarketplaceRoot, pluginName, "hooks", "hooks.json"))]);
+  let claudeStatus = null;
+  try { claudeStatus = claudeRegistration.status(); } catch { claudeStatus = null; }
+  checks.push(["Claude plugin registered", Boolean(claudeStatus?.marketplace && claudeStatus.installed)]);
+  checks.push(["Claude plugin enabled", Boolean(claudeStatus?.enabled)]);
   checks.push(["Antigravity IDE skills", await exists(join(antigravityHome, "skills", "cairn-plan", "SKILL.md"))]);
   checks.push(["Antigravity CLI flat skills", await exists(join(antigravityCliHome, "skills", "cairn-plan.md"))]);
 
