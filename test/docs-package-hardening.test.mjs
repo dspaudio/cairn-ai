@@ -78,5 +78,8 @@ test("CI is least-privilege, bounded, SHA-pinned, and packs without rerunning pr
   assert.match(ci, /actions\/setup-node@[0-9a-f]{40}\s+# v4/);
   assert.doesNotMatch(ci, /^\s+- uses: actions\/(?:checkout|setup-node)@v\d/gm);
   assert.match(ci, /npm pack --dry-run --ignore-scripts/);
+  // Branch protection requires the single "check" context, so a summary job must gate on the whole matrix.
+  assert.match(ci, /^\s+name: check\n\s+if: always\(\)\n\s+needs: check$/m);
+  assert.match(ci, /MATRIX_RESULT" = "success"[\s\S]*MATRIX_RESULT: \$\{\{ needs\.check\.result \}\}/);
   assert.equal((ci.match(/^\s+- run: npm run check$/gm) ?? []).length, 1);
 });
