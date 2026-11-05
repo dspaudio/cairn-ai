@@ -66,6 +66,13 @@ cairn toolcheck --install --yes --root .
 - If a verification gate fails, Cairn diagnoses once, shrinks the task or splits it into sub-tasks, and reruns both gates.
 - After two failed verification passes for the same task, Cairn records the blocker in `docs/plan/<topic>.md` instead of continuing a repeated loop.
 
+## Verification Integrity
+
+- The implementer must not change the judge: existing tests, fixtures, snapshots, and recorded verification commands are never edited, weakened, skipped, or deleted to make a gate pass unless the plan records the contract change first. Review inspects those diffs and rejects unexplained weakening.
+- Reported defects are reproduced with tools before fixing. Unclear failures are narrowed one hypothesis at a time, each closed by a measurement, and feasibility questions are answered with a bounded experiment rather than an unverified "not possible".
+- After a defect fix, the repository is searched for other implementations of the same rule or pattern; they are fixed in scope or recorded as follow-up.
+- Recurring, machine-checkable lessons are encoded as tests, lint rules, scripts, or hooks instead of more memory prose.
+
 ## Model Guidance
 
 Cairn only applies model-specific adjustment to Claude-family and Codex-family models.
@@ -113,10 +120,10 @@ cairn toolcheck
 - `cairn install`: transactionally installs the custom marketplace source, versioned Codex runtime cache, Cairn-owned config sections, Claude Code mirrors, and current Antigravity IDE/CLI skill surfaces.
 - `cairn upgrade`: replaces only ownership-manifest entries whose installed digests still match, with staged validation and reverse-order rollback on failure.
 - `cairn doctor`: validates the ownership manifest, managed digests, effective Codex features, actual installed/enabled/version plugin state, and mirror/runtime locators without repairing them.
-- `cairn uninstall`: removes or restores only ownership-manifest entries that remain unmodified, then prunes empty managed cache scaffolds; modified or unmanaged targets and their parent directories are preserved, and pre-commit failures roll back.
+- `cairn uninstall`: verifies every non-config ownership-manifest entry against its installed digest first and refuses the whole uninstall, changing nothing, if any managed artifact was modified or removed. Otherwise it removes or restores the managed entries, prunes empty managed cache scaffolds, preserves unmanaged targets and their parent directories, and rolls back pre-commit failures.
 - `cairn toolcheck`: detects repository stacks and checks required LSP and verification tools; installation runs only for an approved supported installer.
 - `cairn cleanup --root <repo>`: reports legacy project-local `.cairn` residue without changing it; `--yes` migrates/reconciles valid active state into the user-home store, removes only known Cairn state/lock/tool residue, preserves unknown files, and prunes the directory only when empty.
-- `cairn goal ...`: starts, inspects, pauses, resumes, blocks, cancels, and completes a persisted repository goal. State lives under user-home `.cairn`, separated by repository and Git worktree; state without `worktreeId` and state copied from another worktree are stale and removed on the next hook/goal start. Successful completion or cancellation removes active state because completed evidence already lives in the plan document, while paused/blocked state remains resumable. The default tool-bound policy records successful evidence by executing `goal verify -- <argv>`. The legacy `goal receipt` command imports declared evidence only.
+- `cairn goal ...`: starts, inspects, pauses, resumes, blocks, cancels, and completes a persisted repository goal. `goal claim --session <id>` hands an unfinished goal to the session that continues the same work (resume, compaction, handoff, fork); new work that arrives during an unfinished goal is folded in with `goal replan` instead of cancelling it. State lives under user-home `.cairn`, separated by repository and Git worktree; state without `worktreeId` and state copied from another worktree are stale and removed on the next hook/goal start. Successful completion or cancellation removes active state because completed evidence already lives in the plan document, while paused/blocked state remains resumable. The default tool-bound policy records successful evidence by executing `goal verify -- <argv>`. The legacy `goal receipt` command imports declared evidence only.
 - `cairn-memory`: explores domain knowledge and updates `MEMORY.md`.
 - `cairn-plan`: creates a decision-complete plan under `docs/plan/`.
 - `cairn-work`: executes the next module task in the current `PLAN.md` with two verification gates.

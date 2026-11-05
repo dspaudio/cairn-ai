@@ -405,6 +405,15 @@ test("goal CLI rejects semantically duplicate option aliases", async () => {
 
 test("PostToolUse emits pure Codex hook JSON with additionalContext", async () => {
   await withTempRoot(async (root) => {
+    const idle = spawnSync(process.execPath, [stateScript, "post-tool-use"], {
+      cwd: root,
+      input: JSON.stringify({ cwd: root, tool_name: "exec_command" }),
+      encoding: "utf8",
+    });
+    assert.equal(idle.status, 0, idle.stderr);
+    assert.deepEqual(JSON.parse(idle.stdout), {}, "PostToolUse must not add context without an active goal");
+
+    await startSingleGoal(root);
     const result = spawnSync(process.execPath, [stateScript, "post-tool-use"], {
       cwd: root,
       input: JSON.stringify({ cwd: root, tool_name: "exec_command" }),

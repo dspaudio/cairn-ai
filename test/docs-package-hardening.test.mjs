@@ -36,7 +36,12 @@ test("package excludes the retired shell state runtime", async () => {
   });
   assert.equal(packed.status, 0, packed.stderr);
   const report = JSON.parse(packed.stdout);
-  const entry = Array.isArray(report) ? report[0] : report;
+  // npm <=11 prints an array (or a bare entry); npm 12 keys the entry by package name.
+  const entry = Array.isArray(report)
+    ? report[0]
+    : report.files
+      ? report
+      : Object.values(report)[0];
   const paths = entry.files.map((file) => file.path);
   assert.ok(paths.includes("scripts/cairn-state.mjs"));
   assert.ok(!paths.includes("scripts/cairn-state.sh"));

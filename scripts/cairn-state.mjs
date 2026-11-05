@@ -5,6 +5,7 @@ import { contextResult, foreignSessionContextResult, prependContext } from "./ca
 import { continuationReason, stopAllowedMessage, stopHookOutput } from "./cairn-state-hook.mjs";
 import { initializeProject } from "./cairn-state-init.mjs";
 import { evaluateStop, isGoalOwnedBySession, reconcileWorktreeState } from "./cairn-goal.mjs";
+import { readStopGuard, writeStopGuard } from "./cairn-goal-state.mjs";
 import { resolveRepoRoot } from "./cairn-paths.mjs";
 
 const recoverableGoalStatuses = new Set(["active", "paused", "blocked"]);
@@ -12,7 +13,9 @@ const recoverableGoalStatuses = new Set(["active", "paused", "blocked"]);
 if (isCliEntry()) {
   const event = process.argv[2] ?? "manual";
   const payload = await readHookInput();
-  const result = await runStateResult(event, { payload });
+  const result = isHookEvent(event)
+    ? await runStateResult(event, { payload }).catch((error) => hookFailureResult(event, error))
+    : await runStateResult(event, { payload });
   if (isHookEvent(event)) {
     console.log(JSON.stringify(result.hookOutput ?? {}));
   } else {
@@ -47,7 +50,7 @@ export async function runStateResult(event = "manual", {
     const reconciled = await reconcileWorktreeState({ root: resolvedRoot });
     const state = reconciled.state;
     if (recoverableGoalStatuses.has(state?.goal?.status) && !isGoalOwnedBySession(state, payload?.session_id)) {
-      return foreignSessionContextResult({ ko, event });
+      return foreignSessionContextResult({ ko, event, sessionId: payload?.session_id, root: resolvedRoot });
     }
     const result = contextResult({ ko, state, event });
     if (!reconciled.removed) return result;
@@ -58,6 +61,12 @@ export async function runStateResult(event = "manual", {
   }
 
   if (event === "post-tool-use") {
+    // Only remind while an owned goal is active: an unconditional reminder after every edit accumulates in the
+    // conversation prefix, raising cached-read cost and bringing compaction (a full cache reset) sooner.
+    const { state } = await reconcileWorktreeState({ root: resolvedRoot });
+    if (state?.goal?.status !== "active" || !isGoalOwnedBySession(state, payload?.session_id)) {
+      return { status: 0, message: "", hookOutput: {} };
+    }
     const message = ko
       ? "Cairn 점검: 외부 상태 변경에는 dry-run/check 증거 기록이 필요합니다. 활성 목표가 있다면 현재 task에 성공 증거를 기록하세요."
       : "Cairn check: external-state changes need dry-run/check evidence. When a goal is active, record successful evidence for its current task.";
@@ -80,10 +89,11 @@ export async function runStateResult(event = "manual", {
       subagent: event === "subagent-stop",
       agentId: payload?.agent_id,
     });
-    const hookOutput = stopHookOutput(gate, payload);
+    const progressed = gate.block ? await recordStopProgress(resolvedRoot, state, event, payload) : false;
+    const hookOutput = stopHookOutput(gate, payload, { progressed });
     return {
       status: 0,
-      message: gate.block ? continuationReason(gate.reason, payload) : stopAllowedMessage({ ko, state, event }),
+      message: gate.block ? continuationReason(gate.reason, payload, { progressed }) : stopAllowedMessage({ ko, state, event }),
       hookOutput,
     };
   }
@@ -92,6 +102,22 @@ export async function runStateResult(event = "manual", {
     status: 0,
     message: ko ? "Cairn: 지원하지 않는 상태 이벤트를 건너뛰었습니다." : "Cairn: skipped an unsupported state event.",
   };
+}
+
+async function recordStopProgress(root, state, event, payload) {
+  const scope = event === "subagent-stop" ? `subagent:${payload?.agent_id ?? ""}` : "turn";
+  const previous = await readStopGuard(root);
+  const progressed = previous?.goalId !== state.goal.id
+    || previous?.scope !== scope
+    || previous?.revision !== state.revision;
+  if (progressed) await writeStopGuard(root, { goalId: state.goal.id, scope, revision: state.revision });
+  return progressed;
+}
+
+function hookFailureResult(event, error) {
+  const detail = String(error?.message ?? error).split("\n")[0].slice(0, 300);
+  const message = `Cairn ${event} hook could not read goal state: ${detail}. Run cairn goal status to inspect it; do not treat an active goal as finished.`;
+  return { status: 0, message, hookOutput: { systemMessage: message } };
 }
 
 function resolveRoot(root, payload) {

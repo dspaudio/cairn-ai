@@ -58,6 +58,13 @@ cairn toolcheck --install --yes --root .
 - 검증 게이트가 실패하면 Cairn은 한 번 진단하고 작업을 줄이거나 sub-task로 나눈 뒤 두 게이트를 다시 실행합니다.
 - 같은 작업에서 두 번의 검증 패스가 실패하면 반복 루프를 계속하지 않고 `docs/plan/<topic>.md`에 blocker를 기록합니다.
 
+## Verification Integrity
+
+- 구현자는 판정 기준을 바꿀 수 없습니다. 기존 test, fixture, snapshot, 기록된 검증 명령은 계획에 계약 변경 사유를 먼저 기록하지 않는 한 게이트 통과를 위해 수정·약화·skip·삭제하지 않습니다. 리뷰는 이 diff를 검사하고 사유 없는 약화를 거부합니다.
+- 보고된 결함은 수정 전에 도구로 먼저 재현합니다. 원인이 불명확한 실패는 가설을 하나씩 세우고 측정으로 닫으며, 가능 여부 질문은 검증 없는 "불가능"이 아니라 제한된 실험으로 답합니다.
+- 결함을 고친 뒤에는 같은 규칙이나 패턴의 다른 구현을 저장소 전체에서 찾아 범위 안에서 고치거나 후속 작업으로 기록합니다.
+- 반복되고 기계적으로 확인 가능한 교훈은 메모리 문장을 늘리는 대신 test, lint rule, script, hook으로 옮깁니다.
+
 ## Model Guidance
 
 Cairn은 Claude-family와 Codex-family 모델에만 모델별 조정을 적용합니다.
@@ -105,10 +112,10 @@ cairn toolcheck
 - `cairn install`: custom marketplace source, versioned Codex runtime cache, Cairn-owned config section, Claude Code mirror, 현재 Antigravity IDE/CLI skill 표면을 transaction으로 설치합니다.
 - `cairn upgrade`: ownership manifest의 installed digest와 현재 값이 같은 항목만 교체하며, staged validation과 역순 rollback을 적용합니다.
 - `cairn doctor`: ownership manifest, managed digest, 유효 Codex feature, 실제 plugin installed/enabled/version, mirror/runtime locator를 수정 없이 진단합니다.
-- `cairn uninstall`: 수정되지 않은 ownership manifest 항목만 제거·복원한 뒤 빈 managed cache scaffold를 정리합니다. modified/unmanaged target과 그 상위 디렉터리는 보존하고 commit 전 실패는 rollback합니다.
+- `cairn uninstall`: 먼저 config 외 모든 ownership manifest 항목을 설치 digest와 대조하고, 수정되거나 삭제된 managed artifact가 하나라도 있으면 아무것도 바꾸지 않고 uninstall 전체를 거부합니다. 그렇지 않으면 managed 항목을 제거·복원하고 빈 managed cache scaffold를 정리하며, unmanaged target과 그 상위 디렉터리는 보존하고 commit 전 실패는 rollback합니다.
 - `cairn toolcheck`: 저장소 스택과 필요한 LSP·검증 도구를 확인하며, 승인된 지원 installer만 실행합니다.
 - `cairn cleanup --root <repo>`: 기본값은 legacy 프로젝트 로컬 `.cairn` 잔여물을 읽기 전용으로 보고합니다. `--yes`는 유효한 활성 상태를 사용자 홈 저장소로 조정·이관하고 알려진 상태/lock/tool 잔여물만 제거하며, 알 수 없는 파일은 보존하고 비었을 때만 디렉터리를 정리합니다.
-- `cairn goal ...`: 저장소의 영속 goal을 시작·조회·일시정지·재개·차단·취소·완료합니다. 기본 tool-bound 정책은 `goal verify -- <argv>`가 명령을 직접 실행해 성공 증거를 기록합니다. `goal receipt`는 기존 선언 증거를 가져오는 호환 명령입니다.
+- `cairn goal ...`: 저장소의 영속 goal을 시작·조회·일시정지·재개·차단·취소·완료합니다. `goal claim --session <id>`는 같은 작업을 이어받는 session(재개·압축·handoff·fork)에 미완료 goal의 소유권을 넘기며, 미완료 goal 중에 들어온 새 작업은 goal을 취소하지 않고 `goal replan`으로 합칩니다. 기본 tool-bound 정책은 `goal verify -- <argv>`가 명령을 직접 실행해 성공 증거를 기록합니다. `goal receipt`는 기존 선언 증거를 가져오는 호환 명령입니다.
 - `cairn-memory`: 도메인 지식을 탐색하고 `MEMORY.md`를 갱신합니다.
 - `cairn-plan`: `docs/plan/` 아래에 decision-complete plan을 만듭니다.
 - `cairn-work`: 현재 `PLAN.md`의 다음 모듈 작업을 실행하고 두 검증 게이트를 확보합니다.

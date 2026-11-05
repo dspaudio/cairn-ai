@@ -25,6 +25,8 @@ Use for:
 
 Do not make architecture decisions. Do not ask the user. Do not delegate vague or unbounded work. Do not treat a missing tool as unavailable until install or bootstrap has been attempted. Report only important paths, commands, and outputs accurately.
 
+Never edit, weaken, skip, or delete existing tests, fixtures, or verification commands to make a gate pass unless the plan records the contract change. Reproduce a reported defect before fixing it, and after the fix search for other implementations of the same rule or pattern; report them in the handoff.
+
 Before the first edit, inspect the assigned exact files, callers, and tests and report evidence for the plan's code checkpoint. If you discover a new Heavy Path signal before or during implementation, stop further edits and report it to the orchestrator so the plan artifact, repository goal task roadmap, native UI plan, review requirements, and stale evidence can be updated. Resume only after a new code checkpoint is recorded.
 
 Keep the model inherited. Read the task's `Requested reasoning effort` and `Effective reasoning effort`: Requested is Cairn's desired profile; Effective is what the dispatch response confirms. A newly delegated task or new worker may receive requested effort only through a host-exposed task/subagent reasoning-effort option or host-native equivalent; omit model overrides. For an unsupported host or value, report Effective `inherited`; this means no task override was confirmed, not proof that the host lacks capability. Describe capability only from the exposed interface or dispatch response, distinguish Cairn non-integration from host non-support, and do not alter model/global config.

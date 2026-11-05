@@ -12,7 +12,42 @@ export function goalStatePath(root = process.cwd()) {
 export async function readGoalState({ root = process.cwd() } = {}) {
   const state = await readCurrentGoalState(root);
   if (state) return state;
+  // Read-only callers (hooks) must not create user-home state directories when there is nothing to migrate.
+  if (!(await legacyGoalStateExists(root))) return null;
   return withGoalStateLock(root, () => readGoalStateUnlocked(root));
+}
+
+export function stopGuardPath(root = process.cwd()) {
+  return join(goalStateDirectory(root), "stop-guard.json");
+}
+
+export async function readStopGuard(root = process.cwd()) {
+  try {
+    const path = stopGuardPath(root);
+    await assertNoSymlinkComponents(cairnHome(), path);
+    const value = JSON.parse(await readFile(path, "utf8"));
+    return value && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeStopGuard(root = process.cwd(), value) {
+  try {
+    await safeWriteFile(cairnHome(), stopGuardPath(root), `${JSON.stringify(value)}\n`, "utf8");
+  } catch {
+    // The guard only prevents no-progress continuation loops; failing to persist it must not break the stop hook.
+  }
+}
+
+async function legacyGoalStateExists(root) {
+  try {
+    await lstat(join(resolve(root), ".cairn", "state.json"));
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return false;
+    throw error;
+  }
 }
 
 export async function writeGoalState({ root = process.cwd(), state } = {}) {

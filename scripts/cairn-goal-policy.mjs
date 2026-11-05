@@ -7,7 +7,10 @@ export function currentTask(state) {
 }
 
 export function isGoalOwnedBySession(state, sessionId) {
-  return !state?.goal?.ownerSessionId || state.goal.ownerSessionId === sessionId;
+  if (!state?.goal?.ownerSessionId) return true;
+  // A payload without a session id cannot prove another owner; treating it as foreign would silently halt the goal.
+  if (typeof sessionId !== "string" || sessionId.length === 0) return true;
+  return state.goal.ownerSessionId === sessionId;
 }
 
 export function evaluateStop(state, { subagent = false, agentId } = {}) {
