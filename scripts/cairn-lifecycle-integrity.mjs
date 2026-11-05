@@ -7,7 +7,7 @@ import { antigravityRuntimeLocatorPath } from "./cairn-lifecycle-mirror.mjs";
 
 export function createIntegrity(context) {
   const {
-    antigravityCliHome, antigravityHome, claudeHome, claudeRuntimeLocatorPath,
+    antigravityCliHome, antigravityHome, claudeHome, claudePluginMarketplaceRoot, claudeRuntimeLocatorPath,
     commandNames, configPath, installedPluginRoot, legacyAntigravityHome,
     marketplaceJsonPath, marketplaceRoot, ownershipPath, phases, pluginName,
     releaseVersion, skillNames,
@@ -97,13 +97,25 @@ function validateOwnershipShape(ownership, { required = false } = {}) {
     paths.add(record.path);
   }
   const requiredTargets = requiredOwnershipTargets(ownership.version);
-  if (ids.size !== requiredTargets.size || [...requiredTargets.keys()].some((id) => !ids.has(id))) {
+  const optionalIds = new Set(requiredTargets.has("claude-plugin") ? [] : ["claude-plugin"]);
+  if ([...ids].some((id) => !requiredTargets.has(id) && !optionalIds.has(id)) || [...requiredTargets.keys()].some((id) => !ids.has(id))) {
     throw new Error("Ownership manifest does not contain the complete managed target set.");
   }
 }
 
+const CLAUDE_PLUGIN_SINCE = "0.2.9";
+
+function compareVersions(left, right) {
+  const parse = (value) => String(value).split("-")[0].split(".").map(Number);
+  const [a, b] = [parse(left), parse(right)];
+  for (let index = 0; index < 3; index += 1) if (a[index] !== b[index]) return a[index] - b[index];
+  return 0;
+}
+
 function requiredOwnershipTargets(version = releaseVersion) {
   const ids = ["codex-source", "codex-runtime", "marketplace", "claude-runtime", "ide-runtime", "cli-runtime", "codex-config"];
+  // Manifests written before the Claude Code plugin existed must stay valid so those installs can upgrade.
+  if (compareVersions(version, CLAUDE_PLUGIN_SINCE) >= 0) ids.push("claude-plugin");
   for (const name of commandNames()) ids.push(`claude-command-${name}`, `ide-workflow-${name}`, `cli-workflow-${name}`);
   for (const name of ["explorer", "worker"]) ids.push(`claude-agent-${name}`);
   for (const name of skillNames()) ids.push(`ide-skill-${name}`, `cli-skill-${name}`);
@@ -116,6 +128,7 @@ function expectedManagedTarget(id, version = releaseVersion) {
     "codex-runtime": { phase: "codex", path: versionedRuntimeRoot(version), type: "tree" },
     marketplace: { phase: "codex", path: marketplaceJsonPath, type: "file" },
     "claude-runtime": { phase: "claude", path: claudeRuntimeLocatorPath, type: "file" },
+    "claude-plugin": { phase: "claude", path: claudePluginMarketplaceRoot, type: "tree" },
     "ide-runtime": { phase: "antigravity", path: antigravityRuntimeLocatorPath(antigravityHome), type: "file" },
     "cli-runtime": { phase: "antigravity", path: antigravityRuntimeLocatorPath(antigravityCliHome), type: "file" },
     "legacy-ide-runtime": { phase: "antigravity", path: antigravityRuntimeLocatorPath(legacyAntigravityHome), type: "file" },

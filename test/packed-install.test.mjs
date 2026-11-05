@@ -7,6 +7,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { runtimeRequiredPaths, runtimeRequiredRelativePaths } from "../scripts/cairn-paths.mjs";
 import { targetDigest } from "../scripts/cairn-lifecycle.mjs";
 
+const fakeClaudeCli = resolve("test/fixtures/fake-claude.mjs");
 const sourceRoot = resolve(".");
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const lifecycleScript = join(sourceRoot, "scripts", "cairn-lifecycle.mjs");
@@ -29,6 +30,7 @@ test("packed install remains self-contained after the npm package source is remo
     ...process.env,
     CODEX_HOME: join(temp, "Codex Home"),
     CLAUDE_HOME: join(temp, "Claude Home"),
+    CAIRN_CLAUDE_CLI: fakeClaudeCli,
     ANTIGRAVITY_HOME: join(temp, "Antigravity Home"),
     ANTIGRAVITY_CLI_HOME: join(temp, "Antigravity CLI Home"),
     HOME: join(temp, "Home"),
@@ -73,7 +75,7 @@ test("packed install remains self-contained after the npm package source is remo
     assert.equal(lifecycleInstall.status, 0, lifecycleInstall.stderr);
 
     const marketplaceSource = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn");
-    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.8");
+    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.9");
     const installedCli = join(installedRoot, "scripts", "cairn.mjs");
     await stat(join(marketplaceSource, ".codex-plugin", "plugin.json"));
     const installedManifest = JSON.parse(await readFile(join(installedRoot, ".codex-plugin", "plugin.json"), "utf8"));

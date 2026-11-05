@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
+const fakeClaudeCli = resolve("test/fixtures/fake-claude.mjs");
 const root = resolve(".");
 const lifecycleScript = join(root, "scripts", "cairn-lifecycle.mjs");
 
@@ -132,6 +133,7 @@ async function withHome(runTest) {
     HOME: join(temp, "home"),
     CODEX_HOME: join(temp, "codex"),
     CLAUDE_HOME: join(temp, "claude"),
+    CAIRN_CLAUDE_CLI: fakeClaudeCli,
     ANTIGRAVITY_HOME: join(temp, "gemini", "config"),
     ANTIGRAVITY_CLI_HOME: join(temp, "gemini", "antigravity-cli"),
     CAIRN_LEGACY_ANTIGRAVITY_HOME: join(temp, "legacy-agents"),

@@ -14,6 +14,7 @@ import {
 import { pathHasSegment, shouldCopyPluginPath } from "../scripts/cairn-lifecycle.mjs";
 import { runState, runStateResult } from "../scripts/cairn-state.mjs";
 
+const fakeClaudeCli = resolve("test/fixtures/fake-claude.mjs");
 const root = resolve(".");
 const lifecycleScript = join(root, "scripts", "cairn-lifecycle.mjs");
 const stateScript = join(root, "scripts", "cairn-state.mjs");
@@ -274,6 +275,7 @@ test("doctor waits for a concurrent lifecycle transaction before observing insta
     ...process.env,
     CODEX_HOME: join(temp, "codex"),
     CLAUDE_HOME: join(temp, "claude"),
+    CAIRN_CLAUDE_CLI: fakeClaudeCli,
     ANTIGRAVITY_HOME: join(temp, "agents"),
     ANTIGRAVITY_CLI_HOME: join(temp, "antigravity-cli"),
     HOME: join(temp, "home"),
@@ -320,6 +322,7 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     ...process.env,
     CODEX_HOME: join(temp, "codex"),
     CLAUDE_HOME: join(temp, "claude"),
+    CAIRN_CLAUDE_CLI: fakeClaudeCli,
     ANTIGRAVITY_HOME: join(temp, "agents"),
     ANTIGRAVITY_CLI_HOME: join(temp, "antigravity-cli"),
     HOME: join(temp, "home"),
@@ -346,7 +349,7 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(config, /\[marketplaces\.cairn\]/);
     assert.match(config, /\[hooks\.state\."cairn@cairn:hooks\/hooks\.json:stop:0:0"\]/);
 
-    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.8", ".codex-plugin", "plugin.json");
+    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.9", ".codex-plugin", "plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(manifest.hooks, "./hooks/hooks.json");
     const kernel = manifest.interface.defaultPrompt.join("\n");
@@ -444,4 +447,101 @@ function hostToolsAvailable() {
 function commandAvailable(command) {
   const result = spawnSync(command, ["--version"], { encoding: "utf8" });
   return result.error === undefined && result.status === 0;
+}
+
+test("install registers a Claude Code plugin whose hooks call the installed runtime, and uninstall removes it", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn-claude-plugin-"));
+  const env = claudePluginEnv(temp);
+  const claudeLog = () => readFile(join(env.CLAUDE_HOME, "fake-claude.log"), "utf8").then((text) => text.trim().split("\n"));
+  const claudeState = () => readFile(join(env.CLAUDE_HOME, "fake-claude-state.json"), "utf8").then(JSON.parse);
+  try {
+    await mkdir(dirname(env.CODEX_CONFIG_PATH), { recursive: true });
+    await writeFile(env.CODEX_CONFIG_PATH, "");
+
+    const install = runLifecycle("install", env);
+    assert.equal(install.status, 0, install.stdout + install.stderr);
+    const pluginMarketplace = join(env.CODEX_HOME, "plugins", "cache", "cairn", "claude");
+    const runtimeRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.2.9");
+    assert.match(install.stdout, /Claude Code plugin: cairn@cairn/);
+
+    const marketplace = JSON.parse(await readFile(join(pluginMarketplace, ".claude-plugin", "marketplace.json"), "utf8"));
+    assert.deepEqual(marketplace.plugins.map((plugin) => [plugin.name, plugin.source]), [["cairn", "./cairn"]]);
+    const manifest = JSON.parse(await readFile(join(pluginMarketplace, "cairn", ".claude-plugin", "plugin.json"), "utf8"));
+    assert.equal(manifest.name, "cairn");
+    assert.equal(manifest.version, "0.2.9");
+    const hooksText = await readFile(join(pluginMarketplace, "cairn", "hooks", "hooks.json"), "utf8");
+    assert.doesNotMatch(hooksText, /PLUGIN_ROOT/, "Claude Code does not expand Codex's ${PLUGIN_ROOT}");
+    const hooks = JSON.parse(hooksText).hooks;
+    assert.deepEqual(Object.keys(hooks).sort(), ["PostToolUse", "SessionStart", "Stop", "SubagentStop", "UserPromptSubmit"]);
+    for (const group of Object.values(hooks).flat()) {
+      for (const handler of group.hooks) assert.ok(handler.command.includes(join(runtimeRoot, "scripts", "cairn-state.mjs")), handler.command);
+    }
+    await stat(join(pluginMarketplace, "cairn", "skills", "cairn-plan", "references", "cairn-runtime.json"));
+    await assert.rejects(stat(join(pluginMarketplace, "cairn", "commands")), "commands stay in the ~/.claude mirrors");
+
+    if (process.platform !== "win32") {
+      const sessionStart = hooks.SessionStart[0].hooks[0].command;
+      const hookRun = spawnSync(sessionStart, { shell: true, cwd: temp, input: JSON.stringify({ cwd: temp, session_id: "s" }), encoding: "utf8", env });
+      assert.equal(hookRun.status, 0, hookRun.stderr);
+      assert.equal(JSON.parse(hookRun.stdout).hookSpecificOutput.hookEventName, "SessionStart");
+    }
+
+    assert.deepEqual(await claudeLog(), [
+      "--version", "plugin marketplace list", "plugin list",
+      `plugin marketplace add ${pluginMarketplace} --scope user`, "plugin install cairn@cairn --scope user",
+    ]);
+    const state = await claudeState();
+    assert.equal(state.plugins[0].installPath, join(pluginMarketplace, "cairn"));
+
+    const upgrade = runLifecycle("upgrade", env);
+    assert.equal(upgrade.status, 0, upgrade.stdout + upgrade.stderr);
+    assert.equal((await claudeLog()).filter((line) => line.startsWith("plugin marketplace add") || line.startsWith("plugin install")).length, 2,
+      "re-running install must not register twice");
+
+    const doctor = runLifecycle("doctor", env);
+    assert.match(doctor.stdout, /^OK Claude plugin files$/m);
+    assert.match(doctor.stdout, /^OK Claude plugin registered$/m);
+    assert.match(doctor.stdout, /^OK Claude plugin enabled$/m);
+
+    const uninstall = runLifecycle("uninstall", env);
+    assert.equal(uninstall.status, 0, uninstall.stdout + uninstall.stderr);
+    assert.deepEqual(await claudeState(), { marketplaces: [], plugins: [] });
+    await assert.rejects(stat(pluginMarketplace));
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("install and uninstall leave a foreign Claude Code marketplace named cairn untouched", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn-claude-foreign-"));
+  const env = claudePluginEnv(temp);
+  try {
+    await mkdir(dirname(env.CODEX_CONFIG_PATH), { recursive: true });
+    await writeFile(env.CODEX_CONFIG_PATH, "");
+    const foreign = { marketplaces: [{ name: "cairn", source: "directory", path: join(temp, "someone-else") }], plugins: [] };
+    await mkdir(env.CLAUDE_HOME, { recursive: true });
+    await writeFile(join(env.CLAUDE_HOME, "fake-claude-state.json"), JSON.stringify(foreign));
+
+    const install = runLifecycle("install", env);
+    assert.equal(install.status, 0, install.stdout + install.stderr);
+    assert.match(install.stdout, /Claude Code plugin not registered: a different Claude Code marketplace named "cairn" already exists/);
+    const uninstall = runLifecycle("uninstall", env);
+    assert.equal(uninstall.status, 0, uninstall.stdout + uninstall.stderr);
+    assert.deepEqual(JSON.parse(await readFile(join(env.CLAUDE_HOME, "fake-claude-state.json"), "utf8")), foreign);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+function claudePluginEnv(temp) {
+  return {
+    ...process.env,
+    CODEX_HOME: join(temp, "codex"),
+    CLAUDE_HOME: join(temp, "claude"),
+    CAIRN_CLAUDE_CLI: fakeClaudeCli,
+    ANTIGRAVITY_HOME: join(temp, "agents"),
+    ANTIGRAVITY_CLI_HOME: join(temp, "antigravity-cli"),
+    HOME: join(temp, "home"),
+    CODEX_CONFIG_PATH: join(temp, "codex", "config.toml"),
+  };
 }
