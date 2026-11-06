@@ -410,7 +410,7 @@ test("plan and work guidance define the Quick Path and the finish/stats CLI cont
   assert.match(work, /goal finish --quiet --root "<repoRoot>" --watch "<path\|path>" -- <tool>/);
   assert.match(work, /goal stats --root "<repoRoot>"/);
   assert.match(work, /--root` is optional for every `goal` subcommand.*HARNESS_REPO_ROOT.*\.git/);
-  assert.match(work, /Cairn CLI: node "<abs>\/scripts\/cairn\.mjs" goal <command> --root "<repoRoot>"/);
+  assert.match(work, /Cairn CLI: node "<abs>\/scripts\/cairn\.mjs" goal <command>`/);
   assert.match(work, /never store it in a shell variable/);
   assert.match(work, /Evidence scopes are only `task` and `goal`/);
   assert.match(work, /Do not rerun earlier completed tasks' checks/);

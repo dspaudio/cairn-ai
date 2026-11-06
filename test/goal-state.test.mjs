@@ -1086,7 +1086,8 @@ test("post-tool-use reminds once per task and session-start carries a literal CL
 
     const started = await runStateResult("session-start", { root, payload, locale: "en_US" });
     const context = started.hookOutput.hookSpecificOutput.additionalContext;
-    assert.ok(context.includes(`Cairn CLI: node ${JSON.stringify(cliScript)} goal <command> --root ${JSON.stringify(root)}`), context);
+    assert.ok(context.includes(`Cairn CLI: node ${JSON.stringify(cliScript)} goal <command>`), context);
+    assert.ok(!context.includes(root), "the capsule must not repeat the repository path");
     const prompt = await runStateResult("user-prompt-submit", { root, payload, locale: "en_US" });
     assert.ok(!prompt.message.includes("Cairn CLI:"));
   });

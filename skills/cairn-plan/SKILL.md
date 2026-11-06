@@ -15,7 +15,7 @@ At the start and after compaction, restart, or handoff, restore context in this 
 
 Resolve the read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md` (its `pluginRoot`; in a source checkout without it, this file's `../..`). Never search the target repository for Cairn files or derive `pluginRoot` from the cwd. If the runtime or locator is missing, unreadable, or inconsistent, stop every dependent mirror and recover with published/global `cairn doctor` followed by `cairn upgrade`; never repair from another mirror.
 
-Plans use logical IDs such as `cairn://templates/work-plan.md`, resolved through `pluginRoot`. The session-start hook prints a ready prefix `Cairn CLI: node "<abs>/scripts/cairn.mjs" goal <command> --root "<repoRoot>"`: copy it literally into every command and never store it in a shell variable (shell variables do not persist between tool calls). `--root` may be omitted when the cwd is inside the repository (it resolves via `HARNESS_REPO_ROOT`, else the nearest `.git` ancestor).
+Plans use logical IDs such as `cairn://templates/work-plan.md`, resolved through `pluginRoot`. The session-start hook prints a ready prefix `Cairn CLI: node "<abs>/scripts/cairn.mjs" goal <command>`: copy it literally into every command and never store it in a shell variable (shell variables do not persist between tool calls). `--root` may be omitted when the cwd is inside the repository (it resolves via `HARNESS_REPO_ROOT`, else the nearest `.git` ancestor).
 
 ## Reference Files
 

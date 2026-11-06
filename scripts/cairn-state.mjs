@@ -55,7 +55,7 @@ export async function runStateResult(event = "manual", {
     const context = contextResult({ ko, state, event });
     // SessionStart (also after compaction) carries a literal CLI prefix so agents do not rebuild or store it in a
     // shell variable, which does not survive between tool calls.
-    const result = event === "session-start" ? appendContext(context, cliPrefixLine(resolvedRoot)) : context;
+    const result = event === "session-start" ? appendContext(context, cliPrefixLine()) : context;
     if (!reconciled.removed) return result;
     const notice = ko
       ? "Cairn worktree 점검: 현재 worktree에 속하지 않는 stale Cairn 상태를 제거했습니다."
@@ -138,9 +138,11 @@ async function recordStopProgress(root, state, event, payload) {
   return progressed;
 }
 
-function cliPrefixLine(root) {
+// Only the CLI path: goal commands resolve the repository root themselves, and a second absolute path would let
+// long install or checkout paths push the SessionStart capsule past its budget.
+function cliPrefixLine() {
   const cli = fileURLToPath(new URL("./cairn.mjs", import.meta.url));
-  return `Cairn CLI: node ${JSON.stringify(cli)} goal <command> --root ${JSON.stringify(root)}`;
+  return `Cairn CLI: node ${JSON.stringify(cli)} goal <command>`;
 }
 
 function appendContext(result, line) {
