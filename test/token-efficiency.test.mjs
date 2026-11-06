@@ -304,10 +304,14 @@ test("work, review, and memory guidance protect the judge and close defects with
     assert.match(content, /same rule or pattern/i, `${path} same-rule sweep`);
   }
 
+  // Defect investigation detail lives in the cairn-work verification reference loaded on demand.
   const work = await read("skills/cairn-work/SKILL.md");
-  assert.match(work, /reproduce.*before fixing/is);
-  assert.match(work, /one hypothesis at a time.*measurement/is);
-  assert.match(work, /feasibility.*experiment/is);
+  assert.match(work, /cairn:\/\/skills\/cairn-work\/verification\.md/);
+  const verification = await read("skills/cairn-work/verification.md");
+  assert.match(verification, /reproduce.*before fixing/is);
+  assert.match(verification, /one hypothesis at a time.*measurement/is);
+  assert.match(verification, /feasibility.*experiment/is);
+  assert.match(verification, /never edit, weaken, skip, or delete existing tests.*verification commands/is);
 
   for (const path of ["skills/cairn-review/SKILL.md", "commands/cairn-review.md", ".agents/workflows/cairn-review.md"]) {
     const content = await read(path);
@@ -340,6 +344,107 @@ test("agents and phase guidance restore required references and fail closed", as
 
   const allGuidance = surfaces.map(([, content]) => content).join("\n");
   assert.doesNotMatch(allGuidance, /requiredReferences|readReceipt|read_receipt/);
+});
+
+test("plan and work skills stay slim and load detailed procedures on demand", async () => {
+  const read = (path) => readFile(path, "utf8");
+  for (const path of ["skills/cairn-plan/SKILL.md", "skills/cairn-work/SKILL.md"]) {
+    const bytes = Buffer.byteLength(await read(path), "utf8");
+    assert.ok(bytes <= 9000, `${path} is ${bytes} bytes; budget is 9000`);
+  }
+
+  const references = {
+    "cairn-plan": ["planning-rules.md", "delegation.md", "heavy-path.md"],
+    "cairn-work": ["verification.md", "delegation.md", "heavy-path.md", "recovery.md"],
+  };
+  for (const [skill, files] of Object.entries(references)) {
+    const content = await read(`skills/${skill}/SKILL.md`);
+    assert.match(content, /read a reference only when the selected path or situation requires it/i, `${skill} on-demand rule`);
+    assert.match(content, /Quick and Light Path never need `heavy-path\.md`/, `${skill} heavy-path gate`);
+    for (const file of files) {
+      assert.ok(content.includes(`cairn://skills/${skill}/${file}`), `${skill} references ${file}`);
+      assert.ok((await read(`skills/${skill}/${file}`)).length > 0, `${skill}/${file} exists`);
+    }
+  }
+
+  // Moved procedures keep their contracts in the reference files.
+  const planHeavy = await read("skills/cairn-plan/heavy-path.md");
+  assert.match(planHeavy, /plan -> pre-implementation review -> bounded `worker` implementation/);
+  assert.match(planHeavy, /only promote Light Path to Heavy Path/);
+  const planRules = await read("skills/cairn-plan/planning-rules.md");
+  assert.match(planRules, /## Route Record/);
+  assert.match(planRules, /content-producing.*--ignore-scripts/is);
+  const planDelegation = await read("skills/cairn-plan/delegation.md");
+  assert.match(planDelegation, /TASK: Produce <role> input/);
+  assert.match(planDelegation, /final report before leaving.*close or release/is);
+  assert.match(planDelegation, /Light.*medium.*Heavy.*high.*xhigh/is);
+  const workDelegation = await read("skills/cairn-work/delegation.md");
+  assert.match(workDelegation, /TASK: Implement task <task-id>/);
+  assert.match(workDelegation, /completed.*profiles?.*preserv/is);
+  const workRecovery = await read("skills/cairn-work/recovery.md");
+  assert.match(workRecovery, /two failed passes.*blocked/is);
+  assert.match(workRecovery, /goal claim/);
+});
+
+test("plan and work guidance define the Quick Path and the finish/stats CLI contract", async () => {
+  const read = (path) => readFile(path, "utf8");
+  for (const path of ["skills/cairn-plan/SKILL.md", "commands/cairn-plan.md", ".agents/workflows/cairn-plan.md"]) {
+    const content = await read(path);
+    assert.match(content, /Quick Path/, `${path} Quick Path`);
+    assert.match(content, /unambiguous/i, `${path} unambiguous requirements`);
+    assert.match(content, /about 3 files or fewer inside existing layers/i, `${path} file limit`);
+    assert.match(content, /no Heavy Path signal/i, `${path} no Heavy signal`);
+    assert.match(content, /no external-state mutation/i, `${path} no external-state mutation`);
+    assert.match(content, /one or two (?:verification )?commands/i, `${path} verification size`);
+    assert.match(content, /escalate to Light Path \(.*plan \+ goal\) before further edits/i, `${path} escalation`);
+    assert.match(content, /routine known-target Git\/GitHub operations?/i, `${path} Git ops stay plan-free`);
+  }
+  for (const path of ["skills/cairn-work/SKILL.md", "commands/cairn-work.md", ".agents/workflows/cairn-work.md"]) {
+    const content = await read(path);
+    assert.match(content, /Quick Path/, `${path} Quick Path`);
+    assert.match(content, /goal finish/, `${path} goal finish`);
+    assert.match(content, /moduleAcceptance\|surfaceIntegration/, `${path} multi-kind verify`);
+  }
+
+  const work = await read("skills/cairn-work/SKILL.md");
+  assert.match(work, /goal finish --quiet --root "<repoRoot>" --watch "<path\|path>" -- <tool>/);
+  assert.match(work, /goal stats --root "<repoRoot>"/);
+  assert.match(work, /--root` is optional for every `goal` subcommand.*HARNESS_REPO_ROOT.*\.git/);
+  assert.match(work, /Cairn CLI: node "<abs>\/scripts\/cairn\.mjs" goal <command> --root "<repoRoot>"/);
+  assert.match(work, /never store it in a shell variable/);
+  assert.match(work, /Evidence scopes are only `task` and `goal`/);
+  assert.match(work, /Do not rerun earlier completed tasks' checks/);
+  assert.match(work, /goal requiredEvidence is empty, task freshness is still rechecked/);
+  assert.doesNotMatch(work, /goal complete --quiet/, "the three-step finish sequence is only shown as the long form");
+  const verification = await read("skills/cairn-work/verification.md");
+  assert.match(verification, /once per goal\/task\/session/);
+  assert.match(verification, /reruns \(repeated scope\+task\+kind\)/);
+});
+
+test("plan and work guidance document the task DAG and parallel delegation", async () => {
+  const read = (path) => readFile(path, "utf8");
+  const plan = await read("skills/cairn-plan/SKILL.md");
+  assert.match(plan, /`dependsOn` and `writeScope` in the `--tasks` JSON and named handoff files/);
+  const planDelegation = await read("skills/cairn-plan/delegation.md");
+  assert.match(planDelegation, /Omitted `dependsOn` means the previous task.*explicit `\[\]` means no dependency/s);
+  assert.match(planDelegation, /cycles are rejected/);
+  assert.match(planDelegation, /no globs, `\.\.`, or absolute paths/);
+
+  const work = await read("skills/cairn-work/SKILL.md");
+  assert.match(work, /goal ready --root "<repoRoot>"/);
+  assert.match(work, /run `goal ready`.*parallel workers in the same worktree with disjoint `writeScope` and `--watch` inside it.*rerun `goal ready` after each completion/);
+  const workDelegation = await read("skills/cairn-work/delegation.md");
+  assert.match(workDelegation, /At most 4 tasks are active/);
+  assert.match(workDelegation, /without `writeScope` is active only alone/);
+  assert.match(workDelegation, /same Git worktree/);
+  assert.match(workDelegation, /`--watch` paths inside that task's `writeScope`/);
+  assert.match(workDelegation, /goal becomes blocked only when no task is active or ready/);
+
+  const template = await read("templates/work-plan.md");
+  assert.match(template, /^- Depends on \(task ids\):$/m);
+  assert.match(template, /^- Write scope:$/m);
+  assert.match(template, /^- Handoff files:$/m);
+  assert.doesNotMatch(template, /^- Dependencies:/m);
 });
 
 test("every supported locale exposes the token-efficient work contract", () => {

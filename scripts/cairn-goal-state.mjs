@@ -18,12 +18,24 @@ export async function readGoalState({ root = process.cwd() } = {}) {
 }
 
 export function stopGuardPath(root = process.cwd()) {
-  return join(goalStateDirectory(root), "stop-guard.json");
+  return hookGuardPath(root, "stop");
+}
+
+export function hookGuardPath(root = process.cwd(), name) {
+  return join(goalStateDirectory(root), `${name}-guard.json`);
 }
 
 export async function readStopGuard(root = process.cwd()) {
+  return readHookGuard(root, "stop");
+}
+
+export async function writeStopGuard(root = process.cwd(), value) {
+  return writeHookGuard(root, "stop", value);
+}
+
+export async function readHookGuard(root = process.cwd(), name) {
   try {
-    const path = stopGuardPath(root);
+    const path = hookGuardPath(root, name);
     await assertNoSymlinkComponents(cairnHome(), path);
     const value = JSON.parse(await readFile(path, "utf8"));
     return value && typeof value === "object" ? value : null;
@@ -32,11 +44,11 @@ export async function readStopGuard(root = process.cwd()) {
   }
 }
 
-export async function writeStopGuard(root = process.cwd(), value) {
+export async function writeHookGuard(root = process.cwd(), name, value) {
   try {
-    await safeWriteFile(cairnHome(), stopGuardPath(root), `${JSON.stringify(value)}\n`, "utf8");
+    await safeWriteFile(cairnHome(), hookGuardPath(root, name), `${JSON.stringify(value)}\n`, "utf8");
   } catch {
-    // The guard only prevents no-progress continuation loops; failing to persist it must not break the stop hook.
+    // Guards only deduplicate hook output; failing to persist one must not break the hook.
   }
 }
 

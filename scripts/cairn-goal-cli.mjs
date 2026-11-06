@@ -1,3 +1,5 @@
+import { resolveRepoRoot } from "./cairn-paths.mjs";
+
 export async function runGoalCli(args, {
   stdout = console.log,
   defaultGoalEvidence,
@@ -6,7 +8,8 @@ export async function runGoalCli(args, {
   const [firstCommand = "help", ...remaining] = args;
   const [command = "help", ...rest] = firstCommand === "goal" ? remaining : [firstCommand, ...remaining];
   const { options, positional, passthrough } = parseArgs(rest, command);
-  const root = options.root ?? process.cwd();
+  // Without --root, resolve the repository (HARNESS_REPO_ROOT or the nearest .git ancestor), not a subdirectory cwd.
+  const root = resolveRepoRoot({ explicitRoot: options.root ?? null });
   const emit = options.quiet ? () => {} : stdout;
   if (command === "start") {
     const tasks = parseTasks(options.tasks ?? positional.slice(0));
@@ -91,7 +94,7 @@ export async function runGoalCli(args, {
     const result = await operations.verifyAndRecord({
       root,
       taskId: options.task ?? positional[0],
-      kind: options.kind,
+      kind: splitValues(options.kind),
       scope: options.scope,
       watchPaths: splitValues(options.watch),
       argv: passthrough,
@@ -99,15 +102,40 @@ export async function runGoalCli(args, {
         ? 600_000
         : positiveIntegerOption(options["timeout-ms"], "timeout-ms"),
     });
-    emit(JSON.stringify({
-      id: result.evidence.id,
-      scope: result.evidence.scope,
-      kind: result.evidence.kind,
-      exitCode: result.evidence.exitCode,
-      outputDigest: result.evidence.outputDigest,
-      workspaceFingerprint: result.evidence.workspaceFingerprint,
+    const summaries = result.receipts.map((receipt) => ({
+      id: receipt.id,
+      scope: receipt.scope,
+      kind: receipt.kind,
+      exitCode: receipt.exitCode,
+      outputDigest: receipt.outputDigest,
+      workspaceFingerprint: receipt.workspaceFingerprint,
     }));
+    emit(JSON.stringify(summaries.length === 1 ? summaries[0] : summaries));
     return result.state;
+  }
+  if (command === "finish") {
+    const state = await operations.finishGoal({
+      root,
+      watchPaths: splitValues(options.watch),
+      argv: passthrough,
+      timeoutMs: options["timeout-ms"] === undefined
+        ? 600_000
+        : positiveIntegerOption(options["timeout-ms"], "timeout-ms"),
+    });
+    emit(JSON.stringify({ id: state.goal.id, status: state.goal.status }));
+    return state;
+  }
+  if (command === "ready") {
+    const state = await operations.readGoalState({ root });
+    const ids = (status) => (state ? state.tasks.filter((task) => task.status === status).map((task) => task.id) : []);
+    const summary = { active: ids("active"), ready: operations.readyTasks(state).map((task) => task.id), blocked: ids("blocked") };
+    stdout(JSON.stringify(summary));
+    return summary;
+  }
+  if (command === "stats") {
+    const stats = operations.goalStats(await operations.readGoalState({ root }), root);
+    stdout(JSON.stringify(stats));
+    return stats;
   }
   if (["pause", "resume", "block", "cancel", "complete"].includes(command)) {
     const state = await operations.transitionGoal({
@@ -118,7 +146,7 @@ export async function runGoalCli(args, {
     emit(JSON.stringify(state));
     return state;
   }
-  throw new Error("Usage: cairn-goal start|status|task|replan|claim|assign|receipt|verify|pause|resume|block|cancel|complete [--root PATH]");
+  throw new Error("Usage: cairn-goal start|status|ready|stats|task|replan|claim|assign|receipt|verify|finish|pause|resume|block|cancel|complete [--root PATH]");
 }
 
 function parseArgs(args, command) {
@@ -182,6 +210,9 @@ function allowedOptions(command) {
     assign: ["task", "agent"],
     receipt: ["task", "kind", "scope", "command", "exitCode", "exit-code", "exit", "timestamp", "goalId", "goal-id", "plan"],
     verify: ["task", "kind", "scope", "watch", "timeout-ms"],
+    finish: ["watch", "timeout-ms"],
+    stats: [],
+    ready: [],
     pause: [],
     resume: [],
     block: ["reason"],

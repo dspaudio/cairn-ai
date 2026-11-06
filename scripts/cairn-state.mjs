@@ -5,7 +5,7 @@ import { contextResult, foreignSessionContextResult, prependContext } from "./ca
 import { continuationReason, stopAllowedMessage, stopHookOutput } from "./cairn-state-hook.mjs";
 import { initializeProject } from "./cairn-state-init.mjs";
 import { evaluateStop, isGoalOwnedBySession, reconcileWorktreeState } from "./cairn-goal.mjs";
-import { readStopGuard, writeStopGuard } from "./cairn-goal-state.mjs";
+import { readHookGuard, readStopGuard, writeHookGuard, writeStopGuard } from "./cairn-goal-state.mjs";
 import { resolveRepoRoot } from "./cairn-paths.mjs";
 
 const recoverableGoalStatuses = new Set(["active", "paused", "blocked"]);
@@ -52,7 +52,10 @@ export async function runStateResult(event = "manual", {
     if (recoverableGoalStatuses.has(state?.goal?.status) && !isGoalOwnedBySession(state, payload?.session_id)) {
       return foreignSessionContextResult({ ko, event, sessionId: payload?.session_id, root: resolvedRoot });
     }
-    const result = contextResult({ ko, state, event });
+    const context = contextResult({ ko, state, event });
+    // SessionStart (also after compaction) carries a literal CLI prefix so agents do not rebuild or store it in a
+    // shell variable, which does not survive between tool calls.
+    const result = event === "session-start" ? appendContext(context, cliPrefixLine(resolvedRoot)) : context;
     if (!reconciled.removed) return result;
     const notice = ko
       ? "Cairn worktree 점검: 현재 worktree에 속하지 않는 stale Cairn 상태를 제거했습니다."
@@ -67,6 +70,19 @@ export async function runStateResult(event = "manual", {
     if (state?.goal?.status !== "active" || !isGoalOwnedBySession(state, payload?.session_id)) {
       return { status: 0, message: "", hookOutput: {} };
     }
+    // Remind once per goal, task, and session; repeating it after every edit only grows the cached prefix.
+    const reminderKey = {
+      goalId: state.goal.id,
+      taskId: state.tasks.find((task) => task.status === "active")?.id ?? null,
+      sessionId: payload?.session_id ?? null,
+    };
+    const previousReminder = await readHookGuard(resolvedRoot, "reminder");
+    if (previousReminder?.goalId === reminderKey.goalId
+      && previousReminder?.taskId === reminderKey.taskId
+      && previousReminder?.sessionId === reminderKey.sessionId) {
+      return { status: 0, message: "", hookOutput: {} };
+    }
+    await writeHookGuard(resolvedRoot, "reminder", reminderKey);
     const message = ko
       ? "Cairn 점검: 외부 상태 변경에는 dry-run/check 증거 기록이 필요합니다. 활성 목표가 있다면 현재 task에 성공 증거를 기록하세요."
       : "Cairn check: external-state changes need dry-run/check evidence. When a goal is active, record successful evidence for its current task.";
@@ -106,12 +122,36 @@ export async function runStateResult(event = "manual", {
 
 async function recordStopProgress(root, state, event, payload) {
   const scope = event === "subagent-stop" ? `subagent:${payload?.agent_id ?? ""}` : "turn";
+  // Parallel workers share this guard: keep one entry per scope, and measure a worker's progress by its own task
+  // so sibling writes (which bump the goal revision) do not look like progress.
+  const assigned = event === "subagent-stop"
+    ? state.tasks.find((task) => task.status === "active" && task.assignedAgentId === payload?.agent_id)
+    : null;
+  const marker = assigned ? `${assigned.id}:${assigned.status}:${assigned.updatedAt}` : state.revision;
   const previous = await readStopGuard(root);
-  const progressed = previous?.goalId !== state.goal.id
-    || previous?.scope !== scope
-    || previous?.revision !== state.revision;
-  if (progressed) await writeStopGuard(root, { goalId: state.goal.id, scope, revision: state.revision });
+  const scopes = previous?.goalId === state.goal.id && previous?.scopes && typeof previous.scopes === "object" ? previous.scopes : {};
+  const progressed = scopes[scope] !== marker;
+  if (progressed) {
+    const entries = Object.entries({ ...scopes, [scope]: marker }).slice(-16);
+    await writeStopGuard(root, { goalId: state.goal.id, scopes: Object.fromEntries(entries) });
+  }
   return progressed;
+}
+
+function cliPrefixLine(root) {
+  const cli = fileURLToPath(new URL("./cairn.mjs", import.meta.url));
+  return `Cairn CLI: node ${JSON.stringify(cli)} goal <command> --root ${JSON.stringify(root)}`;
+}
+
+function appendContext(result, line) {
+  const specific = result.hookOutput?.hookSpecificOutput;
+  return {
+    ...result,
+    message: `${result.message}\n${line}`,
+    hookOutput: specific
+      ? { ...result.hookOutput, hookSpecificOutput: { ...specific, additionalContext: `${specific.additionalContext}\n${line}` } }
+      : result.hookOutput,
+  };
 }
 
 function hookFailureResult(event, error) {

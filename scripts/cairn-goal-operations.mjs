@@ -5,11 +5,12 @@ import { assertNoSymlinkComponents } from "./cairn-safe-fs.mjs";
 import { goalStatePath, readGoalState, readGoalStateUnlocked, withGoalStateLock, writeGoalStateUnlocked } from "./cairn-goal-state.mjs";
 import {
   GOAL_STATE_VERSION, PLAN_ID_MAX_LENGTH, assertRecoveryReferenceBudget, boundedRequiredText,
+  assertCanBeActive, assertTaskGraph,
   defaultGoalEvidence, normalizeCriteria, normalizeTask, optionalText, requiredText,
   terminalGoalStatuses, timestamp, validEvidencePolicy, validGoalStatus, validTaskStatus, validateState,
 } from "./cairn-goal-state-validation.mjs";
 import {
-  activateNextPendingTask, assertGoalMutable, ensureGoalCanComplete, ensureTaskCanComplete,
+  advanceGoal, assertGoalMutable, ensureGoalCanComplete, ensureTaskCanComplete,
   mutateGoal, taskById,
 } from "./cairn-goal-operations-mutations.mjs";
 
@@ -44,7 +45,8 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
       throw new Error(`An unfinished Cairn goal already exists (${existing.goal.id}, ${existing.goal.status}); add the new work to it with goal replan (resume it first if paused or blocked), or cancel or complete it before starting another goal`);
     }
     const now = timestamp();
-    const normalizedTasks = tasks.map((task, index) => normalizeTask(task, index, index === 0 ? "active" : "pending"));
+    const normalizedTasks = normalizeTaskList(tasks, []);
+    assertTaskGraph(normalizedTasks);
     for (const task of normalizedTasks) assertRecoveryReferenceBudget(normalizedPlanId, task.id);
     const state = {
       schemaVersion: GOAL_STATE_VERSION,
@@ -66,6 +68,7 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
       tasks: normalizedTasks,
       receipts: [],
     };
+    advanceGoal(state);
     await writeGoalStateUnlocked({ root, state });
     return state;
   });
@@ -112,6 +115,7 @@ function applyGoalTransition(state, nextStatus, blocker, root) {
   if (nextStatus === "active") state.goal.blocker = null;
   state.goal.status = nextStatus;
   state.goal.updatedAt = timestamp();
+  if (nextStatus === "active" && currentStatus === "blocked") advanceGoal(state, null, { block: false });
   return state;
 }
 
@@ -124,19 +128,14 @@ export async function setTaskStatus({ root = process.cwd(), taskId, status, bloc
     if (task.status === nextStatus) return state;
     if (!taskTransitions[task.status].has(nextStatus)) throw new Error(`Cannot transition task ${task.id} from ${task.status} to ${nextStatus}`);
     if (nextStatus === "active") {
-      const anotherActive = state.tasks.find((item) => item.id !== task.id && item.status === "active");
-      if (anotherActive) throw new Error(`Task ${anotherActive.id} is already active`);
+      assertCanBeActive(state.tasks, task, state.tasks.filter((item) => item.id !== task.id && item.status === "active"));
     }
     if (nextStatus === "completed") ensureTaskCanComplete(state, task, root);
     if (nextStatus === "blocked") task.blocker = requiredText(blocker, "blocker");
     if (nextStatus === "active" || nextStatus === "pending") task.blocker = null;
     task.status = nextStatus;
     task.updatedAt = timestamp();
-    if (nextStatus === "completed") activateNextPendingTask(state);
-    if (nextStatus === "blocked" && !activateNextPendingTask(state)) {
-      state.goal.status = "blocked";
-      state.goal.blocker = task.blocker;
-    }
+    if (nextStatus === "completed" || nextStatus === "blocked") advanceGoal(state, nextStatus === "blocked" ? task.blocker : null);
     state.goal.updatedAt = timestamp();
     return state;
   });
@@ -149,18 +148,32 @@ export async function replanGoal({ root = process.cwd(), tasks } = {}) {
     if (state.goal.status !== "active") throw new Error("Only an active goal can be replanned");
     const completedTasks = state.tasks.filter((task) => task.status === "completed");
     const completedIds = new Set(completedTasks.map((task) => task.id));
-    const replacementTasks = tasks.map((task, index) => {
-      const source = typeof task === "string" ? task : { ...task, status: undefined, blocker: undefined };
-      const normalized = normalizeTask(source, index, index === 0 ? "active" : "pending");
-      if (completedIds.has(normalized.id)) throw new Error(`Replanned task conflicts with completed task id: ${normalized.id}`);
-      return normalized;
-    });
+    const replacementTasks = normalizeTaskList(
+      tasks.map((task) => (typeof task === "string" ? task : { ...task, status: undefined, blocker: undefined })),
+      completedTasks,
+    );
+    for (const task of replacementTasks) {
+      if (completedIds.has(task.id)) throw new Error(`Replanned task conflicts with completed task id: ${task.id}`);
+    }
     state.tasks = [...completedTasks, ...replacementTasks];
+    assertTaskGraph(state.tasks);
     state.receipts = state.receipts.filter((receipt) => receipt.scope === "task" && completedIds.has(receipt.taskId));
     state.goal.blocker = null;
     state.goal.updatedAt = timestamp();
+    advanceGoal(state);
     return state;
   });
+}
+
+// Normalizes tasks as pending; an omitted dependsOn follows the previous task across completed + new tasks.
+function normalizeTaskList(tasks, precedingTasks) {
+  let previousId = precedingTasks.at(-1)?.id ?? null;
+  const normalized = tasks.map((task, index) => {
+    const result = normalizeTask(task, index, "pending", previousId);
+    previousId = result.id;
+    return result;
+  });
+  return normalized;
 }
 
 export async function claimGoal({ root = process.cwd(), sessionId } = {}) {

@@ -17,6 +17,8 @@ import {
   startGoal,
   transitionGoal,
   verifyAndRecord,
+  finishGoal,
+  goalStats,
   worktreeId,
 } from "../scripts/cairn-goal.mjs";
 import { runStateResult } from "../scripts/cairn-state.mjs";
@@ -35,7 +37,7 @@ test("goal start persists a versioned, bound state atomically", async () => {
       completionCriteria: ["All tasks have successful receipts"],
     });
 
-    assert.equal(state.schemaVersion, 2);
+    assert.equal(state.schemaVersion, 3);
     assert.equal(state.goal.evidencePolicy, "tool-bound");
     assert.equal(state.goal.worktreeId, worktreeId(root));
     assert.equal(state.goal.status, "active");
@@ -160,9 +162,11 @@ test("schema v1 state migrates to tool-bound schema v2 without losing declared e
     }, null, 2)}\n`);
 
     const migrated = await readGoalState({ root });
-    assert.equal(migrated.schemaVersion, 2);
+    assert.equal(migrated.schemaVersion, 3);
     assert.equal(migrated.goal.evidencePolicy, "tool-bound");
     assert.equal(migrated.receipts[0].source, "declared");
+    assert.deepEqual(migrated.tasks[0].dependsOn, []);
+    assert.equal(migrated.tasks[0].writeScope, null);
   });
 });
 
@@ -916,6 +920,177 @@ async function createTwoTaskGoal(root) {
     tasks: [{ id: "first", title: "First task" }, { id: "second", title: "Second task" }],
   });
 }
+
+const passArgv = [process.execPath, "-e", "process.exit(0)"];
+
+async function verifyTask(root, taskId, watchPaths = ["watched.txt"]) {
+  await verifyAndRecord({ root, taskId, kind: ["moduleAcceptance", "surfaceIntegration"], watchPaths, argv: passArgv });
+}
+
+test("fresh goal evidence recorded after every task receipt supersedes stale earlier task evidence", async () => {
+  await withTempRoot(async (root) => {
+    await writeFile(join(root, "watched.txt"), "v1\n");
+    await startGoal({
+      root,
+      goal: "Supersede task freshness",
+      planId: "docs/plan/supersede.md",
+      tasks: [{ id: "first", title: "First" }, { id: "second", title: "Second" }],
+    });
+    await verifyTask(root, "first");
+    await setTaskStatus({ root, taskId: "first", status: "completed" });
+    await writeFile(join(root, "watched.txt"), "v2\n");
+    await verifyTask(root, "second");
+    await setTaskStatus({ root, taskId: "second", status: "completed" });
+
+    await assert.rejects(transitionGoal({ root, status: "completed" }), /without tool-bound evidence record: finalReview/);
+    await verifyAndRecord({ root, scope: "goal", kind: "finalReview", argv: passArgv });
+    const completed = await transitionGoal({ root, status: "completed" });
+    assert.equal(completed.goal.status, "completed");
+  });
+});
+
+test("goal evidence recorded before a later task receipt does not waive task freshness", async () => {
+  await withTempRoot(async (root) => {
+    await writeFile(join(root, "watched.txt"), "v1\n");
+    await startGoal({
+      root,
+      goal: "Ordering matters",
+      planId: "docs/plan/ordering.md",
+      tasks: [{ id: "only", title: "Only" }],
+    });
+    await verifyAndRecord({ root, scope: "goal", kind: "finalReview", watchPaths: ["other.txt"], argv: passArgv });
+    await verifyTask(root, "only");
+    await setTaskStatus({ root, taskId: "only", status: "completed" });
+    await writeFile(join(root, "watched.txt"), "v2\n");
+    await assert.rejects(transitionGoal({ root, status: "completed" }), /Task only has stale evidence record/);
+  });
+});
+
+test("goal verify records one receipt per kind from a single run", async () => {
+  await withTempRoot(async (root) => {
+    await writeFile(join(root, "watched.txt"), "v1\n");
+    await startGoal({ root, goal: "Multi kind", planId: "docs/plan/multi.md", tasks: [{ id: "verify", title: "Verify" }] });
+    const counter = join(root, "runs.log");
+    const result = spawnSync(process.execPath, [
+      cliScript, "goal", "verify", "--root", root, "--task", "verify",
+      "--kind", "moduleAcceptance|surfaceIntegration", "--watch", "watched.txt", "--",
+      process.execPath, "-e", `require("node:fs").appendFileSync(${JSON.stringify(counter)}, "x")`,
+    ], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout).map((item) => item.kind), ["moduleAcceptance", "surfaceIntegration"]);
+    assert.equal(await readFile(counter, "utf8"), "x");
+    const state = await readGoalState({ root });
+    assert.equal(state.receipts.length, 2);
+    assert.equal(state.receipts[0].workspaceFingerprint, state.receipts[1].workspaceFingerprint);
+    await setTaskStatus({ root, taskId: "verify", status: "completed" });
+  });
+});
+
+test("goal finish completes the active task, records goal evidence once, and completes the goal", async () => {
+  await withTempRoot(async (root) => {
+    await writeFile(join(root, "watched.txt"), "v1\n");
+    await startGoal({
+      root,
+      goal: "Finish",
+      planId: "docs/plan/finish.md",
+      tasks: [{ id: "build", title: "Build" }, { id: "check", title: "Check" }],
+    });
+    await verifyTask(root, "build");
+    const marker = join(root, "must-not-run.txt");
+    await assert.rejects(
+      finishGoal({ root, argv: [process.execPath, "-e", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran")`] }),
+      /other tasks remain: check/,
+    );
+    await assert.rejects(access(marker));
+    assert.equal((await readGoalState({ root })).tasks[0].status, "active");
+
+    await setTaskStatus({ root, taskId: "build", status: "completed" });
+    await writeFile(join(root, "watched.txt"), "v2\n");
+    await verifyTask(root, "check");
+    const finished = spawnSync(process.execPath, [
+      cliScript, "goal", "finish", "--root", root, "--", ...passArgv,
+    ], { encoding: "utf8" });
+    assert.equal(finished.status, 0, finished.stderr);
+    assert.equal(JSON.parse(finished.stdout).status, "completed");
+    assert.equal(await readGoalState({ root }), null);
+  });
+});
+
+test("goal finish refuses to complete an active task whose evidence is stale", async () => {
+  await withTempRoot(async (root) => {
+    await writeFile(join(root, "watched.txt"), "v1\n");
+    await startGoal({ root, goal: "Stale finish", planId: "docs/plan/stale-finish.md", tasks: [{ id: "only", title: "Only" }] });
+    await verifyTask(root, "only");
+    await writeFile(join(root, "watched.txt"), "v2\n");
+    await assert.rejects(finishGoal({ root, argv: passArgv }), /stale evidence record/);
+    assert.equal((await readGoalState({ root })).goal.status, "active");
+  });
+});
+
+test("goal stats counts reruns and reports stale latest receipts", async () => {
+  await withTempRoot(async (root) => {
+    await writeFile(join(root, "watched.txt"), "v1\n");
+    await startGoal({ root, goal: "Stats", planId: "docs/plan/stats.md", tasks: [{ id: "only", title: "Only" }] });
+    await verifyTask(root, "only");
+    await verifyAndRecord({ root, taskId: "only", kind: "moduleAcceptance", watchPaths: ["watched.txt"], argv: passArgv });
+    await writeFile(join(root, "watched.txt"), "v2\n");
+    const stats = goalStats(await readGoalState({ root }), root);
+    assert.equal(stats.receipts, 3);
+    assert.deepEqual(stats.byKind, { moduleAcceptance: 2, surfaceIntegration: 1 });
+    assert.equal(stats.reruns, 1);
+    assert.deepEqual(stats.stale.map((item) => item.kind).sort(), ["moduleAcceptance", "surfaceIntegration"]);
+    const cli = spawnSync(process.execPath, [cliScript, "goal", "stats", "--root", root], { encoding: "utf8" });
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.equal(JSON.parse(cli.stdout).reruns, 1);
+  });
+});
+
+test("goal CLI resolves the repository root from a subdirectory and lists allowed evidence scopes", async () => {
+  await withTempRoot(async (root) => {
+    await mkdir(join(root, ".git"));
+    await mkdir(join(root, "nested", "deeper"), { recursive: true });
+    await startGoal({ root, goal: "Root", planId: "docs/plan/root.md", tasks: [{ id: "only", title: "Only" }] });
+    const env = { ...process.env };
+    delete env.HARNESS_REPO_ROOT;
+    const status = spawnSync(process.execPath, [cliScript, "goal", "task", "status"], {
+      cwd: join(root, "nested", "deeper"), encoding: "utf8", env,
+    });
+    assert.equal(status.status, 0, status.stderr);
+    assert.equal(JSON.parse(status.stdout).id, "only");
+    const badScope = spawnSync(process.execPath, [
+      cliScript, "goal", "verify", "--root", root, "--scope", "plan", "--kind", "x", "--", ...passArgv,
+    ], { encoding: "utf8" });
+    assert.notEqual(badScope.status, 0);
+    assert.match(badScope.stderr, /Invalid evidence scope: plan \(allowed: task, goal\)/);
+  });
+});
+
+test("post-tool-use reminds once per task and session-start carries a literal CLI prefix", async () => {
+  await withTempRoot(async (root) => {
+    await writeFile(join(root, "watched.txt"), "v1\n");
+    await startGoal({
+      root,
+      goal: "Hooks",
+      planId: "docs/plan/hooks.md",
+      ownerSessionId: "hook-session",
+      tasks: [{ id: "first", title: "First" }, { id: "second", title: "Second" }],
+    });
+    const payload = { cwd: root, session_id: "hook-session" };
+    const reminder = async () => (await runStateResult("post-tool-use", { root, payload, locale: "en_US" })).message;
+    assert.match(await reminder(), /Cairn check/);
+    assert.equal(await reminder(), "");
+    await verifyTask(root, "first");
+    await setTaskStatus({ root, taskId: "first", status: "completed" });
+    assert.match(await reminder(), /Cairn check/);
+    assert.equal(await reminder(), "");
+
+    const started = await runStateResult("session-start", { root, payload, locale: "en_US" });
+    const context = started.hookOutput.hookSpecificOutput.additionalContext;
+    assert.ok(context.includes(`Cairn CLI: node ${JSON.stringify(cliScript)} goal <command> --root ${JSON.stringify(root)}`), context);
+    const prompt = await runStateResult("user-prompt-submit", { root, payload, locale: "en_US" });
+    assert.ok(!prompt.message.includes("Cairn CLI:"));
+  });
+});
 
 function runVerify(root, kind, watched, source) {
   return spawnSync(process.execPath, [

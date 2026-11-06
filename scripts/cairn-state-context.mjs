@@ -3,6 +3,7 @@ const contextLimits = {
   roadmapTaskId: 24,
   taskTitle: 40,
   roadmapWindow: 3,
+  parallelTitle: 16,
 };
 
 export function prependContext(result, notice) {
@@ -21,6 +22,8 @@ export function prependContext(result, notice) {
   };
 }
 
+import { currentTask } from "./cairn-goal-policy.mjs";
+
 export function contextResult({ ko, state, event }) {
   const base = kernelBase(ko);
   const idlePolicy = event === "user-prompt-submit"
@@ -37,9 +40,7 @@ export function contextResult({ ko, state, event }) {
     return interruptedContextResult(event, ko, state);
   }
   if (!state || state.goal.status !== "active") return contextHookResult({ event, message: `${base}${idlePolicy}${failClosed}` });
-  const task = state.tasks.find((item) => item.status === "active")
-    ?? state.tasks.find((item) => item.status === "pending")
-    ?? state.tasks.find((item) => item.status === "blocked");
+  const task = currentTask(state);
   const planId = state.goal.planId;
   const phase = task ? "cairn-work" : "cairn-review";
   const activeHeader = ko
@@ -69,7 +70,15 @@ export function contextResult({ ko, state, event }) {
         ? `곁가지 질문·조향 뒤 ${taskId}를 재개하고 남은 task를 최종 검토까지 진행하세요(일시정지·중단·전환 요청 제외).`
         : `After a side question or steer, resume ${taskId}, then advance remaining tasks to final review unless asked to pause, stop, or switch.`))
     : "";
-  return contextHookResult({ event, message: [activeHeader, taskRoadmap(ko, state), continuation, resume].filter(Boolean).join("\n") });
+  return contextHookResult({ event, message: [activeHeader, taskRoadmap(ko, state), continuation, parallelLine(ko, state), resume].filter(Boolean).join("\n") });
+}
+
+// Only when several tasks run at once: their ids and clipped titles, never the dependency graph.
+function parallelLine(ko, state) {
+  const active = state.tasks.filter((task) => task.status === "active");
+  if (active.length < 2) return "";
+  const list = active.map((task) => `${clipText(task.id, contextLimits.roadmapTaskId)} (${clipText(task.title, contextLimits.parallelTitle)})`).join(", ");
+  return `${ko ? "병렬 active" : "Parallel active"}: ${list}`;
 }
 
 function kernelBase(ko) {
