@@ -1,6 +1,7 @@
 import { normalizeVerificationArgv } from "./cairn-goal-evidence.mjs";
 
-export const GOAL_STATE_VERSION = 2;
+export const GOAL_STATE_VERSION = 3;
+export const MAX_ACTIVE_TASKS = 4;
 export const GOAL_STATUSES = new Set(["active", "paused", "blocked", "cancelled", "completed"]);
 export const TASK_STATUSES = new Set(["pending", "active", "blocked", "completed"]);
 export const PLAN_ID_MAX_LENGTH = 128;
@@ -43,7 +44,6 @@ export function validateState(value) {
   if (!Array.isArray(value.tasks) || value.tasks.length === 0) throw new Error("Cairn goal state must contain tasks");
   if (!Array.isArray(value.receipts)) throw new Error("Cairn goal state evidence records (receipts) must be an array");
   const ids = new Set();
-  let activeTasks = 0;
   for (const task of value.tasks) {
     if (!task || typeof task !== "object") throw new Error("Each task must be an object");
     const taskId = boundedRequiredText(task.id, "task.id", TASK_ID_MAX_LENGTH);
@@ -52,7 +52,8 @@ export function validateState(value) {
     ids.add(task.id);
     requiredText(task.title, "task.title");
     validTaskStatus(task.status);
-    if (task.status === "active") activeTasks += 1;
+    if (!Array.isArray(task.dependsOn)) throw new Error(`task ${task.id} dependsOn must be an array`);
+    if (task.writeScope !== null && !Array.isArray(task.writeScope)) throw new Error(`task ${task.id} writeScope must be an array or null`);
     if (task.assignedAgentId !== null && task.assignedAgentId !== undefined) requiredText(task.assignedAgentId, "task.assignedAgentId");
     if (!Array.isArray(task.requiredEvidence) || task.requiredEvidence.length === 0) throw new Error(`task ${task.id} requiredEvidence must be a non-empty array`);
     task.requiredEvidence.forEach((kind, index) => requiredText(kind, `task ${task.id} requiredEvidence[${index}]`));
@@ -60,7 +61,9 @@ export function validateState(value) {
     validTimestamp(task.createdAt);
     validTimestamp(task.updatedAt);
   }
-  if (activeTasks > 1) throw new Error("Only one task may be active");
+  assertTaskGraph(value.tasks);
+  const active = value.tasks.filter((task) => task.status === "active");
+  for (const task of active) assertCanRunAlongside(task, active.filter((other) => other !== task));
   for (const receipt of value.receipts) validateReceipt(receipt, value);
   return value;
 }
@@ -86,7 +89,9 @@ function validateReceipt(receipt, state) {
   }
 }
 
-export function normalizeTask(task, index, defaultStatus) {
+// dependsOn omitted means "after the previous task in list order" so existing sequential plans keep their order;
+// an explicit [] means no dependency.
+export function normalizeTask(task, index, defaultStatus, previousTaskId = null) {
   const source = typeof task === "string" ? { title: task } : task;
   if (!source || typeof source !== "object") throw new Error(`tasks[${index}] must be a string or object`);
   const id = source.id === undefined ? `task-${index + 1}` : boundedRequiredText(source.id, `tasks[${index}].id`, TASK_ID_MAX_LENGTH);
@@ -97,6 +102,12 @@ export function normalizeTask(task, index, defaultStatus) {
     status: source.status === undefined ? defaultStatus : validTaskStatus(source.status),
     assignedAgentId: source.assignedAgentId === undefined || source.assignedAgentId === null ? null : requiredText(source.assignedAgentId, `tasks[${index}].assignedAgentId`),
     requiredEvidence: normalizeCriteria(source.requiredEvidence ?? defaultTaskEvidence),
+    dependsOn: source.dependsOn === undefined
+      ? (previousTaskId === null ? [] : [previousTaskId])
+      : normalizeDependsOn(source.dependsOn, `tasks[${index}].dependsOn`),
+    writeScope: source.writeScope === undefined || source.writeScope === null
+      ? null
+      : normalizeWriteScope(source.writeScope, `tasks[${index}].writeScope`),
     blocker: null,
     createdAt: timestamp(),
     updatedAt: timestamp(),
@@ -104,13 +115,103 @@ export function normalizeTask(task, index, defaultStatus) {
 }
 
 export function migrateState(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || value.schemaVersion !== 1) return value;
-  return {
-    ...value,
-    schemaVersion: GOAL_STATE_VERSION,
-    goal: { ...value.goal, evidencePolicy: value.goal?.evidencePolicy ?? "tool-bound" },
-    receipts: Array.isArray(value.receipts) ? value.receipts.map((receipt) => ({ ...receipt, source: "declared" })) : value.receipts,
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  let state = value;
+  if (state.schemaVersion === 1) {
+    state = {
+      ...state,
+      schemaVersion: 2,
+      goal: { ...state.goal, evidencePolicy: state.goal?.evidencePolicy ?? "tool-bound" },
+      receipts: Array.isArray(state.receipts) ? state.receipts.map((receipt) => ({ ...receipt, source: "declared" })) : state.receipts,
+    };
+  }
+  if (state.schemaVersion === 2) {
+    // v2 tasks ran strictly in list order; make that order explicit as previous-task dependencies.
+    state = {
+      ...state,
+      schemaVersion: 3,
+      tasks: Array.isArray(state.tasks)
+        ? state.tasks.map((task, index) => ({
+          ...task,
+          dependsOn: index === 0 ? [] : [state.tasks[index - 1]?.id],
+          writeScope: null,
+        }))
+        : state.tasks,
+    };
+  }
+  return state;
+}
+
+export function normalizeDependsOn(value, label) {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array of task ids`);
+  return [...new Set(value.map((item, index) => boundedRequiredText(item, `${label}[${index}]`, TASK_ID_MAX_LENGTH)))];
+}
+
+export function normalizeWriteScope(value, label) {
+  if (!Array.isArray(value) || value.length === 0) throw new Error(`${label} writeScope must be a non-empty array of repository paths`);
+  return [...new Set(value.map((item, index) => {
+    const path = requiredText(item, `${label}[${index}]`).replace(/\\/g, "/").replace(/\/{2,}/g, "/")
+      .replace(/^(\.\/)+/, "").replace(/\/+$/, "");
+    if (/[*?[\]{}]/.test(path)) throw new Error(`${label} writeScope must list literal paths, not globs: ${item}`);
+    if (path === "" || path === "." || path.startsWith("/") || /^[a-zA-Z]:/.test(path) || path.split("/").includes("..")) {
+      throw new Error(`${label} writeScope must stay inside the repository: ${item}`);
+    }
+    return path;
+  }))];
+}
+
+// Segment-wise prefix match, case-insensitive so case-insensitive filesystems cannot hide an overlap.
+export function writeScopesOverlap(left, right) {
+  return left.some((a) => right.some((b) => pathContains(a, b) || pathContains(b, a)));
+}
+
+export function pathContains(scope, path) {
+  const outer = scope.toLowerCase();
+  const inner = path.toLowerCase();
+  return inner === outer || inner.startsWith(`${outer}/`);
+}
+
+export function assertTaskGraph(tasks) {
+  const byId = new Map();
+  for (const task of tasks) {
+    if (byId.has(task.id)) throw new Error(`Duplicate task id: ${task.id}`);
+    byId.set(task.id, task);
+  }
+  for (const task of tasks) {
+    for (const dependency of task.dependsOn) {
+      if (dependency === task.id) throw new Error(`Task ${task.id} cannot depend on itself`);
+      if (!byId.has(dependency)) throw new Error(`Task ${task.id} depends on unknown task: ${dependency}`);
+    }
+  }
+  const visiting = new Set();
+  const done = new Set();
+  const visit = (task, path) => {
+    if (done.has(task.id)) return;
+    if (visiting.has(task.id)) throw new Error(`Task dependency cycle: ${[...path, task.id].join(" -> ")}`);
+    visiting.add(task.id);
+    for (const dependency of task.dependsOn) visit(byId.get(dependency), [...path, task.id]);
+    visiting.delete(task.id);
+    done.add(task.id);
   };
+  for (const task of tasks) visit(task, []);
+}
+
+// Throws unless task may be active next to otherActive: dependencies completed, under the cap, and disjoint
+// writeScopes. A task without writeScope may only run alone.
+export function assertCanBeActive(tasks, task, otherActive) {
+  const waiting = task.dependsOn.filter((id) => tasks.find((item) => item.id === id)?.status !== "completed");
+  if (waiting.length > 0) throw new Error(`Task ${task.id} is waiting for: ${waiting.join(", ")}`);
+  assertCanRunAlongside(task, otherActive);
+}
+
+function assertCanRunAlongside(task, otherActive) {
+  if (otherActive.length === 0) return;
+  if (otherActive.length + 1 > MAX_ACTIVE_TASKS) throw new Error(`Only at most ${MAX_ACTIVE_TASKS} active tasks are allowed`);
+  if (task.writeScope === null) throw new Error(`Task ${task.id} without writeScope cannot run alongside active task ${otherActive[0].id}`);
+  for (const other of otherActive) {
+    if (other.writeScope === null) throw new Error(`Task ${task.id} cannot run alongside active task ${other.id} without writeScope`);
+    if (writeScopesOverlap(task.writeScope, other.writeScope)) throw new Error(`Task ${task.id} writeScope overlaps active task ${other.id}`);
+  }
 }
 
 export function requiredText(value, label) {
@@ -145,7 +246,7 @@ export function validTaskStatus(value) {
 }
 
 export function validReceiptScope(value) {
-  if (value !== "task" && value !== "goal") throw new Error(`Invalid evidence scope: ${value}`);
+  if (value !== "task" && value !== "goal") throw new Error(`Invalid evidence scope: ${value} (allowed: task, goal)`);
   return value;
 }
 

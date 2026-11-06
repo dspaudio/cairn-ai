@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { normalizeVerificationArgv, normalizeWatchPaths, runVerificationEvidence, workspaceFingerprint } from "./cairn-goal-evidence.mjs";
 import { readGoalState } from "./cairn-goal-state.mjs";
 import {
-  normalizeToolEvidence, requiredText, timestamp, validReceiptCommand, validReceiptScope,
+  normalizeToolEvidence, pathContains, requiredText, timestamp, validReceiptCommand, validReceiptScope,
   validReceiptSource, validTimestamp,
 } from "./cairn-goal-state-validation.mjs";
-import { assertGoalMutable, mutateGoal, taskById } from "./cairn-goal-operations-mutations.mjs";
+import { assertGoalMutable, isReceiptFresh, mutateGoal, taskById } from "./cairn-goal-operations-mutations.mjs";
+import { setTaskStatus, transitionGoal } from "./cairn-goal-operations.mjs";
 
 export async function recordReceipt(options = {}) {
   if (options.source !== undefined && options.source !== "declared") throw new Error("Only goal verify can create tool evidence");
@@ -69,7 +70,7 @@ export async function verifyAndRecord({
   const normalizedArgv = normalizeVerificationArgv(argv);
   const normalizedWatchPaths = normalizeWatchPaths(root, watchPaths);
   const normalizedScope = validReceiptScope(scope);
-  const normalizedKind = requiredText(kind, "evidence kind");
+  const normalizedKinds = normalizeKinds(kind);
   const initialState = await readGoalState({ root });
   if (!initialState) throw new Error("No Cairn goal state exists; start a goal first");
   assertGoalMutable(initialState);
@@ -78,6 +79,7 @@ export async function verifyAndRecord({
   if (initialTask && !["active", "completed"].includes(initialTask.status)) {
     throw new Error(`Verification task must be active or completed: ${initialTask.id}`);
   }
+  assertParallelWatch(initialState, initialTask, normalizedWatchPaths);
   const identity = {
     goalId: initialState.goal.id,
     planId: initialState.goal.planId,
@@ -102,23 +104,96 @@ export async function verifyAndRecord({
       throw new Error("Verification task changed during verification; evidence was not recorded");
     }
   }
-  const state = await recordEvidence({
-    root,
-    taskId: normalizedTaskId,
-    kind: normalizedKind,
-    scope: normalizedScope,
-    command: evidence.command,
-    exitCode: 0,
-    source: "tool",
-    argv: evidence.argv,
-    outputDigest: evidence.outputDigest,
-    summary: evidence.summary,
-    workspaceFingerprint: evidence.workspaceFingerprint,
-    watchPaths: evidence.watchPaths,
-    goalId: identity.goalId,
-    planId: identity.planId,
-    expectedIdentity: identity,
-    expectedFingerprint: evidence.workspaceFingerprint,
-  });
-  return { state, evidence: state.receipts.at(-1) };
+  // One verification run may prove several evidence kinds; record one receipt per kind without rerunning it.
+  const receipts = [];
+  let state;
+  for (const normalizedKind of normalizedKinds) {
+    state = await recordEvidence({
+      root,
+      taskId: normalizedTaskId,
+      kind: normalizedKind,
+      scope: normalizedScope,
+      command: evidence.command,
+      exitCode: 0,
+      source: "tool",
+      argv: evidence.argv,
+      outputDigest: evidence.outputDigest,
+      summary: evidence.summary,
+      workspaceFingerprint: evidence.workspaceFingerprint,
+      watchPaths: evidence.watchPaths,
+      goalId: identity.goalId,
+      planId: identity.planId,
+      expectedIdentity: identity,
+      expectedFingerprint: evidence.workspaceFingerprint,
+    });
+    receipts.push(state.receipts.at(-1));
+  }
+  return { state, evidence: receipts.at(-1), receipts };
+}
+
+// Completes the active task, proves every goal-level evidence kind with one run, and completes the goal.
+export async function finishGoal({
+  root = process.cwd(), argv = [], watchPaths = [], runner, timeoutMs = 600_000,
+} = {}) {
+  const initialState = await readGoalState({ root });
+  if (!initialState) throw new Error("No Cairn goal state exists; start a goal first");
+  assertGoalMutable(initialState);
+  const active = initialState.tasks.find((task) => task.status === "active");
+  const unfinished = initialState.tasks.filter((task) => task.status !== "completed" && task !== active);
+  if (unfinished.length > 0) {
+    throw new Error(`Goal cannot be finished while other tasks remain: ${unfinished.map((task) => task.id).join(", ")}`);
+  }
+  const goalKinds = initialState.goal.requiredEvidence;
+  if (goalKinds.length > 0) normalizeVerificationArgv(argv);
+  if (active) await setTaskStatus({ root, taskId: active.id, status: "completed" });
+  if (goalKinds.length > 0) {
+    await verifyAndRecord({ root, scope: "goal", kind: goalKinds, argv, watchPaths, runner, timeoutMs });
+  }
+  return transitionGoal({ root, status: "completed" });
+}
+
+// Overhead measurement: how many verifications ran, how many were reruns, and which latest receipts are stale.
+export function goalStats(state, root = process.cwd()) {
+  if (!state) return null;
+  const byKind = {};
+  const latest = new Map();
+  let reruns = 0;
+  for (const receipt of state.receipts) {
+    byKind[receipt.kind] = (byKind[receipt.kind] ?? 0) + 1;
+    const key = `${receipt.scope}\0${receipt.taskId ?? ""}\0${receipt.kind}`;
+    if (latest.has(key)) reruns += 1;
+    latest.set(key, receipt);
+  }
+  const stale = [...latest.values()]
+    .filter((receipt) => receipt.source === "tool" && !isReceiptFresh(root, receipt))
+    .map((receipt) => ({ scope: receipt.scope, ...(receipt.taskId ? { taskId: receipt.taskId } : {}), kind: receipt.kind }));
+  return {
+    goalId: state.goal.id,
+    status: state.goal.status,
+    receipts: state.receipts.length,
+    toolReceipts: state.receipts.filter((receipt) => receipt.source === "tool").length,
+    byKind,
+    reruns,
+    stale,
+  };
+}
+
+// While other tasks run in parallel, an unscoped fingerprint would include their edits. Require a watch set,
+// and keep it inside the task's declared writeScope so sibling edits cannot stale or fail this evidence.
+function assertParallelWatch(state, task, watchPaths) {
+  const othersActive = state.tasks.filter((item) => item.status === "active" && item.id !== task?.id);
+  if (task ? othersActive.length === 0 : othersActive.length < 2) return;
+  if (watchPaths.length === 0) {
+    throw new Error(`Other tasks are active (${othersActive.map((item) => item.id).join(", ")}); pass --watch with this task's write scope`);
+  }
+  if (task?.writeScope) {
+    const outside = watchPaths.filter((path) => !task.writeScope.some((scope) => pathContains(scope, path)));
+    if (outside.length > 0) throw new Error(`--watch must stay inside task ${task.id} writeScope while other tasks are active: ${outside.join(", ")}`);
+  }
+}
+
+function normalizeKinds(kind) {
+  const kinds = (Array.isArray(kind) ? kind : [kind]).map((item) => requiredText(item, "evidence kind"));
+  if (kinds.length === 0) throw new Error("evidence kind is required");
+  return [...new Set(kinds)];
 }

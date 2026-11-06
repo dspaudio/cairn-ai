@@ -130,7 +130,9 @@ Describe the observable result.
 - Contract:
 - Sub-tasks, if needed:
 - Files:
-- Dependencies:
+- Depends on (task ids):
+- Write scope:
+- Handoff files:
 - Tool readiness requirement:
 - Dry-run or check command:
 - Module acceptance verification:

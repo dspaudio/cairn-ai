@@ -3,8 +3,9 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { runGoalCli } from "./cairn-goal-cli.mjs";
 import { assignTask, claimGoal, replanGoal, setTaskStatus, startGoal, transitionGoal } from "./cairn-goal-operations.mjs";
-import { recordReceipt, verifyAndRecord } from "./cairn-goal-operations-evidence.mjs";
+import { finishGoal, goalStats, recordReceipt, verifyAndRecord } from "./cairn-goal-operations-evidence.mjs";
 import { readGoalState } from "./cairn-goal-state.mjs";
+import { readyTasks } from "./cairn-goal-operations-mutations.mjs";
 import { defaultGoalEvidence } from "./cairn-goal-state-validation.mjs";
 
 export { workspaceFingerprint } from "./cairn-goal-evidence.mjs";
@@ -20,8 +21,9 @@ export {
 } from "./cairn-goal-state-validation.mjs";
 export { goalStatePath, readGoalState, writeGoalState } from "./cairn-goal-state.mjs";
 export { assignTask, claimGoal, reconcileWorktreeState, replanGoal, setTaskStatus, startGoal, transitionGoal } from "./cairn-goal-operations.mjs";
-export { recordReceipt, verifyAndRecord } from "./cairn-goal-operations-evidence.mjs";
+export { finishGoal, goalStats, recordReceipt, verifyAndRecord } from "./cairn-goal-operations-evidence.mjs";
 export { currentTask, evaluateStop, isGoalOwnedBySession } from "./cairn-goal-policy.mjs";
+export { readyTasks } from "./cairn-goal-operations-mutations.mjs";
 
 export async function handleGoalCli(args = process.argv.slice(2), { stdout = console.log } = {}) {
   return runGoalCli(args, {
@@ -30,7 +32,10 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
     operations: {
       assignTask,
       claimGoal,
+      finishGoal,
+      goalStats,
       readGoalState,
+      readyTasks,
       recordReceipt,
       replanGoal,
       setTaskStatus,
