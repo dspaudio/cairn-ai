@@ -4,7 +4,7 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- [Cairn 0.3.0 릴리스](docs/plan/release-0.3.0.md): 오버헤드 축소와 task DAG를 main에 승격하고 npm에 게시합니다.
+- 없음.
 
 ## Superseded Plans
 
@@ -13,6 +13,7 @@ This file is a short index of active and completed work plans.
 ## Completed Plans
 
 - Move completed topics here with evidence links.
+- [Cairn 0.3.0 릴리스](docs/plan/release-0.3.0.md): PR #65·#66(SessionStart 캡슐 예산 hotfix)을 CI 통과 후 main에 병합하고, exact main tarball을 npm `latest` 0.3.0으로 게시해 registry digest와 격리 설치 CLI를 검증했습니다.
 - [Cairn 오버헤드 축소와 task DAG](docs/plan/cairn-overhead-reduction.md): goal 증거로 task 재검증 면제, CLI root 자동 결정·multi-kind verify·`goal finish`/`stats`/`ready`, PostToolUse 1회 알림, SKILL.md 약 66% 축소와 Quick Path, `dependsOn`/`writeScope` 기반 병렬 task(schema v3)를 구현하고 201개 테스트, pack dry-run, 설치본 표면 검증으로 확인했습니다.
 - [경로별 추론 강도 변경 보존 및 PR 게시](docs/plan/publish-path-reasoning-effort-routing.md): dirty `dev` 변경을 backup·stash로 보존하고 최신 `origin/dev` 기반 브랜치에 3-way 재적용·검증한 뒤 draft PR #55를 생성했습니다.
 - [Cairn 0.2.5 hotfix 릴리스](docs/plan/release-0.2.5.md): PR #51과 #52를 exact head의 CI 6/6 성공 후 dev/main에 병합하고, exact main tarball을 npm `latest` 0.2.5로 게시해 registry digest와 격리 설치/CLI를 검증했습니다.

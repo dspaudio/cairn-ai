@@ -17,7 +17,7 @@ At the start and after compaction, restart, delegation, or handoff, restore cont
 
 Resolve the read-only runtime from `references/cairn-runtime.json` next to this `SKILL.md` (its `pluginRoot`; in a source checkout without it, this file's `../..`). Never search the target repository for Cairn files; resolve `cairn://...` IDs through `pluginRoot`. If the runtime or locator is missing, unreadable, or inconsistent, stop every dependent mirror and recover with published/global `cairn doctor` then `cairn upgrade`.
 
-The session-start hook prints `Cairn CLI: node "<abs>/scripts/cairn.mjs" goal <command> --root "<repoRoot>"`. Copy that prefix literally into each command; never store it in a shell variable (shell variables do not persist between tool calls). `--root` is optional for every `goal` subcommand: when omitted it resolves via `HARNESS_REPO_ROOT`, else the nearest `.git` ancestor of the cwd.
+The session-start hook prints `Cairn CLI: node "<abs>/scripts/cairn.mjs" goal <command>`. Copy that prefix literally into each command; never store it in a shell variable (shell variables do not persist between tool calls). `--root` is optional for every `goal` subcommand: when omitted it resolves via `HARNESS_REPO_ROOT`, else the nearest `.git` ancestor of the cwd.
 
 ```sh
 node "<pluginRoot>/scripts/cairn.mjs" goal task status --root "<repoRoot>"
