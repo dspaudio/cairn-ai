@@ -41,7 +41,7 @@ Describe the observable result.
 
 ## Reasoning Effort Profile
 
-- Model: decided per task (fast `haiku` for read-only exploration/search/summarization; balanced `sonnet` for Light implementation and routine verification; stronger `opus` for planning, complexity triage, Heavy implementation, review, and final verification/review; strongest `fable` for Heavy design only). Pass it through the host option on every dispatch (Claude Code: Agent `model`, never `fork`); re-dispatch one tier up (fast, balanced, stronger, strongest) if a lower-tier worker fails a gate; `Model routing: inherited` disables this. Never change model/global config.
+- Model: decided per task (fast `haiku` for read-only exploration/search/summarization; balanced `sonnet` for Light implementation and routine verification; stronger `opus` for planning, complexity triage, Heavy implementation, review, and final verification/review; strongest `fable` for Heavy design only, as a separate `kind: "design"` task dispatched to that tier rather than part of planning). Pass it through the host option on every dispatch (Claude Code: Agent `model`, never `fork`); re-dispatch one tier up (fast, balanced, stronger, strongest) if a lower-tier worker fails a gate; `Model routing: inherited` disables this. Never change model/global config.
 - Light Path: planning=`medium`, implementation=`medium`, verification=`medium`.
 - Heavy Path: planning/review=`high`, implementation=`high`, final verification/review=`xhigh`.
 - Host boundary: every new task/worker dispatch MUST pass the task's requested effort through the host option (Claude Code: Agent `effort`, never `fork`; Codex: host-native option). Recording without passing is a defect. Use `inherited` only when the host has no option.

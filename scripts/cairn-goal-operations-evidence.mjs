@@ -182,6 +182,10 @@ export function goalStats(state, root = process.cwd()) {
       effort: task.effort ?? null,
       effortSource: task.effortSource ?? null,
       ...(task.effortWaiver ? { effortWaiver: task.effortWaiver } : {}),
+      ...(task.kind ? { kind: task.kind } : {}),
+      ...(task.model ? { model: task.model } : {}),
+      ...(task.modelSource ? { modelSource: task.modelSource } : {}),
+      ...(task.designWaiver ? { designWaiver: task.designWaiver } : {}),
     })),
   };
 }

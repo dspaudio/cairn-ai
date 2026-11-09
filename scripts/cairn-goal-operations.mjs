@@ -5,9 +5,9 @@ import { assertNoSymlinkComponents } from "./cairn-safe-fs.mjs";
 import { goalStatePath, readGoalState, readGoalStateUnlocked, withGoalStateLock, writeGoalStateUnlocked } from "./cairn-goal-state.mjs";
 import {
   GOAL_STATE_VERSION, PLAN_ID_MAX_LENGTH, assertRecoveryReferenceBudget, boundedRequiredText,
-  assertCanBeActive, assertEffortRecord, assertTaskGraph,
+  assertCanBeActive, assertEffortRecord, assertModelRecord, assertTaskGraph,
   defaultGoalEvidence, normalizeCriteria, normalizeTask, optionalText, requiredText,
-  terminalGoalStatuses, timestamp, validEvidencePolicy, validGoalStatus, validTaskRoute, validTaskStatus, validateState,
+  terminalGoalStatuses, timestamp, validEvidencePolicy, validGoalStatus, validTaskKind, validTaskRoute, validTaskStatus, validateState,
 } from "./cairn-goal-state-validation.mjs";
 import {
   advanceGoal, assertGoalMutable, ensureGoalCanComplete, ensureTaskCanComplete,
@@ -119,11 +119,13 @@ function applyGoalTransition(state, nextStatus, blocker, root) {
   return state;
 }
 
-export async function setTaskStatus({ root = process.cwd(), taskId, status, blocker, effortWaiver } = {}) {
+export async function setTaskStatus({ root = process.cwd(), taskId, status, blocker, effortWaiver, designWaiver } = {}) {
   const nextStatus = validTaskStatus(status);
   const normalizedTaskId = requiredText(taskId, "taskId");
   const normalizedWaiver = optionalText(effortWaiver, "effortWaiver");
   if (normalizedWaiver !== null && nextStatus !== "completed") throw new Error("--allow-inherited-effort applies only when completing a task");
+  const normalizedDesignWaiver = optionalText(designWaiver, "designWaiver");
+  if (normalizedDesignWaiver !== null && nextStatus !== "completed") throw new Error("--allow-no-design-model applies only when completing a task");
   return mutateGoal(root, (state) => {
     assertGoalMutable(state);
     const task = taskById(state, normalizedTaskId);
@@ -134,7 +136,9 @@ export async function setTaskStatus({ root = process.cwd(), taskId, status, bloc
     }
     if (nextStatus === "completed") {
       if (normalizedWaiver !== null) task.effortWaiver = normalizedWaiver;
+      if (normalizedDesignWaiver !== null) task.designWaiver = normalizedDesignWaiver;
       ensureHeavyEffortApplied(task);
+      ensureHeavyDesignRecorded(state, task);
       ensureTaskCanComplete(state, task, root);
     }
     if (nextStatus === "blocked") task.blocker = requiredText(blocker, "blocker");
@@ -201,10 +205,24 @@ function ensureHeavyEffortApplied(task) {
   throw new Error(`Heavy task ${task.id} assigned to ${task.assignedAgentId} has no applied effort (effort ${task.effort ?? "none"}, source ${source ?? "none"}); record goal assign ${task.id} --effort <low|medium|high|xhigh|max> --effort-source host-option, or complete with --allow-inherited-effort <reason>`);
 }
 
+// A kind "design" task must record the strongest-tier model it was dispatched with (host-option). Any other assigned
+// Heavy task needs a completed design task in the goal. A designWaiver reason bypasses both; Light and unassigned
+// tasks are not checked.
+function ensureHeavyDesignRecorded(state, task) {
+  if (task.designWaiver) return;
+  if (task.kind === "design") {
+    if (task.model && task.modelSource === "host-option") return;
+    throw new Error(`Design task ${task.id} has no recorded design model (model ${task.model ?? "none"}, source ${task.modelSource ?? "none"}); dispatch it to the strongest tier and record goal assign ${task.id} --model <value> --model-source host-option, or complete with --allow-no-design-model <reason>`);
+  }
+  if (task.route !== "heavy" || !task.assignedAgentId) return;
+  if (state.tasks.some((item) => item.kind === "design" && item.status === "completed")) return;
+  throw new Error(`Heavy task ${task.id} assigned to ${task.assignedAgentId} has no completed design task; add a kind "design" task with goal replan, complete it with goal assign <design-task> --model <value> --model-source host-option, or complete with --allow-no-design-model <reason>`);
+}
+
 // Omitted effort/route/waiver options keep stored values, so a reassignment can change only the agent. When effort
 // or effortSource is given, both are replaced together; an omitted source is inferred from the effort.
 export async function assignTask({
-  root = process.cwd(), taskId, agentId = null, effort, effortSource, route, effortWaiver,
+  root = process.cwd(), taskId, agentId = null, effort, effortSource, route, effortWaiver, kind, model, modelSource, designWaiver,
 } = {}) {
   const normalizedTaskId = requiredText(taskId, "taskId");
   const normalizedAgentId = agentId === null ? null : requiredText(agentId, "agentId");
@@ -215,6 +233,12 @@ export async function assignTask({
     if (normalizedEffort === null && normalizedSource !== "not-applied") throw new Error("--effort-source requires --effort unless it is not-applied");
     assertEffortRecord(normalizedEffort, normalizedSource, "assign");
   }
+  const modelGiven = model !== undefined || modelSource !== undefined;
+  const normalizedModel = model === undefined || model === null ? null : requiredText(model, "model");
+  const normalizedModelSource = modelSource ?? (normalizedModel === null ? null : normalizedModel === "inherited" ? "inherited" : "host-option");
+  if (modelGiven) assertModelRecord(normalizedModel, normalizedModelSource, "assign");
+  const normalizedKind = kind === undefined ? undefined : validTaskKind(kind);
+  const normalizedDesignWaiver = designWaiver === undefined ? undefined : requiredText(designWaiver, "designWaiver");
   const normalizedRoute = route === undefined ? undefined : validTaskRoute(route);
   const normalizedWaiver = effortWaiver === undefined ? undefined : requiredText(effortWaiver, "effortWaiver");
   return mutateGoal(root, (state) => {
@@ -225,6 +249,12 @@ export async function assignTask({
       task.effort = normalizedEffort;
       task.effortSource = normalizedSource;
     }
+    if (modelGiven) {
+      task.model = normalizedModel;
+      task.modelSource = normalizedModelSource;
+    }
+    if (normalizedKind !== undefined) task.kind = normalizedKind;
+    if (normalizedDesignWaiver !== undefined) task.designWaiver = normalizedDesignWaiver;
     if (normalizedRoute !== undefined) task.route = normalizedRoute;
     if (normalizedWaiver !== undefined) task.effortWaiver = normalizedWaiver;
     task.updatedAt = timestamp();

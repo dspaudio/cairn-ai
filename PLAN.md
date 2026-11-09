@@ -4,7 +4,7 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- 없음.
+- [Cairn 0.4.1 릴리스](docs/plan/release-0.4.1.md): Heavy Path 설계 모델 위임을 dev·main 병합 후 npm `latest`로 게시합니다.
 
 ## Superseded Plans
 
@@ -12,6 +12,7 @@ This file is a short index of active and completed work plans.
 
 ## Completed Plans
 
+- [Heavy Path 설계 모델 위임](docs/plan/heavy-design-model-routing.md): Heavy Path 설계를 strongest 모델 위임 task로 분리하고 모델 기록 누락을 완료 게이트로 차단; `npm run check` 통과.
 - Move completed topics here with evidence links.
 - [Cairn 0.4.0 릴리스](docs/plan/release-0.4.0.md): PR #69·#70·#71을 CI 통과 후 병합하고, exact main tarball을 npm `latest` 0.4.0으로 게시해 registry digest와 격리 설치의 Heavy effort 게이트를 검증했습니다.
 - [작업별 모델 결정](docs/plan/per-task-model-routing.md): 모델 상속 고정을 fast/balanced/stronger/strongest 4-tier 작업별 결정으로 바꾸고 Claude Code·Codex·Antigravity 매핑과 dispatch 시 host 옵션 전달 규칙을 전 정책 표면에 반영해 `npm run check`로 검증했습니다.

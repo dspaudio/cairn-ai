@@ -54,6 +54,7 @@ export async function runGoalCli(args, {
       status: options.status ?? taskAction ?? positional[1],
       blocker: options.reason,
       effortWaiver: options["allow-inherited-effort"],
+      designWaiver: options["allow-no-design-model"],
     });
     emit(JSON.stringify(state));
     return state;
@@ -77,6 +78,10 @@ export async function runGoalCli(args, {
       effortSource: options["effort-source"],
       route: options.route,
       effortWaiver: options["allow-inherited-effort"],
+      kind: options.kind,
+      model: options.model,
+      modelSource: options["model-source"],
+      designWaiver: options["allow-no-design-model"],
     });
     const task = state.tasks.find((item) => item.id === String(options.task ?? positional[0]).trim());
     if (task?.route === "heavy" && task.assignedAgentId && (!task.effort || task.effortSource === "not-applied")) {
@@ -214,10 +219,10 @@ function allowedOptions(command) {
   const byCommand = {
     start: ["goal", "plan", "tasks", "criteria", "requiredEvidence", "session", "evidencePolicy", "evidence-policy"],
     status: [],
-    task: ["task", "status", "reason", "allow-inherited-effort"],
+    task: ["task", "status", "reason", "allow-inherited-effort", "allow-no-design-model"],
     replan: ["tasks"],
     claim: ["session"],
-    assign: ["task", "agent", "effort", "effort-source", "route", "allow-inherited-effort"],
+    assign: ["task", "agent", "effort", "effort-source", "route", "allow-inherited-effort", "kind", "model", "model-source", "allow-no-design-model"],
     receipt: ["task", "kind", "scope", "command", "exitCode", "exit-code", "exit", "timestamp", "goalId", "goal-id", "plan"],
     verify: ["task", "kind", "scope", "watch", "timeout-ms"],
     finish: ["watch", "timeout-ms"],

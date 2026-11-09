@@ -4,8 +4,9 @@ Reference for `cairn-plan`. Read only when a Heavy Path signal is present or a r
 
 ## Heavy Path Flow
 
-Heavy Path flow: plan -> pre-implementation review -> bounded `worker` implementation -> verification worker or read-only review.
+Heavy Path flow: plan -> Heavy design task -> pre-implementation review -> bounded `worker` implementation -> verification worker or read-only review.
 
+- On a Heavy route, `goal replan` adds a `kind: "design"` task (`heavy-design`, `route: "heavy"`, `requiredEvidence: ["designRecord"]`) after `triage-plan`, and implementation tasks depend on it. The main agent never does this design inline: dispatch it read-only to the strongest tier (Claude Code Agent `model: "fable"`, `effort: "high"`, never `fork`), record `goal assign heavy-design --model <value> --model-source host-option`, merge the result into the plan's `## Heavy Design`, and bind that plan with `goal verify --kind designRecord`. `--allow-no-design-model <reason>` is the only bypass.
 - Record the pre-implementation decisions that review must resolve before any mutation.
 - Every Heavy Path task includes an explicit automated test command and a `Tests:` evidence line; completion cannot rely on generic verification wording without test evidence.
 - Planning, review, and implementation request `high` reasoning effort; final verification and review request `xhigh` (see `cairn://skills/cairn-plan/delegation.md`).
