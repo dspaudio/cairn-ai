@@ -25,4 +25,9 @@
 
 ## Evidence
 
-- (진행 중)
+- `release-commit`: 커밋 `15a882e`. Windows CI에서 `skills/cairn-plan/SKILL.md`가 CRLF로 9066바이트가 되어 예산 테스트가 실패했고, `736f066`에서 tier 작업 설명을 `delegation.md`로 넘겨 CRLF 기준 plan 8967, work 8979바이트로 줄였습니다.
+- `dev-pr`: https://github.com/dspaudio/cairn-ai/pull/69 CI 7개 통과 후 head `736f066` 고정 병합(merge `518fe7f`).
+- `main-pr`: https://github.com/dspaudio/cairn-ai/pull/70 CI 7개 통과 후 head `518fe7f` 고정 병합(merge `a56ab4a`). 생성 직후 BEHIND로 표시되어 동기화 PR https://github.com/dspaudio/cairn-ai/pull/71 을 열었으나, #70이 CLEAN으로 바뀌어 #70을 먼저 병합하고 #71을 이어서 병합했습니다(merge `b224984`).
+- `npm-publish`: `a56ab4a`의 clean detached worktree에서 pack 1회(prepack 212/212). tarball `cairn-ai-0.4.0.tgz`, 139,965 bytes, 95 files, sha1 `79a810a5957eef8f4a51a6a15657005f0e61728b`, integrity `sha512-03izi9+roMSLRWdJZpuRQW9O9AmDt/zta5AzCkTUidbO/S3//dkA5Ux0Wnllai1G8XWxFgpQTd4Oncb8F4rP1Q==`. 같은 파일로 dry-run 후 게시 시도는 EOTP로 실패했고, 실제 publish는 브라우저 2FA로 사용자가 같은 tarball을 직접 실행했습니다. 레지스트리 반영 약 3분 후 shasum·integrity·`latest`=`0.4.0` 일치를 확인했습니다.
+- `release-verify`: 격리된 prefix, cache, HOME, `CAIRN_HOME`에 레지스트리 0.4.0을 설치해 Heavy task effort 미지정 시 stderr 경고, 완료 실패, `goal assign --effort high` 후 stats `host-option`, 완료 성공을 확인했습니다.
+- 후속: `main`의 머지 커밋 `a56ab4a`가 `dev`에 없어 다음 승격 때 다시 동기화가 필요할 수 있습니다. 실제 Heavy Path 실행의 Agent 호출 transcript 확인은 로컬 Cairn upgrade 후 가능합니다.
