@@ -28,7 +28,7 @@ Cairn은 실행 정책에서는 LazyCodex와 다릅니다. LazyCodex의 role-cha
 
 선택된 path와 근거는 계획 산출물이 있을 때 `docs/plan/<topic>.md`에 기록합니다. Light Path에서도 두 검증 게이트는 유지됩니다. subagent 도구가 없으면 main agent가 implementation을 직접 인계하고, 그 takeover를 evidence에 기록합니다.
 
-Cairn은 host/user model을 상속하고 reasoning effort만 라우팅합니다. Light 계획·구현·검증은 `medium`, Heavy 계획·검토·구현은 `high`, 최종 검증·검토는 `xhigh`를 요청합니다. Requested는 Cairn이 원하는 profile이고 Effective는 dispatch 결과가 확인한 적용값입니다. `effective: inherited`는 task별 override가 확인되지 않았다는 뜻이지 host capability 부재의 증거가 아닙니다. Host capability는 노출된 interface 또는 dispatch 응답으로만 판단하고, Cairn이 option을 통합/사용하지 않기로 한 선택과 host 미지원은 구분합니다. path가 바뀌면 plan artifact, 저장소 goal task roadmap, native UI plan, effort profile을 함께 동기화하고 완료 profile은 보존하며 미완료 profile은 재계산합니다.
+Cairn은 task 성격에 따라 task별 model(fast `haiku`, balanced `sonnet`, stronger `opus`, strongest `fable`)을 정하고 reasoning effort도 라우팅합니다. `MEMORY.md`나 계획에 `Model routing: inherited`를 적으면 작업별 model 선택이 꺼집니다. Light 계획·구현·검증은 `medium`, Heavy 계획·검토·구현은 `high`, 최종 검증·검토는 `xhigh`를 요청합니다. Requested는 Cairn이 원하는 profile이고 Effective는 dispatch 결과가 확인한 적용값입니다. 새 task/worker dispatch마다 정한 model과 요청 effort를 host option으로 반드시 넘깁니다(Claude Code: Agent `model`/`effort`, `fork` 금지). Effective는 넘긴 값이고, 넘기지 않았으면 `not-applied: <사유>`, host에 option이 없을 때만 `inherited`입니다. Host capability는 노출된 interface 또는 dispatch 응답으로만 판단하고, Cairn이 option을 통합/사용하지 않기로 한 선택과 host 미지원은 구분합니다. path가 바뀌면 plan artifact, 저장소 goal task roadmap, native UI plan, effort profile을 함께 동기화하고 완료 profile은 보존하며 미완료 profile은 재계산합니다.
 
 subagent 도구가 progress-reporting channel을 제공하면 subagent는 작업 시작, 방향 결정/확인, 주기적 진행, 완료 시점에 orchestrator에게 상태를 보고합니다. orchestrator는 받은 status event를 즉시 사용자에게 전달합니다. mid-run reporting channel이 없으면 orchestrator는 할당, 대기, 최종 완료처럼 관측 가능한 event를 사용자에게 전달합니다.
 

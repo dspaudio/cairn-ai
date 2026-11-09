@@ -28,16 +28,35 @@ Reference for `cairn-work`. Read before dispatching a `worker` or `explorer`, or
 TASK: Implement task <task-id> for <topic>.
 EXPECTED OUTCOME: Minimal code or documentation change satisfying the task contract.
 REQUIRED TOOLS: Scoped file editing, tool readiness checks, existing test/build commands, surface QA commands.
-MUST DO: Read the project-root `MEMORY.md` before doing assigned work and follow its policy. Stay within the listed file scope and the task's `writeScope`. Assume you are not alone in the codebase; do not revert others' edits. Follow the subagent lifecycle rules (status reporting when a channel exists, final report before leaving, recursive delegation only for bounded sub-tasks with these same constraints). Obtain explicit user approval before installing missing tools. Run dry-run or check mode before external-state mutation when available. Provide module evidence, surface evidence, and a structured handoff scoped to the assigned goal/task. Never edit, weaken, skip, or delete existing tests, fixtures, or verification commands to pass a gate without a reason recorded in the plan. After a defect fix, search for other implementations of the same rule or pattern and report them. Copy the Cairn CLI prefix line literally; never store it in a shell variable. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
+MODEL: <tier/value> (passed via host option)
+REASONING EFFORT: <value> (passed via host option)
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work and follow its policy. Stay within the listed file scope and the task's `writeScope`. Assume you are not alone in the codebase; do not revert others' edits. Follow the subagent lifecycle rules (status reporting when a channel exists, final report before leaving, recursive delegation only for bounded sub-tasks with these same constraints, passing each child's reasoning effort through the host option). Obtain explicit user approval before installing missing tools. Run dry-run or check mode before external-state mutation when available. Provide module evidence, surface evidence, and a structured handoff scoped to the assigned goal/task. Never edit, weaken, skip, or delete existing tests, fixtures, or verification commands to pass a gate without a reason recorded in the plan. After a defect fix, search for other implementations of the same rule or pattern and report them. Copy the Cairn CLI prefix line literally; never store it in a shell variable. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
 MUST NOT DO: Ask the user. Skip LSP/typecheck/lint because a tool is missing without attempting installation. Refactor unrelated code. Continue an open-ended verification loop. Treat a side question as permission to abandon the active task. Delegate vague or unbounded work. Claim completion without evidence. Modify files outside the assigned ownership.
 CONTEXT: docs/plan/<topic>.md task, relevant docs/memory notes, applied model guidance, exact files, verification commands, Cairn CLI prefix line.
 ```
 
-## Reasoning Effort Routing
+## Model and Reasoning Effort Routing
 
-- Models always inherit the host/user default; never configure or override them.
+This skill explicitly instructs the effort level for delegated work. It also instructs each task's model.
+
+- The plan decides each task's model from its nature and records `Requested model` and `Effective model`; models are not always inherited. Tiers: fast = read-only exploration, search, inventory, summarization (Claude Code `haiku`); balanced = Light Path implementation and routine verification (`sonnet`); stronger = planning, complexity triage, Heavy Path implementation, review, and final verification/review (`opus`); strongest = Heavy Path design only (`fable`).
+- Model Effective: passed and not rejected is that value; not passed is `not-applied: <reason>`; `inherited` only when the host has no model option. Codex passes the tier's slug (table below) through the host-native model option, else `inherited`.
+- If a lower-tier worker fails a gate, re-dispatch that task one tier up (fast, balanced, stronger, strongest) before recording a blocker.
+- Routing is per dispatch only; never change model or global/user config files. `Model routing: inherited` in `MEMORY.md` or the plan disables per-task selection.
 - Light Path planning, implementation, and verification request `medium`.
 - Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
-- Every module task records `Requested reasoning effort` and `Effective reasoning effort` in `docs/plan/<topic>.md`. Requested is Cairn's desired profile; Effective is what the dispatch result confirms.
-- Pass requested effort only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Omit model overrides. Effective `inherited` means no task-level override was confirmed, not proof of missing host capability. Describe capability only from the exposed interface or dispatch response, distinguish Cairn non-integration from host non-support, and leave model/global config unchanged.
+- Every new task/worker dispatch MUST pass the task's requested effort through the host option. Recording without passing is a defect. Pass the chosen model the same way (Claude Code: Agent `model`). Child (recursive) dispatches follow the same rule.
+- Every module task records `Requested reasoning effort` and `Effective reasoning effort` in `docs/plan/<topic>.md`. Requested is Cairn's desired profile; Effective is decided by the dispatch call:
+  - Effort passed and not rejected: Effective is the requested value.
+  - Effort not passed: `not-applied: <reason>`; the reason is required.
+  - `inherited` only when the host exposes no effort option. Describe host capability only from the exposed interface or dispatch response, and distinguish Cairn non-integration from host non-support.
+
+| Host | Model / effort option | Effective |
+| --- | --- | --- |
+| Claude Code | Agent tool `model` parameter (`haiku\|sonnet\|opus\|fable`). `effort` parameter (`low\|medium\|high\|xhigh\|max`), matching Cairn values one to one. `subagent_type: "fork"` ignores `model` and `effort`, so never dispatch routed work as a fork. | requested value |
+| Codex | Host-native model option (fast `gpt-6-luna`, balanced `gpt-6.1-terra`, stronger `gpt-6-sol`, strongest `gpt-6-astra`) and task/subagent reasoning-effort option or equivalent. | requested value |
+| Antigravity | `invoke_subagent` `Model` takes only a tier enum: fast `flash_lite`, balanced `flash`, stronger `pro`, strongest `pro` (no tier above `pro`); `inherit` is not used for routed work. No effort option. | model: passed value; effort: `inherited` |
+| Host without an option | None. | `inherited` |
+
+- After each dispatch, record state with `goal assign --task <id> --agent <id> --effort <value> --effort-source <host-option|inherited|not-applied>`. Mark Heavy tasks with `route: "heavy"` (tasks JSON field or `goal assign --route heavy`). A Heavy task with no effort, `not-applied`, or `inherited` fails `goal task --status completed` unless `--allow-inherited-effort <reason>` records why.
 - On every route change, synchronize the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Completed task profiles are preserved as audit history; incomplete task profiles are recalculated for the new path.

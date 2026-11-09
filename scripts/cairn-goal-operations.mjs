@@ -5,9 +5,9 @@ import { assertNoSymlinkComponents } from "./cairn-safe-fs.mjs";
 import { goalStatePath, readGoalState, readGoalStateUnlocked, withGoalStateLock, writeGoalStateUnlocked } from "./cairn-goal-state.mjs";
 import {
   GOAL_STATE_VERSION, PLAN_ID_MAX_LENGTH, assertRecoveryReferenceBudget, boundedRequiredText,
-  assertCanBeActive, assertTaskGraph,
+  assertCanBeActive, assertEffortRecord, assertTaskGraph,
   defaultGoalEvidence, normalizeCriteria, normalizeTask, optionalText, requiredText,
-  terminalGoalStatuses, timestamp, validEvidencePolicy, validGoalStatus, validTaskStatus, validateState,
+  terminalGoalStatuses, timestamp, validEvidencePolicy, validGoalStatus, validTaskRoute, validTaskStatus, validateState,
 } from "./cairn-goal-state-validation.mjs";
 import {
   advanceGoal, assertGoalMutable, ensureGoalCanComplete, ensureTaskCanComplete,
@@ -119,9 +119,11 @@ function applyGoalTransition(state, nextStatus, blocker, root) {
   return state;
 }
 
-export async function setTaskStatus({ root = process.cwd(), taskId, status, blocker } = {}) {
+export async function setTaskStatus({ root = process.cwd(), taskId, status, blocker, effortWaiver } = {}) {
   const nextStatus = validTaskStatus(status);
   const normalizedTaskId = requiredText(taskId, "taskId");
+  const normalizedWaiver = optionalText(effortWaiver, "effortWaiver");
+  if (normalizedWaiver !== null && nextStatus !== "completed") throw new Error("--allow-inherited-effort applies only when completing a task");
   return mutateGoal(root, (state) => {
     assertGoalMutable(state);
     const task = taskById(state, normalizedTaskId);
@@ -130,7 +132,11 @@ export async function setTaskStatus({ root = process.cwd(), taskId, status, bloc
     if (nextStatus === "active") {
       assertCanBeActive(state.tasks, task, state.tasks.filter((item) => item.id !== task.id && item.status === "active"));
     }
-    if (nextStatus === "completed") ensureTaskCanComplete(state, task, root);
+    if (nextStatus === "completed") {
+      if (normalizedWaiver !== null) task.effortWaiver = normalizedWaiver;
+      ensureHeavyEffortApplied(task);
+      ensureTaskCanComplete(state, task, root);
+    }
     if (nextStatus === "blocked") task.blocker = requiredText(blocker, "blocker");
     if (nextStatus === "active" || nextStatus === "pending") task.blocker = null;
     task.status = nextStatus;
@@ -186,13 +192,41 @@ export async function claimGoal({ root = process.cwd(), sessionId } = {}) {
   });
 }
 
-export async function assignTask({ root = process.cwd(), taskId, agentId = null } = {}) {
+// A Heavy task delegated to a worker must record the effort the host actually applied; a missing, not-applied, or
+// inherited effort needs an explicit waiver reason. Unassigned (main-agent) and Light tasks are not checked.
+function ensureHeavyEffortApplied(task) {
+  if (task.route !== "heavy" || !task.assignedAgentId || task.effortWaiver) return;
+  const source = task.effortSource ?? null;
+  if (task.effort && source !== "not-applied" && source !== "inherited") return;
+  throw new Error(`Heavy task ${task.id} assigned to ${task.assignedAgentId} has no applied effort (effort ${task.effort ?? "none"}, source ${source ?? "none"}); record goal assign ${task.id} --effort <low|medium|high|xhigh|max> --effort-source host-option, or complete with --allow-inherited-effort <reason>`);
+}
+
+// Omitted effort/route/waiver options keep stored values, so a reassignment can change only the agent. When effort
+// or effortSource is given, both are replaced together; an omitted source is inferred from the effort.
+export async function assignTask({
+  root = process.cwd(), taskId, agentId = null, effort, effortSource, route, effortWaiver,
+} = {}) {
   const normalizedTaskId = requiredText(taskId, "taskId");
   const normalizedAgentId = agentId === null ? null : requiredText(agentId, "agentId");
+  const effortGiven = effort !== undefined || effortSource !== undefined;
+  const normalizedEffort = effort ?? null;
+  const normalizedSource = effortSource ?? (normalizedEffort === null ? null : normalizedEffort === "inherited" ? "inherited" : "host-option");
+  if (effortGiven) {
+    if (normalizedEffort === null && normalizedSource !== "not-applied") throw new Error("--effort-source requires --effort unless it is not-applied");
+    assertEffortRecord(normalizedEffort, normalizedSource, "assign");
+  }
+  const normalizedRoute = route === undefined ? undefined : validTaskRoute(route);
+  const normalizedWaiver = effortWaiver === undefined ? undefined : requiredText(effortWaiver, "effortWaiver");
   return mutateGoal(root, (state) => {
     assertGoalMutable(state);
     const task = taskById(state, normalizedTaskId);
     task.assignedAgentId = normalizedAgentId;
+    if (effortGiven) {
+      task.effort = normalizedEffort;
+      task.effortSource = normalizedSource;
+    }
+    if (normalizedRoute !== undefined) task.route = normalizedRoute;
+    if (normalizedWaiver !== undefined) task.effortWaiver = normalizedWaiver;
     task.updatedAt = timestamp();
     state.goal.updatedAt = timestamp();
     return state;

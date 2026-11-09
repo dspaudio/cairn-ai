@@ -25,9 +25,10 @@ export { finishGoal, goalStats, recordReceipt, verifyAndRecord } from "./cairn-g
 export { currentTask, evaluateStop, isGoalOwnedBySession } from "./cairn-goal-policy.mjs";
 export { readyTasks } from "./cairn-goal-operations-mutations.mjs";
 
-export async function handleGoalCli(args = process.argv.slice(2), { stdout = console.log } = {}) {
+export async function handleGoalCli(args = process.argv.slice(2), { stdout = console.log, stderr = console.error } = {}) {
   return runGoalCli(args, {
     stdout,
+    stderr,
     defaultGoalEvidence,
     operations: {
       assignTask,

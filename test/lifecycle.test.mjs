@@ -145,9 +145,10 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     assert.match(message("plan", "en-US"), /request, planning, and code checkpoints/i);
     assert.match(message("plan", "en-US"), /plan artifact.*repository goal task roadmap.*UI plan/i);
     assert.match(message("work", "en-US"), /code checkpoint.*before the first edit/i);
-    assert.match(message("plan", "en-US"), /inherit.*model.*reasoning effort/i);
+    assert.match(message("plan", "en-US"), /model per task.*pass it.*effort/i);
     assert.match(message("work", "en-US"), /Light.*medium.*Heavy.*high.*xhigh/i);
-    assert.match(message("work", "en-US"), /unsupported.*effective.*inherited/i);
+    assert.match(message("work", "en-US"), /dispatch MUST pass the requested effort through the host option.*Agent `effort`, never fork/);
+    assert.match(message("work", "en-US"), /Effective is the passed value.*not-applied: <reason>.*inherited` only when the host has no option/);
     assert.match(message("plan", "en-US"), /whole work.*tasks and sub-tasks/i);
     assert.match(message("plan", "ko-KR"), /전체 작업.*task.*sub-task/);
     assert.match(message("work", "ko-KR"), /MEMORY\.md가 있으면 읽고 없으면 무시하고 진행/);
@@ -349,7 +350,7 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(config, /\[marketplaces\.cairn\]/);
     assert.match(config, /\[hooks\.state\."cairn@cairn:hooks\/hooks\.json:stop:0:0"\]/);
 
-    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.3.0", ".codex-plugin", "plugin.json");
+    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.4.0", ".codex-plugin", "plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(manifest.hooks, "./hooks/hooks.json");
     const kernel = manifest.interface.defaultPrompt.join("\n");
@@ -466,14 +467,14 @@ test("install registers a Claude Code plugin whose hooks call the installed runt
     const install = runLifecycle("install", env);
     assert.equal(install.status, 0, install.stdout + install.stderr);
     const pluginMarketplace = join(env.CODEX_HOME, "plugins", "cache", "cairn", "claude");
-    const runtimeRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.3.0");
+    const runtimeRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.4.0");
     assert.match(install.stdout, /Claude Code plugin: cairn@cairn/);
 
     const marketplace = JSON.parse(await readFile(join(pluginMarketplace, ".claude-plugin", "marketplace.json"), "utf8"));
     assert.deepEqual(marketplace.plugins.map((plugin) => [plugin.name, plugin.source]), [["cairn", "./cairn"]]);
     const manifest = JSON.parse(await readFile(join(pluginMarketplace, "cairn", ".claude-plugin", "plugin.json"), "utf8"));
     assert.equal(manifest.name, "cairn");
-    assert.equal(manifest.version, "0.3.0");
+    assert.equal(manifest.version, "0.4.0");
     const hooksText = await readFile(join(pluginMarketplace, "cairn", "hooks", "hooks.json"), "utf8");
     assert.doesNotMatch(hooksText, /PLUGIN_ROOT/, "Claude Code does not expand Codex's ${PLUGIN_ROOT}");
     const hooks = JSON.parse(hooksText).hooks;
