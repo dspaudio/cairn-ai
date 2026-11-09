@@ -5,6 +5,7 @@ Reference for `cairn-work`. Read only when the recorded route is Heavy Path, a n
 ## Heavy Path Execution
 
 - Follow the full planning and review pipeline recorded in the plan without role-mapping shortcuts: pre-implementation review before mutation, bounded `worker` implementation, then verification worker or read-only review after evidence exists.
+- Heavy implementation cannot complete until a completed `kind: "design"` task exists (`--allow-no-design-model <reason>` is the only bypass).
 - Run the recorded automated test command and record explicit `Tests:` evidence in the plan before claiming completion. This is required even when module acceptance uses a broader check command.
 - Planning, review, and implementation request `high` reasoning effort; final verification and review request `xhigh`.
 

@@ -81,7 +81,7 @@ test("an assigned Heavy task cannot complete without an applied effort unless a 
   ]) {
     await withTempRoot(async (root) => {
       await startHeavyGoal(root);
-      await assignTask({ root, taskId: "heavy", agentId: "worker-1", ...options });
+      await assignTask({ root, taskId: "heavy", agentId: "worker-1", designWaiver: "design gate covered elsewhere", ...options });
       await recordTaskEvidence(root, "heavy");
       await assert.rejects(
         setTaskStatus({ root, taskId: "heavy", status: "completed" }),
@@ -100,7 +100,7 @@ test("an assigned Heavy task cannot complete without an applied effort unless a 
 test("Heavy completion passes with host-option effort or an assign waiver and ignores Light and unassigned tasks", async () => {
   await withTempRoot(async (root) => {
     await startHeavyGoal(root);
-    await assignTask({ root, taskId: "heavy", agentId: "worker-1", effort: "xhigh", effortSource: "host-option" });
+    await assignTask({ root, taskId: "heavy", agentId: "worker-1", effort: "xhigh", effortSource: "host-option", designWaiver: "design gate covered elsewhere" });
     await recordTaskEvidence(root, "heavy");
     await setTaskStatus({ root, taskId: "heavy", status: "completed" });
     // Light task assigned without effort completes as before.
@@ -111,7 +111,7 @@ test("Heavy completion passes with host-option effort or an assign waiver and ig
   });
   await withTempRoot(async (root) => {
     await startHeavyGoal(root);
-    await assignTask({ root, taskId: "heavy", agentId: "worker-1", effort: "inherited", effortWaiver: "Codex worker inherits session effort" });
+    await assignTask({ root, taskId: "heavy", agentId: "worker-1", effort: "inherited", effortWaiver: "Codex worker inherits session effort", designWaiver: "design gate covered elsewhere" });
     await recordTaskEvidence(root, "heavy");
     await setTaskStatus({ root, taskId: "heavy", status: "completed" });
   });
@@ -186,7 +186,7 @@ test("goal state without effort fields stays valid and keeps completing tasks", 
     const loaded = await readGoalState({ root });
     assert.equal("effort" in task(loaded, "heavy"), false);
     assert.deepEqual(goalStats(loaded, root).tasks[0], { id: "heavy", status: "active", route: null, effort: null, effortSource: null });
-    await assignTask({ root, taskId: "heavy", agentId: "worker-1" });
+    await assignTask({ root, taskId: "heavy", agentId: "worker-1", designWaiver: "design gate covered elsewhere" });
     await recordTaskEvidence(root, "heavy");
     const completed = await setTaskStatus({ root, taskId: "heavy", status: "completed" });
     assert.equal(task(completed, "heavy").status, "completed");
@@ -228,7 +228,7 @@ test("goal CLI parses effort options, warns on stderr for Heavy tasks, and keeps
 
     await recordTaskEvidence(root, "heavy");
     await assert.rejects(handleGoalCli(["goal", "task", "complete", "heavy", "--root", root], io), /no applied effort/);
-    await handleGoalCli(["goal", "task", "complete", "heavy", "--root", root, "--allow-inherited-effort", "host rejected the effort option"], io);
+    await handleGoalCli(["goal", "task", "complete", "heavy", "--root", root, "--allow-inherited-effort", "host rejected the effort option", "--allow-no-design-model", "design gate covered elsewhere"], io);
     assert.equal(task(JSON.parse(out.at(-1)), "heavy").effortWaiver, "host rejected the effort option");
 
     const stats = spawnSync(process.execPath, [cliScript, "goal", "stats", "--root", root], { encoding: "utf8", env: process.env });
@@ -243,6 +243,162 @@ test("goal CLI parses effort options, warns on stderr for Heavy tasks, and keeps
     assert.match(assigned.stderr, /Cairn warning: Heavy task heavy is assigned without an applied effort \(effort none, source none\)/);
   });
 });
+
+test("a design task cannot complete without a host-option model unless a waiver reason is recorded", async () => {
+  for (const [label, options] of [
+    ["missing", {}],
+    ["not-applied", { modelSource: "not-applied" }],
+    ["inherited", { model: "inherited" }],
+  ]) {
+    await withTempRoot(async (root) => {
+      await startDesignGoal(root);
+      await assignTask({ root, taskId: "design", kind: "design", ...options });
+      await recordTaskEvidence(root, "design");
+      await assert.rejects(
+        setTaskStatus({ root, taskId: "design", status: "completed" }),
+        /Design task design has no recorded design model.*goal assign design --model <value> --model-source host-option.*--allow-no-design-model <reason>/,
+        label,
+      );
+      assert.equal(task(await readGoalState({ root }), "design").status, "active", label);
+      await assert.rejects(setTaskStatus({ root, taskId: "design", status: "blocked", blocker: "x", designWaiver: "reason" }), /applies only when completing/);
+      const completed = await setTaskStatus({ root, taskId: "design", status: "completed", designWaiver: "host has no strongest tier" });
+      assert.equal(task(completed, "design").designWaiver, "host has no strongest tier", label);
+    });
+  }
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    await assignTask({ root, taskId: "design", kind: "design", model: "fable" });
+    assert.deepEqual(pickModel(task(await readGoalState({ root }), "design")), { kind: "design", model: "fable", modelSource: "host-option", designWaiver: null });
+    await recordTaskEvidence(root, "design");
+    const completed = await setTaskStatus({ root, taskId: "design", status: "completed" });
+    assert.equal(task(completed, "design").status, "completed");
+  });
+});
+
+test("an assigned Heavy task needs a completed design task or a waiver; Light and unassigned tasks are unaffected", async () => {
+  await withTempRoot(async (root) => {
+    await startHeavyGoal(root);
+    await assignTask({ root, taskId: "heavy", agentId: "worker-1", effort: "high" });
+    await recordTaskEvidence(root, "heavy");
+    await assert.rejects(setTaskStatus({ root, taskId: "heavy", status: "completed" }), /Heavy task heavy assigned to worker-1 has no completed design task/);
+    assert.equal(task(await readGoalState({ root }), "heavy").status, "active");
+    const waived = await setTaskStatus({ root, taskId: "heavy", status: "completed", designWaiver: "trivial Heavy change" });
+    assert.equal(task(waived, "heavy").designWaiver, "trivial Heavy change");
+  });
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    await assignTask({ root, taskId: "design", kind: "design", model: "fable" });
+    await recordTaskEvidence(root, "design");
+    await setTaskStatus({ root, taskId: "design", status: "completed" });
+    await assignTask({ root, taskId: "heavy", agentId: "worker-1", effort: "high" });
+    await recordTaskEvidence(root, "heavy");
+    assert.equal(task(await setTaskStatus({ root, taskId: "heavy", status: "completed" }), "heavy").status, "completed");
+  });
+  await withTempRoot(async (root) => {
+    await startHeavyGoal(root);
+    await recordTaskEvidence(root, "heavy");
+    await setTaskStatus({ root, taskId: "heavy", status: "completed" });
+    await assignTask({ root, taskId: "light", agentId: "worker-2", route: "light" });
+    await recordTaskEvidence(root, "light");
+    assert.equal(task(await setTaskStatus({ root, taskId: "light", status: "completed" }), "light").status, "completed");
+  });
+  await withTempRoot(async (root) => {
+    await startGoal({ root, goal: "Unassigned Heavy", planId: "docs/plan/design.md", evidencePolicy: "declared", tasks: [{ id: "heavy", title: "Heavy", route: "heavy" }] });
+    await recordTaskEvidence(root, "heavy");
+    assert.equal(task(await setTaskStatus({ root, taskId: "heavy", status: "completed" }), "heavy").status, "completed");
+  });
+});
+
+test("goal assign and task input reject invalid kind and model records without changing state", async () => {
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    const rejected = [
+      [{ kind: "build" }, /kind must be one of: design/],
+      [{ modelSource: "guessed" }, /modelSource must be one of/],
+      [{ modelSource: "host-option" }, /modelSource host-option requires a model/],
+      [{ modelSource: "inherited" }, /modelSource inherited requires a model/],
+      [{ model: "fable", modelSource: "guessed" }, /modelSource must be one of/],
+      [{ model: "  " }, /model must be a non-empty string/],
+      [{ designWaiver: "  " }, /designWaiver must be a non-empty string/],
+    ];
+    for (const [options, pattern] of rejected) {
+      await assert.rejects(assignTask({ root, taskId: "design", agentId: "worker-1", ...options }), pattern);
+    }
+    const state = await readGoalState({ root });
+    assert.equal(task(state, "design").assignedAgentId, null);
+    assert.deepEqual(pickModel(task(state, "design")), { kind: "design", model: null, modelSource: null, designWaiver: null });
+    await assert.rejects(replanGoal({ root, tasks: [{ id: "next", title: "Next", kind: "build" }] }), /kind must be one of: design/);
+  });
+  await withTempRoot(async (root) => {
+    await assert.rejects(startGoal({ root, goal: "x", planId: "docs/plan/x.md", tasks: [{ title: "x", kind: "build" }] }), /kind must be one of: design/);
+  });
+});
+
+test("goal state without design fields stays valid and invalid stored model records are rejected", async () => {
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    const path = goalStatePath(root);
+    const legacy = JSON.parse(await readFile(path, "utf8"));
+    for (const item of legacy.tasks) {
+      delete item.kind;
+      delete item.model;
+      delete item.modelSource;
+      delete item.designWaiver;
+    }
+    await writeFile(path, `${JSON.stringify(legacy, null, 2)}\n`);
+    const loaded = await readGoalState({ root });
+    assert.equal("kind" in task(loaded, "design"), false);
+    assert.deepEqual(goalStats(loaded, root).tasks[0], { id: "design", status: "active", route: "heavy", effort: null, effortSource: null });
+    legacy.tasks[0].modelSource = "host-option";
+    await writeFile(path, `${JSON.stringify(legacy, null, 2)}\n`);
+    await assert.rejects(readGoalState({ root }), /modelSource host-option requires a model/);
+  });
+});
+
+test("goal replan resets model fields on replanned tasks and accepts kind design", async () => {
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    const state = await replanGoal({ root, tasks: [{ id: "next", title: "Next", kind: "design", route: "heavy", model: "fable", modelSource: "host-option", designWaiver: "x" }] });
+    assert.deepEqual(pickModel(task(state, "next")), { kind: "design", model: null, modelSource: null, designWaiver: null });
+  });
+});
+
+test("goal CLI passes design flags to state and stats show them only when set", async () => {
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    const out = [];
+    const io = { stdout: (line) => out.push(line), stderr: () => {} };
+    await handleGoalCli(["goal", "assign", "design", "--root", root, "--kind", "design", "--model", "fable", "--model-source", "host-option"], io);
+    assert.deepEqual(pickModel(task(JSON.parse(out.at(-1)), "design")), { kind: "design", model: "fable", modelSource: "host-option", designWaiver: null });
+    await handleGoalCli(["goal", "assign", "heavy", "worker-1", "--root", root, "--allow-no-design-model", "reason"], io);
+    assert.equal(task(JSON.parse(out.at(-1)), "heavy").designWaiver, "reason");
+    await assert.rejects(handleGoalCli(["goal", "task", "design", "--root", root, "--status", "active", "--allow-no-design-model", "r"], io), /applies only when completing/);
+    const stats = goalStats(await readGoalState({ root }), root);
+    assert.deepEqual(stats.tasks, [
+      { id: "design", status: "active", route: "heavy", effort: null, effortSource: null, kind: "design", model: "fable", modelSource: "host-option" },
+      { id: "heavy", status: "pending", route: "heavy", effort: null, effortSource: null, designWaiver: "reason" },
+      { id: "light", status: "pending", route: null, effort: null, effortSource: null },
+    ]);
+  });
+});
+
+async function startDesignGoal(root) {
+  return startGoal({
+    root,
+    goal: "Route Heavy design",
+    planId: "docs/plan/design.md",
+    evidencePolicy: "declared",
+    tasks: [
+      { id: "design", title: "Heavy design", route: "heavy", kind: "design" },
+      { id: "heavy", title: "Heavy task", route: "heavy" },
+      { id: "light", title: "Light task" },
+    ],
+  });
+}
+
+function pickModel(item) {
+  return { kind: item.kind, model: item.model, modelSource: item.modelSource, designWaiver: item.designWaiver };
+}
 
 async function startHeavyGoal(root) {
   return startGoal({
