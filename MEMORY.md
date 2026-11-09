@@ -8,6 +8,7 @@ This file is a short index of persistent repository knowledge.
 
 ## Policy
 
+- Always start work from the `dev` branch.
 - Prefer precise repository exploration before implementation.
 - Preserve proper nouns, file names, variable names, service names, alert names, MCP tool names, and agent names exactly as written.
 - Read only the detailed memory files needed for the current task.
