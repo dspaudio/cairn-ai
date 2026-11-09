@@ -175,6 +175,14 @@ export function goalStats(state, root = process.cwd()) {
     byKind,
     reruns,
     stale,
+    tasks: state.tasks.map((task) => ({
+      id: task.id,
+      status: task.status,
+      route: task.route ?? null,
+      effort: task.effort ?? null,
+      effortSource: task.effortSource ?? null,
+      ...(task.effortWaiver ? { effortWaiver: task.effortWaiver } : {}),
+    })),
   };
 }
 

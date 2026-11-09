@@ -41,14 +41,16 @@ Describe the observable result.
 
 ## Reasoning Effort Profile
 
-- Model: inherited from the host/user default; never override it.
+- Model: decided per task (fast `haiku` for read-only exploration/search/summarization; balanced `sonnet` for Light implementation and routine verification; stronger `opus` for planning, complexity triage, Heavy implementation, review, and final verification/review; strongest `fable` for Heavy design only). Pass it through the host option on every dispatch (Claude Code: Agent `model`, never `fork`); re-dispatch one tier up (fast, balanced, stronger, strongest) if a lower-tier worker fails a gate; `Model routing: inherited` disables this. Never change model/global config.
 - Light Path: planning=`medium`, implementation=`medium`, verification=`medium`.
 - Heavy Path: planning/review=`high`, implementation=`high`, final verification/review=`xhigh`.
-- Host boundary: pass a requested value only when dispatching a new task/worker and the host exposes a reasoning-effort option or host-native equivalent. Unsupported host/value means `Effective reasoning effort: inherited`; do not alter model/global config.
+- Host boundary: every new task/worker dispatch MUST pass the task's requested effort through the host option (Claude Code: Agent `effort`, never `fork`; Codex: host-native option). Recording without passing is a defect. Use `inherited` only when the host has no option.
 - Route-change gate: synchronize the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Completed task profiles are preserved as audit history; incomplete task profiles are recalculated for the new path.
 - Every module task records:
-  - Requested reasoning effort:
-  - Effective reasoning effort: `inherited` until a new dispatch confirms an accepted override.
+  - Requested model:
+- Effective model: <applied value | not-applied: reason | inherited: host has no option>
+- Requested reasoning effort:
+  - Effective reasoning effort: <applied value | not-applied: reason | inherited: host has no option>
 
 ## Complexity Triage
 
@@ -84,6 +86,10 @@ Describe the observable result.
 - `worker`: bounded implementation tasks with clear file ownership, or scoped verification work.
 - Local main session: urgent blocking work when the next step depends immediately on the result.
 
+| Task | Agent | Route | model | dispatch effort |
+| --- | --- | --- | --- | --- |
+| `<task-id>` | `<agent>` | `light` or `heavy` | <tier/value passed via host option> | <value passed via host option> |
+
 ## Tool Readiness
 
 - Detected stack:
@@ -114,8 +120,10 @@ Describe the observable result.
 
 - Task ID: `triage-plan`
 - Initial status: `active`
+- Requested model:
+- Effective model: <applied value | not-applied: reason | inherited: host has no option>
 - Requested reasoning effort:
-- Effective reasoning effort:
+- Effective reasoning effort: <applied value | not-applied: reason | inherited: host has no option>
 - Contract: execute the investigation scope and Heavy Path criteria declared by the initial plan, then update this file and the Codex UI plan to the decision-complete implementation revision.
 - Required evidence records:
   - `planArtifact`: command, exit code 0, timestamp, goal ID, task ID, and plan ID.
@@ -125,8 +133,10 @@ Describe the observable result.
 
 - Task ID: `task-1`
 - Initial status: `pending` or `active`
+- Requested model:
+- Effective model: <applied value | not-applied: reason | inherited: host has no option>
 - Requested reasoning effort:
-- Effective reasoning effort:
+- Effective reasoning effort: <applied value | not-applied: reason | inherited: host has no option>
 - Contract:
 - Sub-tasks, if needed:
 - Files:

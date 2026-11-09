@@ -2,6 +2,7 @@ import { resolveRepoRoot } from "./cairn-paths.mjs";
 
 export async function runGoalCli(args, {
   stdout = console.log,
+  stderr = console.error,
   defaultGoalEvidence,
   operations,
 }) {
@@ -52,6 +53,7 @@ export async function runGoalCli(args, {
       taskId: options.task ?? (taskAction ? positional[1] : positional[0]),
       status: options.status ?? taskAction ?? positional[1],
       blocker: options.reason,
+      effortWaiver: options["allow-inherited-effort"],
     });
     emit(JSON.stringify(state));
     return state;
@@ -71,7 +73,15 @@ export async function runGoalCli(args, {
       root,
       taskId: options.task ?? positional[0],
       agentId: options.agent ?? positional[1] ?? null,
+      effort: options.effort,
+      effortSource: options["effort-source"],
+      route: options.route,
+      effortWaiver: options["allow-inherited-effort"],
     });
+    const task = state.tasks.find((item) => item.id === String(options.task ?? positional[0]).trim());
+    if (task?.route === "heavy" && task.assignedAgentId && (!task.effort || task.effortSource === "not-applied")) {
+      stderr(`Cairn warning: Heavy task ${task.id} is assigned without an applied effort (effort ${task.effort ?? "none"}, source ${task.effortSource ?? "none"}); dispatch with the plan's effort and record --effort <level> --effort-source host-option.`);
+    }
     emit(JSON.stringify(state));
     return state;
   }
@@ -204,10 +214,10 @@ function allowedOptions(command) {
   const byCommand = {
     start: ["goal", "plan", "tasks", "criteria", "requiredEvidence", "session", "evidencePolicy", "evidence-policy"],
     status: [],
-    task: ["task", "status", "reason"],
+    task: ["task", "status", "reason", "allow-inherited-effort"],
     replan: ["tasks"],
     claim: ["session"],
-    assign: ["task", "agent"],
+    assign: ["task", "agent", "effort", "effort-source", "route", "allow-inherited-effort"],
     receipt: ["task", "kind", "scope", "command", "exitCode", "exit-code", "exit", "timestamp", "goalId", "goal-id", "plan"],
     verify: ["task", "kind", "scope", "watch", "timeout-ms"],
     finish: ["watch", "timeout-ms"],

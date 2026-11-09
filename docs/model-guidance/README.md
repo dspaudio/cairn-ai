@@ -48,14 +48,16 @@ The goal is not to make prompts long by model. The goal is to stabilize the same
 - Character budgets are regression proxies for cache-friendly prompt shape, not measurements of provider cache hits or cost. Cairn does not require provider cache keys, breakpoints, or live API telemetry.
 - Do not add read receipts that claim model attention. Restore references on every re-entry and use readable state plus fresh bound evidence as the enforceable contract.
 
-## Reasoning Effort Routing
+## Model and Reasoning Effort Routing
 
-- Models always inherit the host or user default; Cairn never selects or overrides a model.
+- The plan decides each task's model from its nature and records `Requested model` and `Effective model`; models are not always inherited. Tiers: fast = read-only exploration, search, inventory, summarization (Claude Code `haiku`); balanced = Light Path implementation and routine verification (`sonnet`); stronger = planning, complexity triage, Heavy Path implementation, review, and final verification/review (`opus`); strongest = Heavy Path design only (`fable`). Antigravity `invoke_subagent` `Model` accepts only a tier enum (fast `flash_lite`, balanced `flash`, stronger `pro`, strongest `pro`; no tier above `pro`) and has no effort option, so Effective reasoning effort is `inherited`. Codex slugs: fast `gpt-6-luna`, balanced `gpt-6.1-terra`, stronger `gpt-6-sol`, strongest `gpt-6-astra`.
+- Model Effective: passed and not rejected is that value; not passed is `not-applied: <reason>`; `inherited` only when the host has no model option. If a lower-tier worker fails a gate, re-dispatch that task one tier up (fast, balanced, stronger, strongest) before recording a blocker.
+- Routing is per dispatch only; never change model or global/user config files. `Model routing: inherited` in `MEMORY.md` or the plan disables per-task selection.
 - Light Path planning, implementation, and verification request `medium`.
 - Heavy Path planning, review, and implementation request `high`; final verification and review request `xhigh`.
 - Every plan task records `Requested reasoning effort` and `Effective reasoning effort`. Requested is Cairn's desired profile; Effective is the value confirmed by the dispatch result.
-- Only a newly dispatched task or worker may receive the requested value, and only through a host-exposed reasoning-effort option or host-native equivalent. Omit every model override.
-- For an unsupported host or value, use `Effective reasoning effort: inherited`; this means no task-level override was confirmed and does not prove the host lacks the capability. Describe host capability only from an exposed interface or dispatch result, and distinguish Cairn's choice not to integrate or use an option from host non-support. Do not change the model or global config and do not silently choose a nearby value.
+- Every new task/worker dispatch MUST pass the task's requested effort through the host-exposed reasoning-effort option or host-native equivalent (Claude Code: Agent tool `effort`; `fork` ignores `model` and `effort`). Pass the chosen model the same way (Claude Code: Agent tool `model`). Recording without passing is a defect.
+- Effective is the requested value when the dispatch passed it and the host did not reject it, `not-applied: <reason>` when it was not passed, and `inherited` only when the host exposes no effort option. Describe host capability only from an exposed interface or dispatch result, and distinguish Cairn's choice not to integrate or use an option from host non-support. Do not change the model or global config and do not silently choose a nearby value.
 - A route change synchronizes the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Preserve completed task profiles as audit history and recalculate incomplete task profiles for the new path.
 
 ## Delegation Defaults
