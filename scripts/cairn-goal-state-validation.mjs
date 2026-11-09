@@ -25,6 +25,7 @@ export const TASK_ROUTES = new Set(["light", "heavy"]);
 export const CONCRETE_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
 export const TASK_EFFORTS = new Set([...CONCRETE_EFFORTS, "inherited"]);
 export const EFFORT_SOURCES = new Set(["host-option", "inherited", "not-applied"]);
+export const TASK_KINDS = new Set(["design"]);
 
 export function validateState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Cairn goal state must be an object");
@@ -66,6 +67,9 @@ export function validateState(value) {
     if (task.route !== null && task.route !== undefined) validTaskRoute(task.route, `task ${task.id} route`);
     assertEffortRecord(task.effort ?? null, task.effortSource ?? null, `task ${task.id}`);
     if (task.effortWaiver !== null && task.effortWaiver !== undefined) requiredText(task.effortWaiver, `task ${task.id} effortWaiver`);
+    if (task.kind !== null && task.kind !== undefined) validTaskKind(task.kind, `task ${task.id} kind`);
+    assertModelRecord(task.model ?? null, task.modelSource ?? null, `task ${task.id}`);
+    if (task.designWaiver !== null && task.designWaiver !== undefined) requiredText(task.designWaiver, `task ${task.id} designWaiver`);
     validTimestamp(task.createdAt);
     validTimestamp(task.updatedAt);
   }
@@ -120,6 +124,10 @@ export function normalizeTask(task, index, defaultStatus, previousTaskId = null)
     effort: null,
     effortSource: null,
     effortWaiver: null,
+    kind: source.kind === undefined || source.kind === null ? null : validTaskKind(source.kind, `tasks[${index}].kind`),
+    model: null,
+    modelSource: null,
+    designWaiver: null,
     blocker: null,
     createdAt: timestamp(),
     updatedAt: timestamp(),
@@ -129,6 +137,20 @@ export function normalizeTask(task, index, defaultStatus, previousTaskId = null)
 export function validTaskRoute(value, label = "route") {
   if (!TASK_ROUTES.has(value)) throw new Error(`${label} must be one of: ${[...TASK_ROUTES].join(", ")}`);
   return value;
+}
+
+export function validTaskKind(value, label = "kind") {
+  if (!TASK_KINDS.has(value)) throw new Error(`${label} must be one of: ${[...TASK_KINDS].join(", ")}`);
+  return value;
+}
+
+// A model is a non-empty host-specific string; source "host-option" needs a model, and a model needs a source.
+export function assertModelRecord(model, source, label = "task") {
+  if (model !== null) requiredText(model, `${label} model`);
+  if (source !== null && !EFFORT_SOURCES.has(source)) throw new Error(`${label} modelSource must be one of: ${[...EFFORT_SOURCES].join(", ")}`);
+  if (source === "host-option" && model === null) throw new Error(`${label} modelSource host-option requires a model`);
+  if (source === "inherited" && model === null) throw new Error(`${label} modelSource inherited requires a model`);
+  if (model !== null && source === null) throw new Error(`${label} model requires a modelSource`);
 }
 
 // effort "inherited" pairs only with source "inherited"; source "host-option" needs a concrete level; a source

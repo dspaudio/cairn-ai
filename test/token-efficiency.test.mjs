@@ -369,7 +369,7 @@ test("plan and work skills stay slim and load detailed procedures on demand", as
 
   // Moved procedures keep their contracts in the reference files.
   const planHeavy = await read("skills/cairn-plan/heavy-path.md");
-  assert.match(planHeavy, /plan -> pre-implementation review -> bounded `worker` implementation/);
+  assert.match(planHeavy, /plan -> Heavy design task -> pre-implementation review -> bounded `worker` implementation/);
   assert.match(planHeavy, /only promote Light Path to Heavy Path/);
   const planRules = await read("skills/cairn-plan/planning-rules.md");
   assert.match(planRules, /## Route Record/);

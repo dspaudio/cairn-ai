@@ -350,7 +350,7 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(config, /\[marketplaces\.cairn\]/);
     assert.match(config, /\[hooks\.state\."cairn@cairn:hooks\/hooks\.json:stop:0:0"\]/);
 
-    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.4.0", ".codex-plugin", "plugin.json");
+    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.4.1", ".codex-plugin", "plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(manifest.hooks, "./hooks/hooks.json");
     const kernel = manifest.interface.defaultPrompt.join("\n");
@@ -467,14 +467,14 @@ test("install registers a Claude Code plugin whose hooks call the installed runt
     const install = runLifecycle("install", env);
     assert.equal(install.status, 0, install.stdout + install.stderr);
     const pluginMarketplace = join(env.CODEX_HOME, "plugins", "cache", "cairn", "claude");
-    const runtimeRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.4.0");
+    const runtimeRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.4.1");
     assert.match(install.stdout, /Claude Code plugin: cairn@cairn/);
 
     const marketplace = JSON.parse(await readFile(join(pluginMarketplace, ".claude-plugin", "marketplace.json"), "utf8"));
     assert.deepEqual(marketplace.plugins.map((plugin) => [plugin.name, plugin.source]), [["cairn", "./cairn"]]);
     const manifest = JSON.parse(await readFile(join(pluginMarketplace, "cairn", ".claude-plugin", "plugin.json"), "utf8"));
     assert.equal(manifest.name, "cairn");
-    assert.equal(manifest.version, "0.4.0");
+    assert.equal(manifest.version, "0.4.1");
     const hooksText = await readFile(join(pluginMarketplace, "cairn", "hooks", "hooks.json"), "utf8");
     assert.doesNotMatch(hooksText, /PLUGIN_ROOT/, "Claude Code does not expand Codex's ${PLUGIN_ROOT}");
     const hooks = JSON.parse(hooksText).hooks;
