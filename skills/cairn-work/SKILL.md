@@ -23,7 +23,7 @@ The session-start hook prints `Cairn CLI: node "<abs>/scripts/cairn.mjs" goal <c
 node "<pluginRoot>/scripts/cairn.mjs" goal task status --root "<repoRoot>"
 node "<pluginRoot>/scripts/cairn.mjs" goal ready --root "<repoRoot>"
 node "<pluginRoot>/scripts/cairn.mjs" goal replan --quiet --root "<repoRoot>" --tasks '[{"id":"<task-id>","title":"<task-title>","requiredEvidence":["moduleAcceptance","surfaceIntegration"]}]'
-node "<pluginRoot>/scripts/cairn.mjs" goal assign --quiet --root "<repoRoot>" --task "<task-id>" --agent "<agent-id>"
+node "<pluginRoot>/scripts/cairn.mjs" goal assign --quiet --root "<repoRoot>" --task "<task-id>" --agent "<agent-id>" --effort "<value>" --effort-source "<host-option|inherited|not-applied>"
 node "<pluginRoot>/scripts/cairn.mjs" goal verify --quiet --root "<repoRoot>" --task "<task-id>" --kind "moduleAcceptance|surfaceIntegration" --watch "<path|path>" -- <tool> <arg> ...
 node "<pluginRoot>/scripts/cairn.mjs" goal task --quiet --root "<repoRoot>" --task "<task-id>" --status completed
 node "<pluginRoot>/scripts/cairn.mjs" goal finish --quiet --root "<repoRoot>" --watch "<path|path>" -- <tool> <arg> ...
@@ -61,7 +61,7 @@ Read a reference only when the selected path or situation requires it (Quick and
 - Any relevant mutation after a gate makes that result stale evidence; rerun the affected gate before completing the current task. Do not rerun earlier completed tasks' checks after later edits: one fresh goal-scope receipt for every goal requiredEvidence kind recorded after all task receipts supersedes their fingerprints (if goal requiredEvidence is empty, task freshness is still rechecked).
 - Never edit, weaken, skip, or delete existing tests, fixtures, snapshots, or recorded verification commands to make a gate pass; record a genuine contract change in the plan first. After a defect fix, search for other implementations of the same rule or pattern.
 - At most two verification passes per task; after two failures, record the blocker (`recovery.md`).
-- Reasoning effort: models always inherit. Request Light `medium`, Heavy `high`, final verification/review `xhigh`; record Requested and Effective reasoning effort per task. Route changes resync the reasoning effort profile: completed profiles are preserved, incomplete profiles are recalculated.
+- Model and reasoning effort: This skill explicitly instructs the effort level for delegated work. Use each task's recorded model (fast `haiku`, balanced `sonnet`, stronger `opus`, strongest `fable`) and request Light `medium`, Heavy `high`, final verification/review `xhigh`. Every new task/worker dispatch MUST pass the task's model and effort through the host option (Claude Code: Agent `model`/`effort`; never `fork`). Recording without passing is a defect. Record Requested/Effective model and reasoning effort per task (details, Heavy completion gate: `delegation.md`). Route changes resync the reasoning effort profile: completed profiles are preserved, incomplete profiles are recalculated.
 - Missing, failed, skipped, stale, or placeholder evidence never completes work. Use the OS locale for output and artifacts.
 
 ## Completion Criteria

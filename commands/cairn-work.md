@@ -6,7 +6,7 @@ Prerequisite: resolve the installed Cairn runtime from the plugin or skill locat
 
 Goal: execute the active goal's current task without bypassing complexity triage, then keep advancing tasks until goal-level final review completes or the goal is explicitly paused, blocked, or cancelled. Quick Path work has no plan or goal: implement, run one focused check plus the project's normal check, and report; escalate to Light Path (plan + goal) before further edits if any Quick Path criterion fails.
 
-Record the code checkpoint after exact file/caller/test inspection immediately before the first edit. After editing begins, a new Heavy Path signal promotes Light Path to Heavy Path: stop further edits, mark affected evidence stale, synchronize the plan artifact, `goal replan` roadmap, and native UI plan, and repeat the code checkpoint. Models always inherit; request Light `medium`, Heavy `high`, final verification/review `xhigh`.
+Record the code checkpoint after exact file/caller/test inspection immediately before the first edit. After editing begins, a new Heavy Path signal promotes Light Path to Heavy Path: stop further edits, mark affected evidence stale, synchronize the plan artifact, `goal replan` roadmap, and native UI plan, and repeat the code checkpoint. Choose each task's model by its nature (fast, balanced, stronger, strongest) and pass it with effort through the host option; request Light `medium`, Heavy `high`, final verification/review `xhigh`.
 
 Procedure:
 

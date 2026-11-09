@@ -33,7 +33,7 @@ export function evaluateStop(state, { subagent = false, agentId } = {}) {
     if (!assigned) return { block: false };
     return {
       block: true,
-      reason: `Cairn task ${assigned.id} (${assigned.title}) is assigned to this subagent and is ${assigned.status}. Continue only this assigned task, record a successful evidence record, then hand off.`,
+      reason: `Cairn task ${assigned.id} (${assigned.title}) is assigned to this subagent and is ${assigned.status}. Continue only this assigned task, record a successful evidence record, then hand off.${effortWarning([assigned])}`,
     };
   }
   const active = state.tasks.filter((item) => item.status === "active");
@@ -41,13 +41,19 @@ export function evaluateStop(state, { subagent = false, agentId } = {}) {
     const list = active.map((item) => `${item.id} (${clip(item.title, 40)})`).join(", ");
     return {
       block: true,
-      reason: `Cairn goal "${state.goal.title}" is active with parallel tasks ${list}. Collect or continue each one; record successful evidence before marking a task complete.`,
+      reason: `Cairn goal "${state.goal.title}" is active with parallel tasks ${list}. Collect or continue each one; record successful evidence before marking a task complete.${effortWarning(active)}`,
     };
   }
   return {
     block: true,
-    reason: `Cairn goal "${state.goal.title}" is active. Continue current task ${task.id} (${task.title}); its status is ${task.status}. Record a successful evidence record before marking it complete.`,
+    reason: `Cairn goal "${state.goal.title}" is active. Continue current task ${task.id} (${task.title}); its status is ${task.status}. Record a successful evidence record before marking it complete.${effortWarning(active)}`,
   };
+}
+
+// Delegated work must record the effort the host applied; flag assigned tasks whose effort source is still empty.
+function effortWarning(tasks) {
+  const ids = tasks.filter((item) => item.assignedAgentId && !item.effortSource).map((item) => item.id);
+  return ids.length === 0 ? "" : ` Effort unrecorded for assigned task ${ids.join(", ")}: record goal assign --effort/--effort-source.`;
 }
 
 function clip(value, maxLength) {

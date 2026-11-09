@@ -4,7 +4,7 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- 없음.
+- [Cairn 0.4.0 릴리스](docs/plan/release-0.4.0.md): effort 적용 게이트와 작업별 모델 결정을 dev·main PR로 승격하고 npm에 게시.
 
 ## Superseded Plans
 
@@ -13,6 +13,8 @@ This file is a short index of active and completed work plans.
 ## Completed Plans
 
 - Move completed topics here with evidence links.
+- [작업별 모델 결정](docs/plan/per-task-model-routing.md): 모델 상속 고정을 fast/balanced/stronger/strongest 4-tier 작업별 결정으로 바꾸고 Claude Code·Codex·Antigravity 매핑과 dispatch 시 host 옵션 전달 규칙을 전 정책 표면에 반영해 `npm run check`로 검증했습니다.
+- [dispatch 시 추론 강도 실제 적용과 검증](docs/plan/dispatch-effort-enforcement.md): dispatch마다 host 옵션(Claude Code Agent `effort`, fork 금지)으로 effort를 넘기는 명령형 규칙·host 매핑·Effective 판정과 템플릿 기본값 제거, `goal assign --effort/--effort-source/--route`와 Heavy 완료 게이트(`--allow-inherited-effort`), stats·Stop 경고를 구현하고 212개 테스트와 pack dry-run으로 검증했습니다.
 - [Cairn 0.3.0 릴리스](docs/plan/release-0.3.0.md): PR #65·#66(SessionStart 캡슐 예산 hotfix)을 CI 통과 후 main에 병합하고, exact main tarball을 npm `latest` 0.3.0으로 게시해 registry digest와 격리 설치 CLI를 검증했습니다.
 - [Cairn 오버헤드 축소와 task DAG](docs/plan/cairn-overhead-reduction.md): goal 증거로 task 재검증 면제, CLI root 자동 결정·multi-kind verify·`goal finish`/`stats`/`ready`, PostToolUse 1회 알림, SKILL.md 약 66% 축소와 Quick Path, `dependsOn`/`writeScope` 기반 병렬 task(schema v3)를 구현하고 201개 테스트, pack dry-run, 설치본 표면 검증으로 확인했습니다.
 - [경로별 추론 강도 변경 보존 및 PR 게시](docs/plan/publish-path-reasoning-effort-routing.md): dirty `dev` 변경을 backup·stash로 보존하고 최신 `origin/dev` 기반 브랜치에 3-way 재적용·검증한 뒤 draft PR #55를 생성했습니다.

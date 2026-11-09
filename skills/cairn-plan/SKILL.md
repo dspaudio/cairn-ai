@@ -57,7 +57,7 @@ node "<pluginRoot>/scripts/cairn.mjs" goal start --root "<repoRoot>" --goal "<ob
 10. Advance a UI step only after the matching repository task transition succeeds.
 11. Ask the user only when evidence and local checks cannot decide. Use the OS locale for user-visible output and artifacts unless asked otherwise.
 
-Reasoning effort: models always inherit. Request Light `medium`, Heavy `high`, and final verification/review `xhigh`; record Requested and Effective reasoning effort per task (`delegation.md`).
+Model and reasoning effort: This skill explicitly instructs the effort level for delegated work. Pick models (fast `haiku` read-only work; balanced `sonnet` Light implementation; stronger `opus` planning, triage, Heavy implementation/review, final verification; strongest `fable` Heavy design) and request Light `medium`, Heavy `high`, final verification/review `xhigh`. Every new task/worker dispatch MUST pass the task's model and effort via the host option (Claude Code: Agent `model`/`effort`; never `fork`). Recording without passing is a defect. Record Requested/Effective model and effort per task; mark Heavy tasks `route: "heavy"` (details: `delegation.md`).
 
 ## Completion Criteria
 

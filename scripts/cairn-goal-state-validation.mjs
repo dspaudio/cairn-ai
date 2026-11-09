@@ -21,6 +21,10 @@ export const defaultTaskEvidence = ["moduleAcceptance", "surfaceIntegration"];
 export const defaultGoalEvidence = ["finalReview"];
 
 const evidencePolicies = new Set(["declared", "tool-bound"]);
+export const TASK_ROUTES = new Set(["light", "heavy"]);
+export const CONCRETE_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"]);
+export const TASK_EFFORTS = new Set([...CONCRETE_EFFORTS, "inherited"]);
+export const EFFORT_SOURCES = new Set(["host-option", "inherited", "not-applied"]);
 
 export function validateState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Cairn goal state must be an object");
@@ -58,6 +62,10 @@ export function validateState(value) {
     if (!Array.isArray(task.requiredEvidence) || task.requiredEvidence.length === 0) throw new Error(`task ${task.id} requiredEvidence must be a non-empty array`);
     task.requiredEvidence.forEach((kind, index) => requiredText(kind, `task ${task.id} requiredEvidence[${index}]`));
     if (task.blocker !== null && task.blocker !== undefined) requiredText(task.blocker, `task ${task.id} blocker`);
+    // Optional since v3 states predate them; absent means unrecorded.
+    if (task.route !== null && task.route !== undefined) validTaskRoute(task.route, `task ${task.id} route`);
+    assertEffortRecord(task.effort ?? null, task.effortSource ?? null, `task ${task.id}`);
+    if (task.effortWaiver !== null && task.effortWaiver !== undefined) requiredText(task.effortWaiver, `task ${task.id} effortWaiver`);
     validTimestamp(task.createdAt);
     validTimestamp(task.updatedAt);
   }
@@ -108,10 +116,30 @@ export function normalizeTask(task, index, defaultStatus, previousTaskId = null)
     writeScope: source.writeScope === undefined || source.writeScope === null
       ? null
       : normalizeWriteScope(source.writeScope, `tasks[${index}].writeScope`),
+    route: source.route === undefined || source.route === null ? null : validTaskRoute(source.route, `tasks[${index}].route`),
+    effort: null,
+    effortSource: null,
+    effortWaiver: null,
     blocker: null,
     createdAt: timestamp(),
     updatedAt: timestamp(),
   };
+}
+
+export function validTaskRoute(value, label = "route") {
+  if (!TASK_ROUTES.has(value)) throw new Error(`${label} must be one of: ${[...TASK_ROUTES].join(", ")}`);
+  return value;
+}
+
+// effort "inherited" pairs only with source "inherited"; source "host-option" needs a concrete level; a source
+// without an effort is only meaningful as "not-applied".
+export function assertEffortRecord(effort, source, label = "task") {
+  if (effort !== null && !TASK_EFFORTS.has(effort)) throw new Error(`${label} effort must be one of: ${[...TASK_EFFORTS].join(", ")}`);
+  if (source !== null && !EFFORT_SOURCES.has(source)) throw new Error(`${label} effortSource must be one of: ${[...EFFORT_SOURCES].join(", ")}`);
+  if (effort === "inherited" && source !== "inherited") throw new Error(`${label} effort inherited requires effortSource inherited`);
+  if (source === "host-option" && !CONCRETE_EFFORTS.has(effort)) throw new Error(`${label} effortSource host-option requires a concrete effort (${[...CONCRETE_EFFORTS].join(", ")})`);
+  if (source === "inherited" && effort === null) throw new Error(`${label} effortSource inherited requires an effort`);
+  if (effort !== null && source === null) throw new Error(`${label} effort requires an effortSource`);
 }
 
 export function migrateState(value) {
