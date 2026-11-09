@@ -4,7 +4,7 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- 없음.
+- [Cairn 0.4.1 릴리스](docs/plan/release-0.4.1.md): Heavy Path 설계 모델 위임을 dev·main 병합 후 npm `latest`로 게시합니다.
 
 ## Superseded Plans
 
