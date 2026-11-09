@@ -29,3 +29,9 @@
 ## Evidence
 
 - 사전 정리: PR https://github.com/dspaudio/cairn-ai/pull/73 병합(merge `7f5aa8f`).
+- `release-commit`: 커밋 `c04bb8a`, `goal verify -- npm run check` exit 0.
+- `dev-pr`: https://github.com/dspaudio/cairn-ai/pull/74 CI 7개 통과 후 head `c04bb8a` 고정 병합(merge `73a7186`).
+- `main-pr`: https://github.com/dspaudio/cairn-ai/pull/75 CI 7개 통과 후 head `73a7186` 고정 병합(merge `c450b6c`).
+- `npm-publish`: `c450b6c`의 clean detached worktree에서 pack 1회(prepack의 `npm run check` 통과). tarball `cairn-ai-0.4.1.tgz`, 141,254 bytes, 95 files, sha1 `cb65fe578634dc1b5f0814f6a93b2353507b4948`, integrity `sha512-WQdgUETxIcYLZApaQ5/NgeBhCwCh8PuqTPfRHzy6iFjwKCUwQ3t0I2WH/2BH9x/0swoX05a4UnvnyTH7OlS7gw==`. 같은 파일로 dry-run 통과 후 첫 게시 시도는 EOTP로 실패했고, 실제 게시는 사용자가 브라우저 인증으로 수행. registry shasum·integrity·`latest` 일치를 `goal verify`로 확인. 게시 직후 registry 조회는 잠시 404였고 재게시 없이 반영을 기다림.
+- `release-verify`: 격리된 prefix, cache, HOME, `CAIRN_HOME`에 registry 0.4.1을 설치해 설계 없는 Heavy 완료 거부, 모델 미기록 설계 완료 거부, 기록 후 완료, replan 후 설계 유지를 확인. 최종 `goal finish` exit 0.
+- 후속: `main`의 머지 커밋 `c450b6c`가 `dev`에 없어 다음 승격 전 동기화가 필요합니다(`main` 보호 규칙 strict). 로컬 Cairn 설치본은 0.4.0이며 변경하지 않았습니다.
