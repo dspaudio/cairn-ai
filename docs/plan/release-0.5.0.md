@@ -26,4 +26,10 @@
 
 ## Evidence
 
-- (진행하며 기록)
+- `release-commit`: 커밋 `13ef9e4`, `goal verify -- npm run check` exit 0(225 pass).
+- `dev-pr`: https://github.com/dspaudio/cairn-ai/pull/77 head `13ef9e4` CI 7개 통과 후 head 고정 병합(merge `2b7137e`). 첫 실행에서 Windows + Node current의 `a stale lifecycle observer never displaces a confirmed live lifecycle owner`가 1회 실패했다(1초 lock 타임아웃에 1018ms). 이번 변경은 lifecycle lock 코드를 건드리지 않았고, 실패 job만 재실행해 통과했다. 최근 CI 이력에는 같은 테스트의 실패가 없었다.
+- `main-pr`: https://github.com/dspaudio/cairn-ai/pull/78 head `2b7137e` CI 7개 통과 후 head 고정 병합(merge `0c55a78`).
+- `npm-publish`: `0c55a78`의 clean detached worktree에서 pack 1회(prepack의 `npm run check` 통과). tarball `cairn-ai-0.5.0.tgz`, 143,115 bytes, 95 files, sha1 `6a56d04b0ee189a373274a4e403f0db24ee54290`, integrity `sha512-aPNYsJQGDfkc0Stbb/PNBCCelzNTu0iJN+0LsVnhX7jWUlCsJ+jXNjvjYQQNPu4eb53VGxq9Op0TUwqsnVM89w==`. 같은 파일로 dry-run 통과. 첫 게시 시도는 npm 토큰 만료(E404 PUT, `npm whoami` 401)로, 재로그인 뒤 두 번째 시도는 EOTP로 거부됐고 두 번 모두 registry에 반영된 것이 없음을 확인했다. 실제 게시는 같은 tarball로 사용자가 터미널에서 브라우저 인증을 거쳐 수행(`+ cairn-ai@0.5.0`). 게시 직후 registry 조회는 수 분간 404였고 재게시 없이 반영을 기다린 뒤 registry version·shasum·integrity·`latest` 일치를 `goal verify`로 확인.
+- `release-verify`: 격리된 prefix, cache, HOME, `CAIRN_HOME`에 registry 0.5.0을 설치해 host 미선언 `opus` 설계 완료 거부와 waiver 완료, `--host claude-code` `fable` 완료와 `goal stats`의 `modelHost`·`effectiveModel` 노출, `--host claude-code` `pro` 완료 거부를 확인.
+- `local-upgrade`: `/opt/homebrew` 전역 패키지를 `npm install -g cairn-ai@0.5.0`으로 올리고 `cairn upgrade` 실행. versioned runtime은 `0.5.0`만 남았고 `cairn doctor` 29개 항목이 모두 OK. Claude runtime locator가 0.5.0을 가리킨다. 최종 `goal finish` exit 0(0.5.0 CLI로 실행).
+- 후속: 이 기록 브랜치에서 `main`의 머지 커밋 `0c55a78`을 `dev`에 합쳤다. 업그레이드 전에 시작한 세션은 훅이 0.4.1 경로를 가리키므로 새 세션부터 0.5.0 훅이 적용된다. Windows + Node current에서 1회 실패한 lifecycle lock 동시성 테스트는 타이밍 여유(1초)가 작아 재발할 수 있다.

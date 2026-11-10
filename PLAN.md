@@ -4,7 +4,7 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- [Cairn 0.5.0 릴리스](docs/plan/release-0.5.0.md): 모델 위임 규칙 4가지 개선을 dev·main 병합 후 npm `latest`로 게시하고 로컬 설치본을 업그레이드합니다.
+- 없음.
 
 ## Superseded Plans
 
@@ -12,6 +12,7 @@ This file is a short index of active and completed work plans.
 
 ## Completed Plans
 
+- [Cairn 0.5.0 릴리스](docs/plan/release-0.5.0.md): PR #77·#78을 CI 통과 후 병합하고, exact main tarball을 npm `latest` 0.5.0으로 게시해 registry digest와 격리 설치를 확인한 뒤 로컬 설치본을 0.5.0으로 업그레이드했습니다.
 - [모델 위임 규칙 4가지 개선](docs/plan/delegation-model-identity-rules.md): worker가 보고한 실제 모델 ID 기록(`--effective-model`), 모델·effort 변경 시 새 dispatch, host task list 동기화의 main 전담, 설계 task strongest tier 완료 게이트(`--host`)를 정책 표면과 goal CLI에 반영; `npm run check` 통과.
 - [Cairn 0.4.1 릴리스](docs/plan/release-0.4.1.md): PR #74·#75를 CI 통과 후 병합하고, exact main tarball을 npm `latest` 0.4.1로 게시해 registry digest와 격리 설치를 확인했습니다.
 - [Heavy Path 설계 모델 위임](docs/plan/heavy-design-model-routing.md): Heavy Path 설계를 strongest 모델 위임 task로 분리하고 모델 기록 누락을 완료 게이트로 차단; `npm run check` 통과.
