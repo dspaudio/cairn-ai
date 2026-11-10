@@ -469,6 +469,40 @@ test("supported readmes document safe token-efficient verification and completed
   assert.match(completedPlan, /현재 단계: 완료/);
 });
 
+test("delegation policy surfaces state model identity, new-dispatch, task-list, and strongest-design rules", async () => {
+  const read = (path) => readFile(path, "utf8");
+  const delegations = ["skills/cairn-plan/delegation.md", "skills/cairn-work/delegation.md"];
+  const heavyPaths = ["skills/cairn-plan/heavy-path.md", "skills/cairn-work/heavy-path.md"];
+  const guidance = ["docs/model-guidance/README.md", "docs/model-guidance/claude.md"];
+  const identity = [...delegations, ...guidance, "templates/work-plan.md", "agents/worker.md"];
+
+  for (const path of identity) {
+    const content = await read(path);
+    assert.match(content, /exact model ID/i, `${path} R1 exact model ID`);
+    assert.match(content, /unreported/, `${path} R1 unreported`);
+    assert.match(content, /never guess/i, `${path} R1 never guess`);
+  }
+  for (const path of [...identity.filter((path) => path !== "agents/worker.md"), ...heavyPaths]) {
+    const content = await read(path);
+    assert.match(content, /new dispatch/i, `${path} R2 new dispatch`);
+    assert.match(content, /SendMessage/, `${path} R2 SendMessage`);
+  }
+  assert.match(await read("agents/worker.md"), /new dispatch.*SendMessage|SendMessage.*new dispatch/is, "agents/worker.md R2");
+  for (const path of ["agents/worker.md", "skills/cairn-plan/planning-rules.md", "skills/cairn-plan/SKILL.md", "commands/cairn-plan.md", ".agents/workflows/cairn-plan.md", ...delegations]) {
+    assert.match(await read(path), /main agent only/i, `${path} R3 main agent only`);
+  }
+  for (const path of ["agents/worker.md", "skills/cairn-plan/planning-rules.md", ...delegations]) {
+    const content = await read(path);
+    for (const name of ["update_plan", "create_goal", "wrap_up"]) assert.ok(content.includes(`\`${name}\``), `${path} R3 ${name}`);
+  }
+  for (const path of [...delegations, ...heavyPaths, ...guidance]) {
+    const content = await read(path);
+    assert.match(content, /--host/, `${path} R4 --host`);
+    assert.match(content, /strongest/i, `${path} R4 strongest`);
+    assert.match(content, /--allow-no-design-model/, `${path} R4 waiver`);
+  }
+});
+
 async function withTempRoot(run) {
   const root = await mkdtemp(join(tmpdir(), "cairn-token-efficiency-"));
   const stateHome = `${root}-home`;

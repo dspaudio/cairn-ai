@@ -82,10 +82,16 @@ export async function runGoalCli(args, {
       model: options.model,
       modelSource: options["model-source"],
       designWaiver: options["allow-no-design-model"],
+      effectiveModel: options["effective-model"],
+      modelHost: options.host,
     });
     const task = state.tasks.find((item) => item.id === String(options.task ?? positional[0]).trim());
     if (task?.route === "heavy" && task.assignedAgentId && (!task.effort || task.effortSource === "not-applied")) {
       stderr(`Cairn warning: Heavy task ${task.id} is assigned without an applied effort (effort ${task.effort ?? "none"}, source ${task.effortSource ?? "none"}); dispatch with the plan's effort and record --effort <level> --effort-source host-option.`);
+    }
+    // A worker-reported ID that does not contain the passed alias hints at a silent fallback; warn, never block.
+    if (task?.model && task.effectiveModel && task.effectiveModel !== "unreported" && !task.effectiveModel.toLowerCase().includes(task.model.toLowerCase())) {
+      stderr(`Cairn warning: Task ${task.id} effective model ${task.effectiveModel} does not match the passed model ${task.model}; check the dispatch result.`);
     }
     emit(JSON.stringify(state));
     return state;
@@ -222,7 +228,7 @@ function allowedOptions(command) {
     task: ["task", "status", "reason", "allow-inherited-effort", "allow-no-design-model"],
     replan: ["tasks"],
     claim: ["session"],
-    assign: ["task", "agent", "effort", "effort-source", "route", "allow-inherited-effort", "kind", "model", "model-source", "allow-no-design-model"],
+    assign: ["task", "agent", "effort", "effort-source", "route", "allow-inherited-effort", "kind", "model", "model-source", "allow-no-design-model", "effective-model", "host"],
     receipt: ["task", "kind", "scope", "command", "exitCode", "exit-code", "exit", "timestamp", "goalId", "goal-id", "plan"],
     verify: ["task", "kind", "scope", "watch", "timeout-ms"],
     finish: ["watch", "timeout-ms"],

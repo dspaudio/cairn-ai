@@ -41,14 +41,14 @@ Describe the observable result.
 
 ## Reasoning Effort Profile
 
-- Model: decided per task (fast `haiku` for read-only exploration/search/summarization; balanced `sonnet` for Light implementation and routine verification; stronger `opus` for planning, complexity triage, Heavy implementation, review, and final verification/review; strongest `fable` for Heavy design only, as a separate `kind: "design"` task dispatched to that tier rather than part of planning). Pass it through the host option on every dispatch (Claude Code: Agent `model`, never `fork`); re-dispatch one tier up (fast, balanced, stronger, strongest) if a lower-tier worker fails a gate; `Model routing: inherited` disables this. Never change model/global config.
+- Model: decided per task (fast `haiku` for read-only exploration/search/summarization; balanced `sonnet` for Light implementation and routine verification; stronger `opus` for planning, complexity triage, Heavy implementation, review, and final verification/review; strongest `fable` for Heavy design only, as a separate `kind: "design"` task dispatched to that tier rather than part of planning). Pass it through the host option on every dispatch (Claude Code: Agent `model`, never `fork`); re-dispatch one tier up (fast, balanced, stronger, strongest) if a lower-tier worker fails a gate; `Model routing: inherited` disables this. Effective model adds the exact model ID the worker reports from its own system prompt (`unreported` when absent; never guess). A re-dispatch that changes model or effort MUST be a new dispatch, never `SendMessage`. A design model below the host's strongest tier (`--host`: `fable`/`gpt-6-astra`/`pro`) fails completion unless `--allow-no-design-model <reason>`. Never change model/global config.
 - Light Path: planning=`medium`, implementation=`medium`, verification=`medium`.
 - Heavy Path: planning/review=`high`, implementation=`high`, final verification/review=`xhigh`.
 - Host boundary: every new task/worker dispatch MUST pass the task's requested effort through the host option (Claude Code: Agent `effort`, never `fork`; Codex: host-native option). Recording without passing is a defect. Use `inherited` only when the host has no option.
 - Route-change gate: synchronize the plan artifact, repository goal task roadmap through `goal replan`, native UI plan, and reasoning effort profile before edits resume. Completed task profiles are preserved as audit history; incomplete task profiles are recalculated for the new path.
 - Every module task records:
   - Requested model:
-- Effective model: <applied value | not-applied: reason | inherited: host has no option>
+- Effective model: <applied value (reported model ID | unreported) | not-applied: reason | inherited: host has no option>
 - Requested reasoning effort:
   - Effective reasoning effort: <applied value | not-applied: reason | inherited: host has no option>
 
@@ -121,7 +121,7 @@ Describe the observable result.
 - Task ID: `triage-plan`
 - Initial status: `active`
 - Requested model:
-- Effective model: <applied value | not-applied: reason | inherited: host has no option>
+- Effective model: <applied value (reported model ID | unreported) | not-applied: reason | inherited: host has no option>
 - Requested reasoning effort:
 - Effective reasoning effort: <applied value | not-applied: reason | inherited: host has no option>
 - Contract: execute the investigation scope and Heavy Path criteria declared by the initial plan, then update this file and the Codex UI plan to the decision-complete implementation revision.
@@ -134,7 +134,7 @@ Describe the observable result.
 - Task ID: `task-1`
 - Initial status: `pending` or `active`
 - Requested model:
-- Effective model: <applied value | not-applied: reason | inherited: host has no option>
+- Effective model: <applied value (reported model ID | unreported) | not-applied: reason | inherited: host has no option>
 - Requested reasoning effort:
 - Effective reasoning effort: <applied value | not-applied: reason | inherited: host has no option>
 - Contract:
