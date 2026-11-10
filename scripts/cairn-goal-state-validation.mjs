@@ -26,6 +26,8 @@ export const CONCRETE_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"
 export const TASK_EFFORTS = new Set([...CONCRETE_EFFORTS, "inherited"]);
 export const EFFORT_SOURCES = new Set(["host-option", "inherited", "not-applied"]);
 export const TASK_KINDS = new Set(["design"]);
+// The host's strongest tier is the value passed at dispatch; mirrors the strongest column in skills/cairn-plan/delegation.md.
+export const STRONGEST_MODEL_BY_HOST = Object.freeze({ "claude-code": "fable", codex: "gpt-6-astra", antigravity: "pro" });
 
 export function validateState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Cairn goal state must be an object");
@@ -70,6 +72,8 @@ export function validateState(value) {
     if (task.kind !== null && task.kind !== undefined) validTaskKind(task.kind, `task ${task.id} kind`);
     assertModelRecord(task.model ?? null, task.modelSource ?? null, `task ${task.id}`);
     if (task.designWaiver !== null && task.designWaiver !== undefined) requiredText(task.designWaiver, `task ${task.id} designWaiver`);
+    if (task.modelHost !== null && task.modelHost !== undefined) validModelHost(task.modelHost, `task ${task.id} modelHost`);
+    if (task.effectiveModel !== null && task.effectiveModel !== undefined) requiredText(task.effectiveModel, `task ${task.id} effectiveModel`);
     validTimestamp(task.createdAt);
     validTimestamp(task.updatedAt);
   }
@@ -128,6 +132,8 @@ export function normalizeTask(task, index, defaultStatus, previousTaskId = null)
     model: null,
     modelSource: null,
     designWaiver: null,
+    modelHost: null,
+    effectiveModel: null,
     blocker: null,
     createdAt: timestamp(),
     updatedAt: timestamp(),
@@ -136,6 +142,11 @@ export function normalizeTask(task, index, defaultStatus, previousTaskId = null)
 
 export function validTaskRoute(value, label = "route") {
   if (!TASK_ROUTES.has(value)) throw new Error(`${label} must be one of: ${[...TASK_ROUTES].join(", ")}`);
+  return value;
+}
+
+export function validModelHost(value, label = "modelHost") {
+  if (!Object.hasOwn(STRONGEST_MODEL_BY_HOST, value)) throw new Error(`${label} must be one of: ${Object.keys(STRONGEST_MODEL_BY_HOST).join(", ")}`);
   return value;
 }
 

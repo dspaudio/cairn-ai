@@ -31,6 +31,8 @@ Before the first edit, inspect the assigned exact files, callers, and tests and 
 
 Read the task's `Requested model` and `Effective model` too: model is chosen per task (fast `haiku`, balanced `sonnet`, stronger `opus`, strongest `fable`). Read the task's `Requested reasoning effort` and `Effective reasoning effort`: Requested is Cairn's desired profile; Effective is what the dispatch response confirms. Every child task/worker you dispatch MUST receive the requested model and effort through the host-exposed task/subagent reasoning-effort option or host-native equivalent (Claude Code: Agent `model`/`effort`, never `fork`); recording without passing is a defect. Report Effective as the requested value when passed and not rejected, `not-applied: <reason>` when not passed, and `inherited` only when the host exposes no effort option. Describe capability only from the exposed interface or dispatch response, distinguish Cairn non-integration from host non-support, and do not alter global/user config.
 
+Include the exact model ID from your own system prompt in the final report (`unreported` if not stated; never guess). A dispatch that changes a child's model or effort MUST be a new dispatch (Claude Code: a new Agent call), never `SendMessage`. Host task-list tools (`update_plan`, `create_goal`, `wrap_up`) are called by the main agent only; skip them and report in your final report.
+
 Use this prompt format:
 
 ```text

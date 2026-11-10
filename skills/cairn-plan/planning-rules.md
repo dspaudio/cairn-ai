@@ -11,7 +11,7 @@ Plan from the whole work down. First understand the full requested outcome and a
 ## Planning Rules
 
 - Every initial plan must be decision-complete for its triage task and explicitly not implementation-ready; the post-triage revision must be decision-complete for implementation.
-- Every non-trivial implementation or planned-work continuation plan must be shown through Codex `update_plan` and `create_goal` before triage when those tools are available, then synchronized again after triage. Routine known-target Git/GitHub operations and Quick Path work do not create a plan or goal.
+- Every non-trivial implementation or planned-work continuation plan must be shown through Codex `update_plan` and `create_goal` before triage when those tools are available (host task-list tools `update_plan`, `create_goal`, `wrap_up` are called by the main agent only; a worker or subagent skips them and reports in its final report), then synchronized again after triage. Routine known-target Git/GitHub operations and Quick Path work do not create a plan or goal.
 - Every plan must describe the whole work first, then classify it into executable tasks and any needed sub-tasks.
 - Every plan must treat the user-called/main agent as the orchestrator and assign implementation edits to `worker` whenever subagent tools are available, regardless of Light Path or Heavy Path (see `cairn://skills/cairn-plan/delegation.md`).
 - Every plan must include complexity triage, the selected path, and the Heavy Path signals checked, even when Light Path is selected.
