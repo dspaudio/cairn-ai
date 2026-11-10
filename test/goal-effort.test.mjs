@@ -18,6 +18,7 @@ import {
   startGoal,
 } from "../scripts/cairn-goal.mjs";
 import { runStateResult } from "../scripts/cairn-state.mjs";
+import { STRONGEST_MODEL_BY_HOST } from "../scripts/cairn-goal-state-validation.mjs";
 
 const cliScript = resolve("scripts/cairn.mjs");
 
@@ -438,3 +439,135 @@ async function withTempRoot(work) {
     await rm(stateHome, { recursive: true, force: true });
   }
 }
+
+const designGateError = /Design task design recorded model .* expected .*fable.*gpt-6-astra.*pro.*--allow-no-design-model <reason>/;
+
+async function completeDesign(root) {
+  await recordTaskEvidence(root, "design");
+  return setTaskStatus({ root, taskId: "design", status: "completed" });
+}
+
+test("a design task without a declared host must use one of the strongest values", async () => {
+  for (const model of ["fable", "gpt-6-astra", "pro"]) {
+    await withTempRoot(async (root) => {
+      await startDesignGoal(root);
+      await assignTask({ root, taskId: "design", kind: "design", model });
+      assert.equal(task(await completeDesign(root), "design").status, "completed", model);
+    });
+  }
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    await assignTask({ root, taskId: "design", kind: "design", model: "opus" });
+    await recordTaskEvidence(root, "design");
+    await assert.rejects(setTaskStatus({ root, taskId: "design", status: "completed" }), designGateError);
+    assert.equal(task(await readGoalState({ root }), "design").status, "active");
+    const waived = await setTaskStatus({ root, taskId: "design", status: "completed", designWaiver: "host has no strongest tier" });
+    assert.equal(task(waived, "design").status, "completed");
+  });
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    await assignTask({ root, taskId: "design", kind: "design", model: "opus", designWaiver: "assign-time waiver" });
+    assert.equal(task(await completeDesign(root), "design").status, "completed");
+  });
+});
+
+test("a design task with a declared host must use that host's strongest value", async () => {
+  for (const [modelHost, model, ok] of [
+    ["claude-code", "fable", true], ["claude-code", "pro", false], ["claude-code", "opus", false],
+    ["codex", "gpt-6-astra", true], ["codex", "fable", false],
+    ["antigravity", "pro", true],
+  ]) {
+    await withTempRoot(async (root) => {
+      await startDesignGoal(root);
+      await assignTask({ root, taskId: "design", kind: "design", model, modelHost });
+      if (ok) assert.equal(task(await completeDesign(root), "design").status, "completed", `${modelHost} ${model}`);
+      else {
+        await recordTaskEvidence(root, "design");
+        await assert.rejects(
+          setTaskStatus({ root, taskId: "design", status: "completed" }),
+          new RegExp(`Design task design recorded model ${model}, expected ${STRONGEST_MODEL_BY_HOST[modelHost]} for host ${modelHost}.*--allow-no-design-model <reason>`),
+          `${modelHost} ${model}`,
+        );
+      }
+    });
+  }
+});
+
+test("modelHost and effectiveModel are validated, kept on omission, and reset by replan", async () => {
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    await assert.rejects(assignTask({ root, taskId: "design", modelHost: "gemini" }), /modelHost must be one of/);
+    await assert.rejects(assignTask({ root, taskId: "design", effectiveModel: "   " }), /effectiveModel/);
+    assert.equal(task(await readGoalState({ root }), "design").modelHost, null);
+    let state = await assignTask({ root, taskId: "design", model: "fable", modelHost: "claude-code", effectiveModel: "claude-fable-5-1" });
+    assert.equal(task(state, "design").modelHost, "claude-code");
+    assert.equal(task(state, "design").effectiveModel, "claude-fable-5-1");
+    state = await assignTask({ root, taskId: "design", agentId: "worker-1" });
+    assert.equal(task(state, "design").modelHost, "claude-code");
+    assert.equal(task(state, "design").effectiveModel, "claude-fable-5-1");
+    state = await assignTask({ root, taskId: "design", effectiveModel: "unreported" });
+    assert.equal(task(state, "design").effectiveModel, "unreported");
+    state = await replanGoal({ root, tasks: [{ id: "design", title: "Heavy design", route: "heavy", kind: "design" }] });
+    assert.equal(task(state, "design").modelHost, null);
+    assert.equal(task(state, "design").effectiveModel, null);
+  });
+});
+
+test("stored state with an invalid modelHost or blank effectiveModel is rejected on load; absent fields load", async () => {
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    const path = goalStatePath(root);
+    const original = JSON.parse(await readFile(path, "utf8"));
+    for (const field of ["modelHost", "effectiveModel"]) assert.equal(field in original.tasks[0], true);
+    const legacy = structuredClone(original);
+    for (const item of legacy.tasks) { delete item.modelHost; delete item.effectiveModel; }
+    await writeFile(path, JSON.stringify(legacy));
+    const loaded = await readGoalState({ root });
+    assert.equal(loaded.tasks.length, 3);
+    assert.deepEqual(Object.keys(goalStats(loaded).tasks[0]).filter((key) => key === "modelHost" || key === "effectiveModel"), []);
+
+    for (const [field, value, pattern] of [["modelHost", "gemini", /modelHost/], ["effectiveModel", "  ", /effectiveModel/]]) {
+      const broken = structuredClone(original);
+      broken.tasks[0][field] = value;
+      await writeFile(path, JSON.stringify(broken));
+      await assert.rejects(readGoalState({ root }), pattern, field);
+    }
+  });
+});
+
+test("goal CLI passes --host and --effective-model, stats exposes them only when set, and a mismatch warns on stderr", async () => {
+  await withTempRoot(async (root) => {
+    await startDesignGoal(root);
+    const out = [];
+    const err = [];
+    const io = { stdout: (line) => out.push(line), stderr: (line) => err.push(line) };
+    await handleGoalCli(["goal", "assign", "design", "--root", root, "--kind", "design", "--model", "fable", "--host", "claude-code", "--effective-model", "claude-fable-5-1"], io);
+    assert.deepEqual(err, []);
+    const assigned = task(JSON.parse(out.at(-1)), "design");
+    assert.equal(assigned.modelHost, "claude-code");
+    assert.equal(assigned.effectiveModel, "claude-fable-5-1");
+
+    await handleGoalCli(["goal", "assign", "design", "--root", root, "--effective-model", "unreported"], io);
+    assert.deepEqual(err, [], "unreported never warns");
+    await handleGoalCli(["goal", "assign", "design", "--root", root, "--effective-model", "claude-opus-4-7"], io);
+    assert.equal(err.length, 1);
+    assert.match(err[0], /^Cairn warning: Task design effective model claude-opus-4-7 does not match the passed model fable/);
+    assert.equal(task(JSON.parse(out.at(-1)), "design").effectiveModel, "claude-opus-4-7", "stdout JSON is unchanged and the assign is not blocked");
+    await assert.rejects(handleGoalCli(["goal", "assign", "design", "--root", root, "--host", "gemini"], io), /modelHost must be one of/);
+    assert.equal(task(await readGoalState({ root }), "design").modelHost, "claude-code");
+
+    const stats = goalStats(await readGoalState({ root }));
+    const design = stats.tasks.find((item) => item.id === "design");
+    assert.equal(design.modelHost, "claude-code");
+    assert.equal(design.effectiveModel, "claude-opus-4-7");
+    const light = stats.tasks.find((item) => item.id === "light");
+    assert.equal("modelHost" in light, false);
+    assert.equal("effectiveModel" in light, false);
+  });
+});
+
+test("the code strongest table matches the strongest values documented in skills/cairn-plan/delegation.md", async () => {
+  const doc = await readFile(resolve("skills/cairn-plan/delegation.md"), "utf8");
+  assert.deepEqual({ ...STRONGEST_MODEL_BY_HOST }, { "claude-code": "fable", codex: "gpt-6-astra", antigravity: "pro" });
+  for (const value of Object.values(STRONGEST_MODEL_BY_HOST)) assert.ok(doc.includes(`\`${value}\``), value);
+});

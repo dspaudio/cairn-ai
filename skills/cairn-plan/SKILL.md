@@ -42,7 +42,7 @@ Record three triage checkpoints: request (provisional), planning (after explorat
 1. Run `node "<pluginRoot>/scripts/cairn.mjs" init --root "<repoRoot>"`. If unavailable, create `MEMORY.md`, `PLAN.md`, `docs/memory`, `docs/plan` and report that `cairn doctor`/`cairn upgrade` is needed.
 2. Read `MEMORY.md` when present. A non-trivial implementation request authorizes the plan and goal even if the user never says "goal".
 3. Write the initial plan `docs/plan/<topic>.md` from `cairn://templates/work-plan.md` plus its `PLAN.md` entry from the request and `MEMORY.md`: outcome, anticipated surfaces, stable roadmap, and `triage-plan` as first active task (investigation scope, toolcheck, Heavy criteria, update condition); mark it `initial: decision-complete for triage; not implementation-ready`.
-4. Before exploration, toolcheck, delegation, or a non-blocking question, call Codex `update_plan` first and then `create_goal` when available (record unavailability; never claim sync that did not occur), then start the repository goal:
+4. Before exploration, toolcheck, delegation, or a non-blocking question, call Codex `update_plan` first and then `create_goal` when available (main agent only, subagents skip; record unavailability; never claim sync that did not occur), then start the repository goal:
 
 ```sh
 node "<pluginRoot>/scripts/cairn.mjs" goal start --root "<repoRoot>" --goal "<objective>" --plan "docs/plan/<topic>.md" --tasks '[{"id":"triage-plan","title":"Run planned triage and finalize the plan","requiredEvidence":["planArtifact","triageDecision"]},{"id":"implement","title":"Implement the finalized plan"},{"id":"verify","title":"Verify and review the result"}]' --criteria "<completion criterion>" --session "<current session_id>"

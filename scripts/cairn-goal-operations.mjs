@@ -4,10 +4,10 @@ import { cairnHome, worktreeId } from "./cairn-paths.mjs";
 import { assertNoSymlinkComponents } from "./cairn-safe-fs.mjs";
 import { goalStatePath, readGoalState, readGoalStateUnlocked, withGoalStateLock, writeGoalStateUnlocked } from "./cairn-goal-state.mjs";
 import {
-  GOAL_STATE_VERSION, PLAN_ID_MAX_LENGTH, assertRecoveryReferenceBudget, boundedRequiredText,
+  GOAL_STATE_VERSION, PLAN_ID_MAX_LENGTH, STRONGEST_MODEL_BY_HOST, assertRecoveryReferenceBudget, boundedRequiredText,
   assertCanBeActive, assertEffortRecord, assertModelRecord, assertTaskGraph,
   defaultGoalEvidence, normalizeCriteria, normalizeTask, optionalText, requiredText,
-  terminalGoalStatuses, timestamp, validEvidencePolicy, validGoalStatus, validTaskKind, validTaskRoute, validTaskStatus, validateState,
+  terminalGoalStatuses, timestamp, validEvidencePolicy, validGoalStatus, validModelHost, validTaskKind, validTaskRoute, validTaskStatus, validateState,
 } from "./cairn-goal-state-validation.mjs";
 import {
   advanceGoal, assertGoalMutable, ensureGoalCanComplete, ensureTaskCanComplete,
@@ -211,8 +211,13 @@ function ensureHeavyEffortApplied(task) {
 function ensureHeavyDesignRecorded(state, task) {
   if (task.designWaiver) return;
   if (task.kind === "design") {
-    if (task.model && task.modelSource === "host-option") return;
-    throw new Error(`Design task ${task.id} has no recorded design model (model ${task.model ?? "none"}, source ${task.modelSource ?? "none"}); dispatch it to the strongest tier and record goal assign ${task.id} --model <value> --model-source host-option, or complete with --allow-no-design-model <reason>`);
+    if (!(task.model && task.modelSource === "host-option")) {
+      throw new Error(`Design task ${task.id} has no recorded design model (model ${task.model ?? "none"}, source ${task.modelSource ?? "none"}); dispatch it to the strongest tier and record goal assign ${task.id} --model <value> --model-source host-option, or complete with --allow-no-design-model <reason>`);
+    }
+    // The host is declared, never guessed; without it any supported host's strongest value passes.
+    const expected = task.modelHost ? [STRONGEST_MODEL_BY_HOST[task.modelHost]] : Object.values(STRONGEST_MODEL_BY_HOST);
+    if (expected.includes(task.model)) return;
+    throw new Error(`Design task ${task.id} recorded model ${task.model}, expected ${expected.join(" | ")}${task.modelHost ? ` for host ${task.modelHost}` : ""}; dispatch it to the strongest tier and record goal assign ${task.id} --model <value> --model-source host-option, or complete with --allow-no-design-model <reason>`);
   }
   if (task.route !== "heavy" || !task.assignedAgentId) return;
   if (state.tasks.some((item) => item.kind === "design" && item.status === "completed")) return;
@@ -222,7 +227,7 @@ function ensureHeavyDesignRecorded(state, task) {
 // Omitted effort/route/waiver options keep stored values, so a reassignment can change only the agent. When effort
 // or effortSource is given, both are replaced together; an omitted source is inferred from the effort.
 export async function assignTask({
-  root = process.cwd(), taskId, agentId = null, effort, effortSource, route, effortWaiver, kind, model, modelSource, designWaiver,
+  root = process.cwd(), taskId, agentId = null, effort, effortSource, route, effortWaiver, kind, model, modelSource, designWaiver, effectiveModel, modelHost,
 } = {}) {
   const normalizedTaskId = requiredText(taskId, "taskId");
   const normalizedAgentId = agentId === null ? null : requiredText(agentId, "agentId");
@@ -239,6 +244,8 @@ export async function assignTask({
   if (modelGiven) assertModelRecord(normalizedModel, normalizedModelSource, "assign");
   const normalizedKind = kind === undefined ? undefined : validTaskKind(kind);
   const normalizedDesignWaiver = designWaiver === undefined ? undefined : requiredText(designWaiver, "designWaiver");
+  const normalizedEffectiveModel = effectiveModel === undefined ? undefined : requiredText(effectiveModel, "effectiveModel");
+  const normalizedModelHost = modelHost === undefined ? undefined : validModelHost(modelHost);
   const normalizedRoute = route === undefined ? undefined : validTaskRoute(route);
   const normalizedWaiver = effortWaiver === undefined ? undefined : requiredText(effortWaiver, "effortWaiver");
   return mutateGoal(root, (state) => {
@@ -255,6 +262,8 @@ export async function assignTask({
     }
     if (normalizedKind !== undefined) task.kind = normalizedKind;
     if (normalizedDesignWaiver !== undefined) task.designWaiver = normalizedDesignWaiver;
+    if (normalizedEffectiveModel !== undefined) task.effectiveModel = normalizedEffectiveModel;
+    if (normalizedModelHost !== undefined) task.modelHost = normalizedModelHost;
     if (normalizedRoute !== undefined) task.route = normalizedRoute;
     if (normalizedWaiver !== undefined) task.effortWaiver = normalizedWaiver;
     task.updatedAt = timestamp();
