@@ -4,7 +4,7 @@ This file is a short index of active and completed work plans.
 
 ## Active Plans
 
-- 없음.
+- [Cairn 0.5.0 릴리스](docs/plan/release-0.5.0.md): 모델 위임 규칙 4가지 개선을 dev·main 병합 후 npm `latest`로 게시하고 로컬 설치본을 업그레이드합니다.
 
 ## Superseded Plans
 

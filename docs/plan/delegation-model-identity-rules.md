@@ -173,6 +173,8 @@ Cairn의 모델 위임 규칙 4가지를 코드, 문서, 테스트에 반영한�
 - main 직접 수정: `skills/cairn-plan/SKILL.md` step 4의 괄호 두 개를 하나로 합쳤다(검토 중 문장 정리 1건).
 - 계획 대비 차이: `templates/work-plan.md`의 Model 항목에 R1 한 문장이 더 들어갔다(표면 테스트가 R1을 이 파일에서도 검사). `skills/cairn-work/heavy-path.md`의 Route Changes During Work에 R2가 4번으로 들어가 기존 Quick Path 항목이 5번이 됐다.
 
+- 버전: 사용자 요청(2026-11-10)으로 `package.json`과 `.codex-plugin/plugin.json`을 `0.5.0`으로 올리고 테스트의 현재 버전 기대값 5개 파일을 맞췄다. 버전 문자열만 바꿨고 릴리스와 npm 게시는 하지 않았다. 이후 `npm run check` 재실행 exit 0.
+
 ## 남은 한계
 
 - 실제 모델 ID는 worker의 자기 보고다. host가 값을 검증해 주지 않으므로 게이트 기준으로 쓰지 않으며, 별칭과 어긋날 때 경고만 낸다.
@@ -180,7 +182,7 @@ Cairn의 모델 위임 규칙 4가지를 코드, 문서, 테스트에 반영한�
 - strongest 값은 코드 상수(`STRONGEST_MODEL_BY_HOST`)다. host의 tier 이름이 바뀌면 `delegation.md` 표와 함께 고쳐야 하며, 그 전까지는 waiver가 필요하다. 표에 없는 host에서 모델 옵션으로 설계를 위임한 경우도 waiver가 필요하다.
 - "새 dispatch로 재위임"과 "서브에이전트의 task list 도구 생략"은 문서 규칙이며 CLI가 강제하지 않는다.
 - main이 직접 수행하는 미배정 Heavy task는 기존처럼 검사 대상이 아니다.
-- 설치본은 이 변경이 릴리스되어 업그레이드되기 전까지 0.4.1 동작을 유지한다. 릴리스와 npm 게시는 이번 범위가 아니다.
+- 설치본은 `0.5.0`이 릴리스되어 업그레이드되기 전까지 0.4.1 동작을 유지한다. 릴리스와 npm 게시는 이번 범위가 아니다.
 
 ## Status
 
