@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { realpathSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -224,8 +225,11 @@ test("goal stats --history aggregates across worktree directories of the same re
       const result = spawnSync("git", ["-c", "user.name=Cairn Test", "-c", "user.email=cairn@example.invalid", ...args], { encoding: "utf8" });
       assert.equal(result.status, 0, result.stderr);
     };
-    const repo = join(root, "repo");
-    const second = join(root, "second");
+    // Git records the worktree gitdir as a long path; resolve the temp root the same way so a Windows 8.3 short
+    // temp path (RUNNER~1) does not make the two checkouts hash to different repository ids.
+    const base = realpathSync.native(root);
+    const repo = join(base, "repo");
+    const second = join(base, "second");
     await mkdir(repo);
     git("init", "-q", repo);
     git("-C", repo, "commit", "-q", "--allow-empty", "-m", "init");
