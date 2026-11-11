@@ -5,6 +5,7 @@ import { runGoalCli } from "./cairn-goal-cli.mjs";
 import { assignTask, claimGoal, replanGoal, setTaskStatus, startGoal, transitionGoal } from "./cairn-goal-operations.mjs";
 import { finishGoal, goalStats, recordReceipt, verifyAndRecord } from "./cairn-goal-operations-evidence.mjs";
 import { readGoalState } from "./cairn-goal-state.mjs";
+import { goalHistoryStats } from "./cairn-goal-history.mjs";
 import { readyTasks } from "./cairn-goal-operations-mutations.mjs";
 import { defaultGoalEvidence } from "./cairn-goal-state-validation.mjs";
 
@@ -20,6 +21,7 @@ export {
   TASK_STATUSES,
 } from "./cairn-goal-state-validation.mjs";
 export { goalStatePath, readGoalState, writeGoalState } from "./cairn-goal-state.mjs";
+export { GOAL_HISTORY_MAX_RECORDS, goalHistoryPath, goalHistoryStats, memoryPromotionStatus } from "./cairn-goal-history.mjs";
 export { assignTask, claimGoal, reconcileWorktreeState, replanGoal, setTaskStatus, startGoal, transitionGoal } from "./cairn-goal-operations.mjs";
 export { finishGoal, goalStats, recordReceipt, verifyAndRecord } from "./cairn-goal-operations-evidence.mjs";
 export { currentTask, evaluateStop, isGoalOwnedBySession } from "./cairn-goal-policy.mjs";
@@ -34,6 +36,7 @@ export async function handleGoalCli(args = process.argv.slice(2), { stdout = con
       assignTask,
       claimGoal,
       finishGoal,
+      goalHistoryStats,
       goalStats,
       readGoalState,
       readyTasks,

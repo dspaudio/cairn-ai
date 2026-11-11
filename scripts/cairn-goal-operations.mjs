@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import { cairnHome, worktreeId } from "./cairn-paths.mjs";
 import { assertNoSymlinkComponents } from "./cairn-safe-fs.mjs";
 import { goalStatePath, readGoalState, readGoalStateUnlocked, withGoalStateLock, writeGoalStateUnlocked } from "./cairn-goal-state.mjs";
+import { recordGoalHistoryUnlocked } from "./cairn-goal-history.mjs";
 import {
   GOAL_STATE_VERSION, PLAN_ID_MAX_LENGTH, STRONGEST_MODEL_BY_HOST, assertRecoveryReferenceBudget, boundedRequiredText,
   assertCanBeActive, assertEffortRecord, assertModelRecord, assertTaskGraph,
@@ -44,6 +45,8 @@ export async function startGoal({ root = process.cwd(), goal, planId, tasks, com
     if (existing && !terminalGoalStatuses.has(existing.goal.status)) {
       throw new Error(`An unfinished Cairn goal already exists (${existing.goal.id}, ${existing.goal.status}); add the new work to it with goal replan (resume it first if paused or blocked), or cancel or complete it before starting another goal`);
     }
+    // A terminal state persisted by an older version is about to be overwritten; history failure never blocks start.
+    if (existing) await recordGoalHistoryUnlocked(root, existing, { recordedBy: "start", endedAt: existing.goal.updatedAt });
     const now = timestamp();
     const normalizedTasks = normalizeTaskList(tasks, []);
     assertTaskGraph(normalizedTasks);
@@ -88,20 +91,25 @@ export async function reconcileWorktreeState({ root = process.cwd() } = {}) {
   });
 }
 
-export async function transitionGoal({ root = process.cwd(), status, blocker } = {}) {
+// onTerminal(record, { historyError }) runs after a terminal transition succeeds; a history failure never blocks it.
+export async function transitionGoal({ root = process.cwd(), status, blocker, onTerminal = () => {} } = {}) {
   const nextStatus = validGoalStatus(status);
   if (terminalGoalStatuses.has(nextStatus)) {
-    return withGoalStateLock(root, async () => {
+    const { next, history } = await withGoalStateLock(root, async () => {
       const state = await readGoalStateUnlocked(root);
       if (!state) throw new Error("No Cairn goal state exists; start a goal first");
       const next = applyGoalTransition(structuredClone(state), nextStatus, blocker, root);
       next.revision += 1;
       validateState(next);
+      // Recorded before deletion; a retry after a crash replaces the record for the same goalId.
+      const history = await recordGoalHistoryUnlocked(root, next, { recordedBy: "transition" });
       const path = goalStatePath(root);
       await assertNoSymlinkComponents(cairnHome(), path, { allowMissing: false });
       await rm(path);
-      return next;
+      return { next, history };
     });
+    await onTerminal(history.record, { historyError: history.error });
+    return next;
   }
   return mutateGoal(root, (state) => applyGoalTransition(state, nextStatus, blocker, root));
 }

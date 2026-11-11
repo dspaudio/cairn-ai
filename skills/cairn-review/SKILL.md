@@ -24,6 +24,7 @@ Resolve any `cairn://...` resource through `references/cairn-runtime.json` next 
 1. Read the completed task in `docs/plan/<topic>.md`.
 2. Read `MEMORY.md` when present and relevant `docs/memory/*.md`; continue when repository memory is absent.
 3. Check changed files, tool readiness evidence, and evidence paths. Inspect test, fixture, and verification-command diffs and reject any weakening without a recorded plan reason. For defect fixes, confirm the same-rule sweep was performed and its result recorded.
+   - Confirm the plan's Evidence has a filled `Memory promotion:` line (`docs/memory/<domain>.md` or `none: <reason>`) and that `node "<pluginRoot>/scripts/cairn.mjs" memory check --root "<repoRoot>"` and `plan check --root "<repoRoot>"` exit 0. A `none: <reason>` decision is acceptable: do not create a note or demand one; flag a missing or placeholder line, or a named note that does not exist.
 4. Delegate independent review when it materially improves speed or quality and the current tool policy allows it.
    - Use `explorer` for read-only impact analysis, pattern checks, and independent diff inspection.
    - Use `worker` for scoped verification command re-runs or QA artifact capture.
@@ -38,7 +39,7 @@ Resolve any `cairn://...` resource through `references/cairn-runtime.json` next 
 TASK: Review correctness, scope, and evidence for task <task-id>.
 EXPECTED OUTCOME: Findings ordered by severity with file and line references, or an explicit no-issue result with residual risk.
 REQUIRED TOOLS: Read-only diff inspection, tool readiness checks, verification command execution, plan/memory reading.
-MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Check tool readiness and install-attempt evidence. Check dry-run or check evidence when external state could change. Check both module evidence and surface evidence. Preserve proper nouns exactly. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
+MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Check tool readiness and install-attempt evidence. Check dry-run or check evidence when external state could change. Check both module evidence and surface evidence. Check the `Memory promotion:` decision line and the `memory check` and `plan check` results. Preserve proper nouns exactly. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
 MUST NOT DO: Edit files. Ask the user. Approve skipped LSP/typecheck/lint without install evidence. Approve weakened, skipped, or deleted tests or verification commands without a recorded plan reason. Approve missing evidence or open-ended verification loops.
 CONTEXT: docs/plan/<topic>.md, MEMORY.md, relevant docs/memory notes, changed files.
 ```
@@ -50,5 +51,6 @@ CONTEXT: docs/plan/<topic>.md, MEMORY.md, relevant docs/memory notes, changed fi
 - Dry-run or check evidence is present when required, or the plan records why no dry-run exists.
 - Failed gates followed the bounded loop policy and did not continue past two verification passes without a recorded blocker.
 - Review evidence exists in `docs/plan/<topic>.md`.
+- The plan records its `Memory promotion:` decision, and `memory check` and `plan check` pass.
 - Goal-level final review evidence is stored as a successful structured evidence record before the goal is marked `completed`.
 - The next agent can understand verification without rereading the full conversation.

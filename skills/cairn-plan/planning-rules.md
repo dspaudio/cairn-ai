@@ -8,6 +8,16 @@ Do not treat planning as optional for implementation that is more than a Quick P
 
 Plan from the whole work down. First understand the full requested outcome and affected surfaces, then classify the work into small executable tasks. If one task is still too broad to verify cleanly, split it into sub-tasks.
 
+## Reuse Before Planning
+
+Reuse recorded knowledge before exploring from scratch. Do not read every note or plan; pick by the index lines.
+
+- From `MEMORY.md` entries (`- [<name>](docs/memory/<name>.md): <summary>`), pick only the notes whose summary matches the request's modules, surfaces, or failures. The session-start hook lists the same notes; with no notes, continue without repository memory.
+- From `PLAN.md` (older topics in `docs/plan/ARCHIVE.md`), pick at most 3 completed plans that changed the same modules or solved the same kind of problem. Read only their goal, design decisions, and evidence sections, and reuse their verification commands, constraints, and rejected approaches.
+- Record the picks in the plan's `## Memory Inputs`: the selected `docs/memory/<domain>.md` paths and `Related completed plans:` with the plan paths, or `none related`.
+- Pass the selected note paths to delegated agents in the prompt `CONTEXT:` line (`delegation.md`).
+- When you create a plan file, add one line of 200 characters or fewer for it under `## Active Plans` in `PLAN.md` (`- [<topic>](docs/plan/<topic>.md): <title>`), or run `node "<pluginRoot>/scripts/cairn.mjs" plan index --root "<repoRoot>"`. Entries are list lines under `## ` headings ending in `Plans`; a plan link elsewhere is a mention that `plan index` never rewrites. `## Completed Plans` stays newest first; `plan index --archive --root "<repoRoot>"` moves entries beyond the newest 20 to `docs/plan/ARCHIVE.md` without deleting them, and `plan check --root "<repoRoot>"` reports dead links and unindexed plans.
+
 ## Planning Rules
 
 - Every initial plan must be decision-complete for its triage task and explicitly not implementation-ready; the post-triage revision must be decision-complete for implementation.

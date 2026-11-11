@@ -13,7 +13,7 @@ Describe the observable result.
 - Goal ID: `goal-<stable-id>`
 - Plan ID: `plan-<stable-id>`
 - Runtime resources: `cairn://` resources resolved by the installed Cairn version; do not record a user-specific absolute plugin path.
-- Completion criteria:
+- Completion criteria (advisory text; Cairn does not enforce it — completion is gated only by required evidence):
 - Required goal evidence: `finalReview`
 - Terminal state: `completed`, `paused`, `blocked`, or `cancelled` (an `active` goal is never complete).
 
@@ -28,6 +28,7 @@ Describe the observable result.
 
 - `MEMORY.md`
 - `docs/memory/<domain>.md`
+- Related completed plans: <docs/plan/<topic>.md | none related>
 
 ## Model Guidance
 
@@ -161,6 +162,7 @@ Describe the observable result.
 - Module acceptance:
 - Surface integration:
 - Goal final review evidence record:
+- Memory promotion: <docs/memory/<domain>.md | none: reason>
 - Verification pass count:
 - Blocker after two failed passes:
 

@@ -175,8 +175,13 @@ async function reclaimStaleLock(root, lockPath, owner, malformedStaleMs, testHoo
 }
 
 function isReclaimableLock(record, stat, malformedStaleMs) {
-  if (record) return record.hostname === hostname() && !pidIsAlive(record.pid);
+  if (record) return lockOwnerIsDead(record);
   return Date.now() - stat.mtimeMs > malformedStaleMs;
+}
+
+// A lock owner is dead only when it ran on this host and its pid no longer exists.
+export function lockOwnerIsDead(record) {
+  return record.hostname === hostname() && !pidIsAlive(record.pid);
 }
 
 async function confirmsUnclaimedLockOwnership(root, lockPath, nonce) {
@@ -231,7 +236,7 @@ function isTransientLockError(error) {
   return TRANSIENT_LOCK_ERROR_CODES.has(error?.code);
 }
 
-function parseLockRecord(text) {
+export function parseLockRecord(text) {
   try {
     const value = JSON.parse(text);
     if (value?.schemaVersion !== LOCK_SCHEMA_VERSION) return null;

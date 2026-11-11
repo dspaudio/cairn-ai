@@ -63,11 +63,19 @@ Cairn 只对 Claude-family 和 Codex-family models 应用 model-specific adjustm
 
 harness 会在目标 repository root 创建并维护这些文件。
 
-- `MEMORY.md`: persistent domain knowledge 的短索引。
-- `docs/memory/*.md`: 按 domain 记录的详细 knowledge。
+- `MEMORY.md`: persistent domain knowledge 的短索引。在 `## Domain Knowledge` 下每个 note 一行(`- [<name>](docs/memory/<name>.md): <summary>`)，并包含 repository 的 `## Policy`。
+- `docs/memory/*.md`: 按 domain 记录的详细 knowledge。每个 note 在 H1 下有一行 `Summary:`(不超过 120 个字符)，索引和 hook 会显示它。
 - `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/state.json`: user-home 中按 project/worktree 隔离的 active goal/task/evidence 状态，用于中断恢复和 scoped stop gate。project working tree 不拥有 runtime state。
-- `PLAN.md`: active 和 completed work topics 的短索引。
+- `PLAN.md`: work plans 的短索引。在 `## Active Plans` 和 `## Completed Plans` 下每个 plan 一行，不超过 200 个字符。planning rules 位于 `cairn-plan` skill，而不在 `PLAN.md` 中。
 - `docs/plan/*.md`: detailed execution plans。
+- `docs/plan/ARCHIVE.md`: 按从新到旧保存 `cairn plan index --archive` 从 `PLAN.md` 移出的较旧 completed 条目，并把 legacy `## Planning Rules` section 的正文放在 `## Legacy Planning Rules` 下。第一个 `## ` 标题之前的列表行仍视为已索引。
+- `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/history.jsonl`: 每个 completed 或 cancelled goal 一条摘要记录(每个 worktree 保留最新 200 条)，供 `goal stats --history` 读取。
+
+`## Completed Plans` 保持从新到旧排列。`cairn plan index --archive` 保留前 20 条，把其余条目移到 `docs/plan/ARCHIVE.md` 且不删除任何内容；如果列表按从旧到新排列，被归档的会是最新的 plans。请先用 `--dry-run` 预览。现有 `MEMORY.md`/`PLAN.md` 无需迁移即可使用：`init` 不会重写已有文件，`check` 只以 warning 报告旧格式。
+
+在 `SessionStart`，hook 会告诉 agent 有哪些 memory notes(name 和 `Summary:`，列表过长时改为只列 name 的一行)；没有 active goal 时，还会添加一行 plan 索引摘要(plan 数量、active plans、最近 completed plans，以及存在时的 `docs/plan/ARCHIVE.md`)。存在 active、paused、blocked 或其他 session 拥有的 goal 时，只附加 memory 列表，其他 session 的 capsule 绝不显示 plan 名称。没有 goal 时的 `UserPromptSubmit` 只增加一句 note 数量提示。hook 只读取索引文件和目录列表，不读取 note 正文，也不写入任何内容；没有 notes 和 plans 的 repository，hook 输出与以前相同。
+
+`cairn-work` 在 `goal finish` 之前，每个 goal 在 plan 的 Evidence 中记录一次 memory promotion 决定：产生了可复用的 repository knowledge 时写 `Memory promotion: docs/memory/<domain>.md`，否则写 `Memory promotion: none: <reason>`。记录决定是必需的，编写 note 是可选的。goal 完成但 plan 文件中没有已填写的 `Memory promotion:` 行时，`goal finish` 和 `goal complete` 会在 stderr 输出一行提醒，exit code 和 stdout 不变。
 
 root files 保持简短，细节移到 `docs/` 下，让 agents 只读取当前任务需要的 context。
 
@@ -102,6 +110,9 @@ cairn toolcheck
 - `cairn uninstall`: 只删除未修改的 managed entry；modified 或 unmanaged target 会 preserve 并报告 conflict。
 - `cairn toolcheck`: 检测 repository stacks 和 required tools；只执行已批准的 supported installer，否则返回 `installer-unavailable`。
 - `cairn cleanup --root <repo>`: 默认只读报告 legacy project-local `.cairn` residue。`--yes` 将 valid active state 迁移/协调到 user-home store，只删除 known state/lock/tool residue，保留 unknown files，并且仅在目录为空时清理目录。
+- `cairn memory check|index [--root <repo>]`: `check` 对照 `MEMORY.md` 与 `docs/memory/*.md` 并输出一个 JSON 报告；存在 unindexed notes、dead links、duplicates、stale summaries、summary 中的控制字符或 unsafe paths 时 exit 1，warnings 仅在 `--strict` 下失败。条目是 `## Domain Knowledge` 下的列表行(没有该 section 的旧文件则为所有列表行)；其他 section 中的 note 链接只是提及，`index` 不会改写。`index` 添加缺失的 notes，`Summary:` 变化时只替换链接后的 summary 部分(含多个链接的行保持原样)；只删除该 section 内完全匹配的 Cairn placeholder 行，不删除条目或 dead links，其余内容逐字节保留。可用 `--dry-run` 预览。插入位置位于未闭合的 code fence 内时，`index` 不写入任何内容，并以 `unclosed-fence` exit 1。用法错误 exit 2；不带子命令的 `cairn memory` 仍输出原有指引。
+- `cairn plan check|index [--archive] [--root <repo>]`: 对 `PLAN.md` 和 `docs/plan/*.md` 执行相同的检查和索引，条目是标题以 `Plans` 结尾的 `## ` section(如 `## Superseded Plans`)中的列表行。`index` 把 checkbox 全部勾选的 plan 放到 `## Completed Plans` 顶部，其他 plan 放到 `## Active Plans`；只有 `--archive` 会移动行：把超出最新 20 条的 completed 条目(连同缩进段落)和 legacy `## Planning Rules` section 的正文移到 `docs/plan/ARCHIVE.md`。`## Completed Plans` 超过 20 条或仍有 legacy `## Planning Rules` section 时，`check` 会给出 warning。
+- `cairn goal ...`: 管理 repository goal(`cairn goal --help`)。`goal stats --history [--limit N]` 汇总 repository 所有 worktree 中已结束的 goals：completed/cancelled 数量、耗时的中位数和 p90、task 与 receipt 的中位数、rerun rate、memory promotion 决定数、completed goal 达到 4 个后的 older/newer `trend`，以及最近的 goals；没有历史时输出 `{"schemaVersion":1,"scope":"repository","goals":0}`。`completionCriteria`(`goal start --criteria`)是 `advisory`：Cairn 只记录不强制，完成只由 required evidence 判定。
 - `cairn-memory`: 探索 domain knowledge 并更新 `MEMORY.md`。
 - `cairn-plan`: 在 `docs/plan/` 下创建 decision-complete plan。
 - `cairn-work`: 执行当前 `PLAN.md` 中的下一个 module task，并收集两个 verification gates。

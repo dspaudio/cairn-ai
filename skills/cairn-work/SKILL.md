@@ -53,7 +53,7 @@ Read a reference only when the selected path or situation requires it (Quick and
 5. Before mutating external state, run the recorded dry-run or check (or record its absence).
 6. Run both gates through `goal verify -- ...` (module acceptance, surface integration). Treat the tool exit code as authoritative; keep successes short and expand context only for the failing test.
 7. Complete the task only with fresh required evidence, then continue. For the last task, run one goal-level final check through `goal finish -- ...`.
-8. Record evidence in the plan and state before updating `PLAN.md`. Workers report only their assigned task.
+8. Record evidence and the memory promotion decision (`verification.md`) in the plan and state before updating `PLAN.md`. Workers report only their assigned task.
 
 ## Evidence Rules
 

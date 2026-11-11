@@ -179,22 +179,23 @@ test("CLI messages and state initialization run without a POSIX shell", async ()
     await stat(join(temp, "MEMORY.md"));
     await stat(join(temp, "PLAN.md"));
     const plan = await readFile(join(temp, "PLAN.md"), "utf8");
-    assert.match(plan, /Read project-root `MEMORY\.md` first when it exists.*continue without repository memory/);
-    assert.match(plan, /Run complexity triage/);
-    assert.match(plan, /checked Heavy Path signals/);
-    assert.match(plan, /request, planning, and code checkpoints/i);
-    assert.match(plan, /plan artifact.*repository goal task roadmap.*native UI plan/i);
-    assert.match(plan, /reasoning effort profile/i);
-    assert.match(plan, /generated or updated documentation, plans, and memory artifacts/i);
 
     const outputKo = await runState("manual", { root: tempKo, locale: "ko-KR" });
     assert.equal(outputKo, "Cairn이 MEMORY.md, PLAN.md, docs/memory, docs/plan을 초기화했습니다.");
     const memoryKo = await readFile(join(tempKo, "MEMORY.md"), "utf8");
     const planKo = await readFile(join(tempKo, "PLAN.md"), "utf8");
     assert.match(memoryKo, /문서, 계획, 메모리 산출물/);
-    assert.match(planKo, /복잡도 트리아지/);
-    assert.match(planKo, /요청, 계획, 코드 체크포인트/);
-    assert.match(planKo, /문서, 계획, 메모리 산출물/);
+    // Planning rules moved from the PLAN.md index template to the cairn-plan skill, their canonical source.
+    for (const index of [plan, planKo]) {
+      assert.doesNotMatch(index, /## Planning Rules/);
+      assert.match(index, /cairn-plan/);
+      assert.match(index, /cairn plan index/);
+    }
+    assert.ok(plan.length <= 700, `PLAN.md template is ${plan.length} characters; budget is 700`);
+    const planningRules = await readFile(join(root, "skills", "cairn-plan", "planning-rules.md"), "utf8");
+    assert.match(planningRules, /complexity triage, the selected path, and the Heavy Path signals checked/);
+    assert.match(planningRules, /Request checkpoint, planning checkpoint, and code checkpoint/);
+    assert.match(planningRules, /plan artifact, repository goal task roadmap, native UI plan/);
 
     const cli = spawnSync(process.execPath, [cliScript, "memory"], {
       cwd: root,
@@ -350,7 +351,7 @@ test("install doctor uninstall lifecycle uses isolated homes", async () => {
     assert.match(config, /\[marketplaces\.cairn\]/);
     assert.match(config, /\[hooks\.state\."cairn@cairn:hooks\/hooks\.json:stop:0:0"\]/);
 
-    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.5.0", ".codex-plugin", "plugin.json");
+    const manifestPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.6.0", ".codex-plugin", "plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     assert.equal(manifest.hooks, "./hooks/hooks.json");
     const kernel = manifest.interface.defaultPrompt.join("\n");
@@ -467,14 +468,14 @@ test("install registers a Claude Code plugin whose hooks call the installed runt
     const install = runLifecycle("install", env);
     assert.equal(install.status, 0, install.stdout + install.stderr);
     const pluginMarketplace = join(env.CODEX_HOME, "plugins", "cache", "cairn", "claude");
-    const runtimeRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.5.0");
+    const runtimeRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.6.0");
     assert.match(install.stdout, /Claude Code plugin: cairn@cairn/);
 
     const marketplace = JSON.parse(await readFile(join(pluginMarketplace, ".claude-plugin", "marketplace.json"), "utf8"));
     assert.deepEqual(marketplace.plugins.map((plugin) => [plugin.name, plugin.source]), [["cairn", "./cairn"]]);
     const manifest = JSON.parse(await readFile(join(pluginMarketplace, "cairn", ".claude-plugin", "plugin.json"), "utf8"));
     assert.equal(manifest.name, "cairn");
-    assert.equal(manifest.version, "0.5.0");
+    assert.equal(manifest.version, "0.6.0");
     const hooksText = await readFile(join(pluginMarketplace, "cairn", "hooks", "hooks.json"), "utf8");
     assert.doesNotMatch(hooksText, /PLUGIN_ROOT/, "Claude Code does not expand Codex's ${PLUGIN_ROOT}");
     const hooks = JSON.parse(hooksText).hooks;

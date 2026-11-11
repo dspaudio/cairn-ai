@@ -1,4 +1,13 @@
-import { resolveRepoRoot } from "./cairn-paths.mjs";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { memoryPromotionReminder } from "./cairn-goal-history.mjs";
+import { resolvePluginRoot, resolveRepoRoot } from "./cairn-paths.mjs";
+
+const GOAL_COMMANDS = ["start", "status", "ready", "stats", "task", "replan", "claim", "assign", "receipt", "verify", "finish", "pause", "resume", "block", "cancel", "complete"];
+const GOAL_USAGE = [
+  `Usage: cairn goal <${GOAL_COMMANDS.join("|")}> [options] [--root PATH]`,
+  "Note: --criteria (completionCriteria) is advisory and is not enforced; completion is gated only by required evidence.",
+].join("\n");
 
 export async function runGoalCli(args, {
   stdout = console.log,
@@ -8,10 +17,31 @@ export async function runGoalCli(args, {
 }) {
   const [firstCommand = "help", ...remaining] = args;
   const [command = "help", ...rest] = firstCommand === "goal" ? remaining : [firstCommand, ...remaining];
+  // Help and version are answered before parsing options or touching state; arguments after -- are passed through.
+  const leading = [command, ...rest];
+  const separator = leading.indexOf("--");
+  const beforeSeparator = separator === -1 ? leading : leading.slice(0, separator);
+  const help = command === "help" || beforeSeparator.includes("--help");
+  const version = beforeSeparator.includes("--version");
+  if (help && version) throw new Error("--help and --version cannot be used together");
+  if (help) {
+    stdout(GOAL_USAGE);
+    return null;
+  }
+  if (version) {
+    stdout(`cairn ${JSON.parse(readFileSync(join(resolvePluginRoot(import.meta.url), "package.json"), "utf8")).version}`);
+    return null;
+  }
+  if (!GOAL_COMMANDS.includes(command)) throw new Error(unknownCommandMessage(command));
   const { options, positional, passthrough } = parseArgs(rest, command);
   // Without --root, resolve the repository (HARNESS_REPO_ROOT or the nearest .git ancestor), not a subdirectory cwd.
   const root = resolveRepoRoot({ explicitRoot: options.root ?? null });
   const emit = options.quiet ? () => {} : stdout;
+  // Terminal notices go to stderr only; stdout and the exit code stay those of the transition.
+  const onTerminal = (record, { historyError } = {}) => {
+    if (historyError) stderr(`Cairn warning: goal history was not recorded: ${firstLine(historyError)}`);
+    if (record?.status === "completed" && record.memoryPromotion === "missing") stderr(memoryPromotionReminder(record.planId));
+  };
   if (command === "start") {
     const tasks = parseTasks(options.tasks ?? positional.slice(0));
     const state = await operations.startGoal({
@@ -137,6 +167,7 @@ export async function runGoalCli(args, {
   if (command === "finish") {
     const state = await operations.finishGoal({
       root,
+      onTerminal,
       watchPaths: splitValues(options.watch),
       argv: passthrough,
       timeoutMs: options["timeout-ms"] === undefined
@@ -154,6 +185,12 @@ export async function runGoalCli(args, {
     return summary;
   }
   if (command === "stats") {
+    if (options.limit !== undefined && !options.history) throw new Error("--limit requires --history");
+    if (options.history) {
+      const history = await operations.goalHistoryStats({ root, limit: options.limit });
+      stdout(JSON.stringify(history));
+      return history;
+    }
     const stats = operations.goalStats(await operations.readGoalState({ root }), root);
     stdout(JSON.stringify(stats));
     return stats;
@@ -163,18 +200,23 @@ export async function runGoalCli(args, {
       root,
       status: { pause: "paused", resume: "active", block: "blocked", cancel: "cancelled", complete: "completed" }[command],
       blocker: options.reason,
+      onTerminal,
     });
     emit(JSON.stringify(state));
     return state;
   }
-  throw new Error("Usage: cairn-goal start|status|ready|stats|task|replan|claim|assign|receipt|verify|finish|pause|resume|block|cancel|complete [--root PATH]");
+  throw new Error(unknownCommandMessage(command));
+}
+
+function unknownCommandMessage(command) {
+  return `unknown goal command: ${command} (run cairn goal --help)`;
 }
 
 function parseArgs(args, command) {
   const options = {};
   const positional = [];
   const passthrough = [];
-  const booleanOptions = new Set(["quiet"]);
+  const booleanOptions = new Set(["quiet", "history"]);
   const allowed = allowedOptions(command);
   const seenCanonicalOptions = new Set();
   for (let index = 0; index < args.length; index += 1) {
@@ -232,7 +274,7 @@ function allowedOptions(command) {
     receipt: ["task", "kind", "scope", "command", "exitCode", "exit-code", "exit", "timestamp", "goalId", "goal-id", "plan"],
     verify: ["task", "kind", "scope", "watch", "timeout-ms"],
     finish: ["watch", "timeout-ms"],
-    stats: [],
+    stats: ["history", "limit"],
     ready: [],
     pause: [],
     resume: [],
@@ -255,6 +297,10 @@ function parseTasks(value) {
     if (error instanceof SyntaxError) return value.split("|").map((item) => item.trim()).filter(Boolean);
     throw error;
   }
+}
+
+function firstLine(error) {
+  return String(error?.message ?? error).split(/\r?\n/)[0];
 }
 
 function splitValues(value) {
