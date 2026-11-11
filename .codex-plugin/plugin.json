@@ -1,6 +1,6 @@
 {
   "name": "cairn",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity.",
   "author": {
     "name": "WkNam"
@@ -21,7 +21,7 @@
       "Tool Readiness"
     ],
     "defaultPrompt": [
-      "Use Cairn's repository-local PLAN.md and persisted goal state as the recovery spine; read root MEMORY.md first when it exists, and continue without repository memory when it does not.",
+      "Use Cairn's repository-local PLAN.md and persisted goal state as the recovery spine; read root MEMORY.md first when it exists (it indexes docs/memory notes; PLAN.md indexes docs/plan plans — open only the entries the task needs), and continue without repository memory when it does not.",
       "For non-trivial work, load the phase skill (cairn-plan, cairn-work, or cairn-review), then restore the active plan and current-task references before acting.",
       "After compaction, restart, handoff, or delegation, restore optional MEMORY.md → phase skill → active plan → current task references; do not rely on conversation recall.",
       "A missing MEMORY.md never blocks work; fail closed only when active state, its skill, plan, or a required task reference is missing, unreadable, or inconsistent.",

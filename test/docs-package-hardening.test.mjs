@@ -83,3 +83,31 @@ test("CI is least-privilege, bounded, SHA-pinned, and packs without rerunning pr
   assert.match(ci, /MATRIX_RESULT" = "success"[\s\S]*MATRIX_RESULT: \$\{\{ needs\.check\.result \}\}/);
   assert.equal((ci.match(/^\s+- run: npm run check$/gm) ?? []).length, 1);
 });
+
+const readmes = ["README.md", "README.ko.md", "README.ja.md", "README.zh.md", "README.es.md", "README.fr.md", "README.de.md", "README.pt.md"];
+
+test("all readmes document the memory and plan index commands, ARCHIVE.md, goal stats --history, and advisory completionCriteria", async () => {
+  for (const path of readmes) {
+    const readme = await read(path);
+    assert.match(readme, /`cairn memory check\|index\b/, `${path} memory index commands`);
+    assert.match(readme, /`cairn plan check\|index \[--archive\]/, `${path} plan index commands`);
+    assert.match(readme, /`docs\/plan\/ARCHIVE\.md`/, `${path} ARCHIVE.md`);
+    assert.match(readme, /`## Completed Plans`/, `${path} Completed Plans order`);
+    assert.match(readme, /SessionStart/, `${path} session-start index notice`);
+    assert.match(readme, /`goal stats --history( \[--limit N\])?`/, `${path} goal stats --history`);
+    assert.ok(/`completionCriteria`[^\n]*`advisory`|`advisory`[^\n]*`completionCriteria`/.test(readme), `${path} advisory completionCriteria`);
+    assert.match(readme, /`Memory promotion:/, `${path} Memory promotion decision`);
+  }
+});
+
+test("the README cleanup entry states that only valid dead-owner lock records are removed", async () => {
+  const cases = {
+    "README.md": [/valid lock record/, /owner process (?:on this host )?is dead/, /preserved/, /`preservedReasons`/],
+    "README.ko.md": [/유효한 lock 레코드/, /owner 프로세스가 (?:종료된|죽은)/, /보존/, /`preservedReasons`/],
+  };
+  for (const [path, patterns] of Object.entries(cases)) {
+    const entry = (await read(path)).split(/\r?\n/).find((line) => line.startsWith("- `cairn cleanup --root <repo>`"));
+    assert.ok(entry, `${path} cleanup entry`);
+    for (const pattern of patterns) assert.match(entry, pattern, `${path} ${pattern}`);
+  }
+});

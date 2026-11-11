@@ -56,7 +56,7 @@ test("install creates custom source, versioned runtime, ownership, and current A
     assert.equal(result.status, 0, result.stderr);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
     assert.equal(ownership.schemaVersion, 1);
-    assert.equal(ownership.version, "0.5.0");
+    assert.equal(ownership.version, "0.6.0");
     assert.ok(ownership.targets.length > 20);
     await stat(paths.source);
     await stat(paths.versioned);
@@ -367,11 +367,11 @@ test("an owned 0.2.4 installation upgrades with mutable shared config changes", 
     assert.match(upgraded, /enabled = true/);
     assert.match(upgraded, /# added after 0\.2\.4 install\n\[profiles\.user\]\nmodel = "custom"/);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.5.0");
+    assert.equal(ownership.version, "0.6.0");
   });
 });
 
-test("an owned 0.2.2 installation upgrades to 0.5.0 and removes only the previous runtime", async () => {
+test("an owned 0.2.2 installation upgrades to 0.6.0 and removes only the previous runtime", async () => {
   await withHome(async ({ env, paths }) => {
     assert.equal(run("install", env).status, 0);
     const oldRuntime = await rewriteOwnedVersion(paths, "0.2.2");
@@ -380,7 +380,7 @@ test("an owned 0.2.2 installation upgrades to 0.5.0 and removes only the previou
     await assert.rejects(stat(oldRuntime));
     await stat(paths.versioned);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.5.0");
+    assert.equal(ownership.version, "0.6.0");
     assert.equal(ownership.targets.find((record) => record.id === "codex-runtime").path, paths.versioned);
     assert.equal(ownership.targets.some((record) => record.id === "previous-codex-runtime"), false);
   });
@@ -552,7 +552,7 @@ test("an exact legacy 0.2.2 tree is adopted once and upgraded transactionally", 
     const result = run("upgrade", env);
     assert.equal(result.status, 0, result.stderr);
     const ownership = JSON.parse(await readFile(paths.ownership, "utf8"));
-    assert.equal(ownership.version, "0.5.0");
+    assert.equal(ownership.version, "0.6.0");
     assert.ok(ownership.targets.some((target) => target.id === "codex-source"));
     await stat(paths.versioned);
   });
@@ -699,7 +699,7 @@ test("Codex A/B gate proves the versioned custom cache is required", async (cont
     const installed = withVersion.installed.find((entry) => entry.pluginId === "cairn@cairn");
     assert.equal(installed?.installed, true);
     assert.equal(installed?.enabled, true);
-    assert.equal(installed?.version, "0.5.0");
+    assert.equal(installed?.version, "0.6.0");
   });
 });
 
@@ -826,7 +826,7 @@ async function withHome(fn) {
   const paths = {
     marketplace,
     source: join(marketplace, "plugins", "cairn"),
-    versioned: join(marketplace, "cairn", "0.5.0"),
+    versioned: join(marketplace, "cairn", "0.6.0"),
     ownership: join(marketplace, ".cairn", "lifecycle.json"),
   };
   try { await fn({ temp, env, paths }); } finally { await rm(temp, { recursive: true, force: true }); }

@@ -29,8 +29,8 @@ Keep the target repository root separate. Pass it explicitly with `--root <repoR
    - `explorer`: read-only domain discovery, boundaries, invariants, policies, contradictions, and stale facts when available.
    - `worker`: exact file paths, commands, schemas, references, and bounded evidence capture.
    - Recursive subagent delegation is allowed only for bounded sub-tasks when the current surface supports it.
-4. Write detailed facts to `docs/memory/<domain>.md`.
-5. Keep only one-line links and summaries in `MEMORY.md`.
+4. Write detailed facts to `docs/memory/<domain>.md` from `cairn://templates/domain-memory.md`. Put a `Summary:` line under the H1: one line of at most 120 characters stating what the note answers and when to read it. The index and the session-start hook show that line, so agents can pick notes without opening them.
+5. Keep only one-line entries in `MEMORY.md` under `## Domain Knowledge` (`- [<name>](docs/memory/<name>.md): <summary>`); a note link in another section is a mention that `index` never rewrites. Run `node "<pluginRoot>/scripts/cairn.mjs" memory index --root "<repoRoot>"` to add unlisted notes and replace the summary after the link when `Summary:` changed (`--dry-run` previews; it removes only exact Cairn placeholder lines in that section, never deletes entries or dead links, and writes nothing when the insertion point is inside an unclosed code fence), then `memory check --root "<repoRoot>"`: exit 1 lists unindexed notes, dead links, duplicates, stale summaries, and control characters to fix; warnings fail only with `--strict`.
 6. When a lesson or correction recurs and is machine-checkable, encode it as a test, lint rule, script, or hook instead of more prose; memory keeps judgment rules and a pointer to the enforcing check.
 7. Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
 
@@ -47,6 +47,6 @@ CONTEXT: Current task, repository root, existing MEMORY.md entries.
 
 ## Completion Criteria
 
-- `MEMORY.md` links to detailed notes.
-- Detailed notes have clear scope and sources, and are shorter than reading the original files wholesale.
+- `MEMORY.md` links to detailed notes, one line each, and `memory check` exits 0.
+- Each note starts with a `Summary:` line and has clear scope and sources, and is shorter than reading the original files wholesale.
 - Long explanations are not duplicated in the root index.

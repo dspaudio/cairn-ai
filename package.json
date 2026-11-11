@@ -1,6 +1,6 @@
 {
   "name": "cairn-ai",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Token-efficient agent harness with tool readiness for Codex, Claude Code, and Antigravity",
   "license": "MIT",
   "author": {

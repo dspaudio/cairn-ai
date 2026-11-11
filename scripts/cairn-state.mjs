@@ -6,6 +6,7 @@ import { continuationReason, stopAllowedMessage, stopHookOutput } from "./cairn-
 import { initializeProject } from "./cairn-state-init.mjs";
 import { evaluateStop, isGoalOwnedBySession, reconcileWorktreeState } from "./cairn-goal.mjs";
 import { readHookGuard, readStopGuard, writeHookGuard, writeStopGuard } from "./cairn-goal-state.mjs";
+import { hookIndexSnapshot } from "./cairn-index.mjs";
 import { resolveRepoRoot } from "./cairn-paths.mjs";
 
 const recoverableGoalStatuses = new Set(["active", "paused", "blocked"]);
@@ -49,10 +50,12 @@ export async function runStateResult(event = "manual", {
   if (event === "session-start" || event === "user-prompt-submit") {
     const reconciled = await reconcileWorktreeState({ root: resolvedRoot });
     const state = reconciled.state;
-    if (recoverableGoalStatuses.has(state?.goal?.status) && !isGoalOwnedBySession(state, payload?.session_id)) {
-      return foreignSessionContextResult({ ko, event, sessionId: payload?.session_id, root: resolvedRoot });
+    const recoverable = recoverableGoalStatuses.has(state?.goal?.status);
+    const index = await readHookIndex(resolvedRoot, event, recoverable);
+    if (recoverable && !isGoalOwnedBySession(state, payload?.session_id)) {
+      return foreignSessionContextResult({ ko, event, sessionId: payload?.session_id, root: resolvedRoot, index });
     }
-    const context = contextResult({ ko, state, event });
+    const context = contextResult({ ko, state, event, index });
     // SessionStart (also after compaction) carries a literal CLI prefix so agents do not rebuild or store it in a
     // shell variable, which does not survive between tool calls.
     const result = event === "session-start" ? appendContext(context, cliPrefixLine()) : context;
@@ -136,6 +139,14 @@ async function recordStopProgress(root, state, event, payload) {
     await writeStopGuard(root, { goalId: state.goal.id, scopes: Object.fromEntries(entries) });
   }
   return progressed;
+}
+
+// SessionStart lists repository notes (and the plan index while idle); an idle prompt only counts notes. Prompts during
+// an active, paused, blocked, or foreign goal read nothing, since their capsule has no budget left.
+async function readHookIndex(root, event, recoverable) {
+  if (event === "session-start") return hookIndexSnapshot({ root, memory: "list", plans: !recoverable });
+  if (!recoverable) return hookIndexSnapshot({ root, memory: "count", plans: false });
+  return null;
 }
 
 // Only the CLI path: goal commands resolve the repository root themselves, and a second absolute path would let

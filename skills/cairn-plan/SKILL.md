@@ -40,7 +40,7 @@ Record three triage checkpoints: request (provisional), planning (after explorat
 ## Procedure (Light and Heavy Path)
 
 1. Run `node "<pluginRoot>/scripts/cairn.mjs" init --root "<repoRoot>"`. If unavailable, create `MEMORY.md`, `PLAN.md`, `docs/memory`, `docs/plan` and report that `cairn doctor`/`cairn upgrade` is needed.
-2. Read `MEMORY.md` when present. A non-trivial implementation request authorizes the plan and goal even if the user never says "goal".
+2. Read `MEMORY.md` and `PLAN.md` when present; pick related notes and past plans (`planning-rules.md`). A non-trivial implementation request authorizes the plan and goal even if the user never says "goal".
 3. Write the initial plan `docs/plan/<topic>.md` from `cairn://templates/work-plan.md` plus its `PLAN.md` entry from the request and `MEMORY.md`: outcome, anticipated surfaces, stable roadmap, and `triage-plan` as first active task (investigation scope, toolcheck, Heavy criteria, update condition); mark it `initial: decision-complete for triage; not implementation-ready`.
 4. Before exploration, toolcheck, delegation, or a non-blocking question, call Codex `update_plan` first and then `create_goal` when available (main agent only, subagents skip; record unavailability; never claim sync that did not occur), then start the repository goal:
 
@@ -49,7 +49,7 @@ node "<pluginRoot>/scripts/cairn.mjs" goal start --root "<repoRoot>" --goal "<ob
 ```
 
    Pass `--session` only with an ID the surface exposes; never invent one. Fold new work into an unfinished goal with `goal replan` (resume a paused or blocked goal first), never cancel it; start a separate goal only when the user explicitly switches work. When a hook reports another session owns the goal you continue, run `goal claim --session <id>` with the ID shown.
-5. Run `triage-plan`: read only relevant `docs/memory/*.md` and installed model guidance, run `toolcheck --root "<repoRoot>"`, and explore with focused search and LSP/symbol tools. Install tools only with explicit user approval.
+5. Run `triage-plan`: read the picked notes and plans and installed model guidance, run `toolcheck --root "<repoRoot>"`, and explore with focused search and LSP/symbol tools. Install tools only with explicit user approval.
 6. Split the whole work into tasks each verifiable with two checks, each with `dependsOn` and `writeScope` in the `--tasks` JSON and named handoff files for cross-task data (`delegation.md`); design the test contract (requirements, invariants, boundaries, failure modes, expected failure) and dry-run/check modes.
 7. Update the plan with route, checked Heavy signals, tool readiness, delegation, verification commands, stable IDs, and fail-closed required evidence (`planning-rules.md`). Mark it `decision-complete for implementation` and call `update_plan` again.
 8. Only then record bound `planArtifact` and `triageDecision` evidence, complete `triage-plan`, and continue with `cairn-work`.
