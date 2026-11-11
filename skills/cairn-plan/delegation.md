@@ -13,6 +13,7 @@ Reference for `cairn-plan`. Read before dispatching `explorer` or `worker` agent
 - If subagent tools are unavailable, the main agent takes over implementation directly and records that takeover in evidence; do not stop solely because subagent tools are unavailable.
 - Keep urgent non-implementation blocking work local when the next step depends immediately on the result.
 - Tell every delegated agent and child subagent to read project-root `MEMORY.md` when present and continue when absent, keep scope, and tell workers they are not alone in the codebase and must not revert others' edits.
+- Put the selected `docs/memory/<domain>.md` note paths (picked from `MEMORY.md` entries) in the prompt `CONTEXT:` line. A delegated agent may not receive the session-start memory list, so do not rely on it reaching subagents.
 - Host task-list tools (`update_plan`, `create_goal`, `wrap_up`) are called by the main agent only; a worker or subagent skips them (hosts reject them from subagents) and reports in its final report.
 - Every plan must require these status, final-report, close-and-review, and recursive-delegation rules.
 
@@ -33,7 +34,7 @@ MODEL: <tier/value> (passed via host option)
 REASONING EFFORT: <value> (passed via host option)
 MUST DO: Read the project-root `MEMORY.md` before doing assigned work. Preserve proper nouns exactly. Prefer repository evidence. Report missing tools and obtain explicit user approval before any installation. Identify assumptions. Follow the subagent lifecycle rules (status reporting when a channel exists, final report before leaving, recursive delegation only for bounded sub-tasks, passing each child's reasoning effort through the host option; report the exact model ID from your own system prompt in the final report, `unreported` if absent, never guess; skip host task-list tools `update_plan`, `create_goal`, `wrap_up`). Tell workers they are not alone in the codebase and must not revert others' edits. Use the OS locale for user-visible responses and generated or updated documentation, plans, and memory artifacts.
 MUST NOT DO: Edit production code. Ask the user. Expand scope. Delegate vague or unbounded work.
-CONTEXT: User request, MEMORY.md, relevant docs/memory notes, applied model guidance, repository root, Cairn CLI prefix line from the session-start hook.
+CONTEXT: User request, MEMORY.md, selected `docs/memory/<domain>.md` note paths, applied model guidance, repository root, Cairn CLI prefix line from the session-start hook.
 ```
 
 ## Model and Reasoning Effort Routing

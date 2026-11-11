@@ -78,11 +78,19 @@ Cairn은 Claude-family와 Codex-family 모델에만 모델별 조정을 적용�
 
 하네스는 대상 저장소 루트에 다음 파일을 생성하고 유지합니다.
 
-- `MEMORY.md`: 지속 도메인 지식의 짧은 색인.
-- `docs/memory/*.md`: 도메인별 상세 지식.
-- `PLAN.md`: 활성/완료 작업 주제의 짧은 색인.
+- `MEMORY.md`: 지속 도메인 지식의 짧은 색인. `## Domain Knowledge` 아래에 노트당 한 줄(`- [<name>](docs/memory/<name>.md): <summary>`)을 두고, 저장소 `## Policy`를 함께 둡니다.
+- `docs/memory/*.md`: 도메인별 상세 지식. 각 노트는 H1 아래에 한 줄 `Summary:`(120자 이하)를 두며, 색인과 hook이 이 줄을 보여 줍니다.
+- `PLAN.md`: 작업 계획의 짧은 색인. `## Active Plans`와 `## Completed Plans` 아래에 계획당 200자 이하 한 줄을 둡니다. 계획 규칙은 `PLAN.md`가 아니라 `cairn-plan` 스킬에 있습니다.
 - `docs/plan/*.md`: 상세 실행 계획.
+- `docs/plan/ARCHIVE.md`: `cairn plan index --archive`가 `PLAN.md`에서 옮긴 오래된 완료 항목을 최신순으로 보관하고, 예전 `## Planning Rules` 절의 본문은 `## Legacy Planning Rules` 아래에 둡니다. 첫 `## ` 제목 앞의 목록 줄은 색인된 것으로 셉니다.
 - `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/state.json`: 중단 재개와 범위가 제한된 종료 게이트에 쓰는 사용자 홈의 프로젝트/워크트리별 활성 goal/task/증거 상태입니다. 프로젝트 작업 트리는 런타임 상태를 소유하지 않습니다.
+- `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/history.jsonl`: 완료·취소된 goal마다 요약 레코드 하나를 남기며(worktree당 최신 200개), `goal stats --history`가 읽습니다.
+
+`## Completed Plans`는 최신 항목이 위에 오도록 유지합니다. `cairn plan index --archive`는 앞의 20개 항목을 남기고 나머지를 아무것도 지우지 않고 `docs/plan/ARCHIVE.md`로 옮기므로, 오래된 순으로 쌓은 목록에서는 최신 계획이 보관됩니다. 먼저 `--dry-run`으로 확인하세요. 기존 `MEMORY.md`/`PLAN.md`는 마이그레이션 없이 동작합니다. `init`은 기존 파일을 다시 쓰지 않고, `check`는 예전 형식을 경고로만 알립니다.
+
+`SessionStart`에서 hook은 어떤 메모리 노트가 있는지(이름과 `Summary:`, 목록이 길면 이름만 나열한 한 줄)를 에이전트에게 알리고, 활성 goal이 없으면 계획 색인 한 줄(계획 수, 진행 중 계획, 최근 완료 계획, 있으면 `docs/plan/ARCHIVE.md`)을 덧붙입니다. 활성·일시정지·차단 goal이나 다른 session이 소유한 goal이 있으면 메모리 목록만 싣고, 다른 session의 캡슐에는 계획 이름을 넣지 않습니다. goal이 없을 때의 `UserPromptSubmit`은 노트 개수를 알리는 한 문장만 더합니다. hook은 색인 파일과 디렉터리 목록만 읽고 노트 본문은 읽지 않으며 아무것도 쓰지 않습니다. 노트와 계획이 없는 저장소의 hook 출력은 이전과 같습니다.
+
+`cairn-work`는 `goal finish` 전에 goal마다 한 번 메모리 승격 결정을 계획의 Evidence에 기록합니다. 다시 쓸 저장소 지식이 생겼으면 `Memory promotion: docs/memory/<domain>.md`, 아니면 `Memory promotion: none: <reason>`입니다. 결정 기록은 필수이고 노트 작성은 선택입니다. goal이 완료됐는데 계획 파일에 채워진 `Memory promotion:` 줄이 없으면 `goal finish`와 `goal complete`가 stderr에 한 줄 알림을 내며, exit code와 stdout은 바뀌지 않습니다.
 
 런타임 script, template, command, agent, model guidance는 설치된 플러그인 루트에 유지합니다. 각 표면의 locator가 같은 설치본을 가리키므로 대상 저장소에 Cairn 내부 파일을 복사하지 않습니다. 공유 런타임 또는 locator가 없거나 읽을 수 없거나 불일치하면 이를 가리키는 모든 mirror 사용을 중단하고 게시 패키지에서 `bunx cairn-ai@latest doctor` 후 `bunx cairn-ai@latest upgrade`를 실행해 복구합니다. 다른 host mirror나 대상 저장소를 복구 원본으로 사용하지 않습니다.
 
@@ -114,10 +122,12 @@ cairn toolcheck
 - `cairn doctor`: ownership manifest, managed digest, 유효 Codex feature, 실제 plugin installed/enabled/version, mirror/runtime locator를 수정 없이 진단합니다.
 - `cairn uninstall`: 먼저 config 외 모든 ownership manifest 항목을 설치 digest와 대조하고, 수정되거나 삭제된 managed artifact가 하나라도 있으면 아무것도 바꾸지 않고 uninstall 전체를 거부합니다. 그렇지 않으면 managed 항목을 제거·복원하고 빈 managed cache scaffold를 정리하며, unmanaged target과 그 상위 디렉터리는 보존하고 commit 전 실패는 rollback합니다.
 - `cairn toolcheck`: 저장소 스택과 필요한 LSP·검증 도구를 확인하며, 승인된 지원 installer만 실행합니다.
-- `cairn cleanup --root <repo>`: 기본값은 legacy 프로젝트 로컬 `.cairn` 잔여물을 읽기 전용으로 보고합니다. `--yes`는 유효한 활성 상태를 사용자 홈 저장소로 조정·이관하고 알려진 상태/lock/tool 잔여물만 제거하며, 알 수 없는 파일은 보존하고 비었을 때만 디렉터리를 정리합니다.
-- `cairn goal ...`: 저장소의 영속 goal을 시작·조회·일시정지·재개·차단·취소·완료합니다. `goal claim --session <id>`는 같은 작업을 이어받는 session(재개·압축·handoff·fork)에 미완료 goal의 소유권을 넘기며, 미완료 goal 중에 들어온 새 작업은 goal을 취소하지 않고 `goal replan`으로 합칩니다. 기본 tool-bound 정책은 `goal verify -- <argv>`가 명령을 직접 실행해 성공 증거를 기록합니다. `goal receipt`는 기존 선언 증거를 가져오는 호환 명령입니다. 모든 `goal` 하위 명령에서 `--root`는 선택이며, 생략하면 `HARNESS_REPO_ROOT`, 없으면 cwd에서 가장 가까운 `.git` 상위 디렉터리로 결정됩니다. `goal verify --kind "moduleAcceptance|surfaceIntegration" -- <argv>`는 한 번 실행으로 kind마다 receipt를 기록하며, evidence scope는 `task`와 `goal`뿐입니다. `goal finish [--watch "<path|path>"] [--timeout-ms N] -- <argv>`는 active task를 완료하고(필수 증거가 fresh여야 함) argv를 한 번 실행해 goal requiredEvidence의 모든 kind(기본 `finalReview`)를 goal scope로 기록한 뒤 goal을 완료합니다. 이 goal scope 증거가 모든 task receipt 이후에 기록되면 이전 task 검사를 다시 실행하지 않습니다. `goal stats`는 receipt 수, 재실행, stale receipt를 JSON으로 출력합니다. task는 `dependsOn`(생략 시 이전 task)과 `writeScope`를 선언하고, `goal ready`는 active/ready/blocked task id를 출력하며, write scope가 겹치지 않는 ready task는 같은 worktree에서 최대 4개까지 병렬로 active가 될 수 있습니다.
-- `cairn-memory`: 도메인 지식을 탐색하고 `MEMORY.md`를 갱신합니다.
-- `cairn-plan`: `docs/plan/` 아래에 decision-complete plan을 만듭니다.
+- `cairn cleanup --root <repo>`: 기본값은 legacy 프로젝트 로컬 `.cairn` 잔여물을 읽기 전용으로 보고합니다. `--yes`는 유효한 활성 상태를 사용자 홈 저장소로 조정·이관하고 알려진 상태/lock/tool 잔여물만 제거하며, 알 수 없는 파일은 보존하고 비었을 때만 디렉터리를 정리합니다. `state.lock`은 이 host에서 owner 프로세스가 종료된 유효한 lock 레코드일 때만 삭제하고, 격리된 `state.lock.stale.*` 파일은 유효한 레코드의 nonce가 파일 이름과 일치할 때만 삭제합니다. owner가 살아 있거나 다른 host의 lock, 파싱할 수 없는 lock은 보존하고 `preservedReasons`에 사유를 남깁니다. `--help`와 `--version`은 exit 0, 사용법 오류는 exit 2, 실행 오류는 `Cairn cleanup error:` 한 줄과 exit 1입니다.
+- `cairn goal ...`: 저장소의 영속 goal을 시작·조회·일시정지·재개·차단·취소·완료합니다. `goal claim --session <id>`는 같은 작업을 이어받는 session(재개·압축·handoff·fork)에 미완료 goal의 소유권을 넘기며, 미완료 goal 중에 들어온 새 작업은 goal을 취소하지 않고 `goal replan`으로 합칩니다. 기본 tool-bound 정책은 `goal verify -- <argv>`가 명령을 직접 실행해 성공 증거를 기록합니다. `goal receipt`는 기존 선언 증거를 가져오는 호환 명령입니다. 모든 `goal` 하위 명령에서 `--root`는 선택이며, 생략하면 `HARNESS_REPO_ROOT`, 없으면 cwd에서 가장 가까운 `.git` 상위 디렉터리로 결정됩니다. `goal verify --kind "moduleAcceptance|surfaceIntegration" -- <argv>`는 한 번 실행으로 kind마다 receipt를 기록하며, evidence scope는 `task`와 `goal`뿐입니다. `goal finish [--watch "<path|path>"] [--timeout-ms N] -- <argv>`는 active task를 완료하고(필수 증거가 fresh여야 함) argv를 한 번 실행해 goal requiredEvidence의 모든 kind(기본 `finalReview`)를 goal scope로 기록한 뒤 goal을 완료합니다. 이 goal scope 증거가 모든 task receipt 이후에 기록되면 이전 task 검사를 다시 실행하지 않습니다. `goal stats`는 현재 goal의 receipt 수, 재실행, stale receipt를 JSON으로 출력합니다. `goal stats --history [--limit N]`은 저장소의 모든 worktree에서 끝난 goal을 집계합니다: 완료·취소 수, 소요 시간 중앙값과 p90, task·receipt 중앙값, 재실행 비율, 메모리 승격 결정 수, 완료 goal이 4개 이상일 때의 이전/최근 `trend`, 최근 goal 목록입니다. 이력이 없으면 `{"schemaVersion":1,"scope":"repository","goals":0}`을 출력합니다. `completionCriteria`(`goal start --criteria`)는 `advisory`입니다. Cairn은 이를 기록만 하고 강제하지 않으며, 완료는 필수 증거로만 판정합니다. task는 `dependsOn`(생략 시 이전 task)과 `writeScope`를 선언하고, `goal ready`는 active/ready/blocked task id를 출력하며, write scope가 겹치지 않는 ready task는 같은 worktree에서 최대 4개까지 병렬로 active가 될 수 있습니다.
+- `cairn memory check|index [--root <repo>]`: `check`는 `MEMORY.md`와 `docs/memory/*.md`를 대조해 JSON 보고서 하나를 출력합니다. 미색인 노트, 죽은 링크, 중복, 오래된 요약, 요약의 제어문자, 안전하지 않은 경로가 있으면 exit 1이고, 경고는 `--strict`에서만 실패합니다. 항목은 `## Domain Knowledge` 아래의 목록 줄입니다(그 절이 없는 예전 파일은 모든 목록 줄). 다른 절의 노트 링크는 언급이며 `index`가 다시 쓰지 않습니다. `index`는 빠진 노트를 추가하고 `Summary:`가 바뀌면 링크 뒤의 요약 부분만 바꾸며(링크가 여럿인 줄은 그대로 둠), 그 절 안에서 Cairn placeholder 줄만 정확히 일치할 때 제거하고 항목이나 죽은 링크는 지우지 않으며 나머지 내용은 바이트 단위로 보존합니다. `--dry-run`으로 미리 볼 수 있습니다. 삽입 지점이 닫히지 않은 코드 펜스 안이면 `index`는 아무것도 쓰지 않고 `unclosed-fence`로 exit 1입니다. 사용법 오류는 exit 2이고, 하위 명령 없는 `cairn memory`는 기존 안내문을 출력합니다.
+- `cairn plan check|index [--archive] [--root <repo>]`: `PLAN.md`와 `docs/plan/*.md`에 같은 검사와 색인을 적용하며, 항목은 제목이 `Plans`로 끝나는 `## ` 절(`## Superseded Plans` 등)의 목록 줄입니다. `index`는 체크박스가 모두 체크된 계획을 `## Completed Plans` 맨 위에, 그 밖의 계획을 `## Active Plans`에 넣습니다. 줄을 옮기는 것은 `--archive`뿐이며, 최신 20개를 넘는 완료 항목(들여쓴 문단 포함)과 예전 `## Planning Rules` 절의 본문을 `docs/plan/ARCHIVE.md`로 옮깁니다. `check`는 `## Completed Plans`가 20개를 넘거나 예전 `## Planning Rules` 절이 남아 있으면 경고합니다.
+- `cairn-memory`: 도메인 지식을 탐색하고 `Summary:` 줄이 있는 노트를 쓰며 `MEMORY.md` 색인을 유지합니다.
+- `cairn-plan`: 관련 메모리 노트와 관련 완료 계획(최대 3개)을 재활용한 뒤 `docs/plan/` 아래에 decision-complete plan을 만듭니다.
 - `cairn-work`: 현재 `PLAN.md`의 다음 모듈 작업을 실행하고 두 검증 게이트를 확보합니다.
 - `cairn-review`: 계획, memory, 증거를 기준으로 완료된 작업을 검토합니다.
 

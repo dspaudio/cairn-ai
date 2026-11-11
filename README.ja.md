@@ -63,11 +63,19 @@ Cairn は Claude-family と Codex-family models にのみ model-specific adjustm
 
 harness は対象 repository root に次の files を作成して維持します。
 
-- `MEMORY.md`: persistent domain knowledge の短い index。
-- `docs/memory/*.md`: domain ごとの詳細 knowledge。
+- `MEMORY.md`: persistent domain knowledge の短い index。`## Domain Knowledge` の下に note ごとに 1 行(`- [<name>](docs/memory/<name>.md): <summary>`)を置き、repository の `## Policy` も含みます。
+- `docs/memory/*.md`: domain ごとの詳細 knowledge。各 note は H1 の下に 1 行の `Summary:`(120 文字以内)を置き、index と hook がそれを表示します。
 - `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/state.json`: 中断復旧と scoped stop gate に使う user-home の project/worktree 別 active goal/task/evidence 状態。project working tree は runtime state を所有しません。
-- `PLAN.md`: active/completed work topics の短い index。
+- `PLAN.md`: work plans の短い index。`## Active Plans` と `## Completed Plans` の下に plan ごとに 200 文字以内の 1 行を置きます。planning rules は `PLAN.md` ではなく `cairn-plan` skill にあります。
 - `docs/plan/*.md`: detailed execution plans。
+- `docs/plan/ARCHIVE.md`: `cairn plan index --archive` が `PLAN.md` から移した古い completed entries を新しい順に保持し、legacy `## Planning Rules` section の本文を `## Legacy Planning Rules` の下に置きます。最初の `## ` 見出しより前の list 行は index 済みとして扱われます。
+- `~/.cairn/projects/<project-id>/worktrees/<worktree-id>/history.jsonl`: completed/cancelled goal ごとの要約 record(worktree ごとに最新 200 件)。`goal stats --history` が読みます。
+
+`## Completed Plans` は新しい順に保ちます。`cairn plan index --archive` は先頭 20 件を残し、残りを何も削除せずに `docs/plan/ARCHIVE.md` へ移すため、古い順に並べた list では最新の plans が archive されます。先に `--dry-run` で確認してください。既存の `MEMORY.md`/`PLAN.md` は migration なしで動作します。`init` は既存 file を書き換えず、`check` は古い形式を warning としてのみ報告します。
+
+`SessionStart` で hook は、どの memory notes があるか(name と `Summary:`、list が長い場合は name だけの 1 行)を agent に知らせ、active goal がなければ plan index の 1 行(plan 数、active plans、最新の completed plans、存在すれば `docs/plan/ARCHIVE.md`)を追加します。active・paused・blocked goal や別 session が所有する goal がある場合は memory list だけを載せ、別 session の capsule に plan 名は出しません。goal がないときの `UserPromptSubmit` は note 数を伝える 1 文だけを追加します。hook は index files と directory listing だけを読み、note 本文は読まず、何も書き込みません。notes と plans がない repository の hook 出力は以前と同じです。
+
+`cairn-work` は `goal finish` の前に goal ごとに 1 回、memory promotion の決定を plan の Evidence に記録します。再利用できる repository knowledge ができた場合は `Memory promotion: docs/memory/<domain>.md`、そうでなければ `Memory promotion: none: <reason>` です。決定の記録は必須で、note の作成は任意です。goal が完了したのに plan file に記入済みの `Memory promotion:` 行がない場合、`goal finish` と `goal complete` は stderr に 1 行の reminder を出しますが、exit code と stdout は変わりません。
 
 root files は短く保ち、詳細は `docs/` に移すことで、agents が必要な context だけを読めるようにします。
 
@@ -102,6 +110,9 @@ cairn toolcheck
 - `cairn uninstall`: 未変更の managed entry だけを削除し、modified または unmanaged target は conflict として preserve します。
 - `cairn toolcheck`: repository stacks と required tools を確認し、承認済み supported installer だけを実行します。それ以外は `installer-unavailable` です。
 - `cairn cleanup --root <repo>`: 既定では legacy project-local `.cairn` residue を read-only で報告します。`--yes` は valid active state を user-home store に移行・調整し、known state/lock/tool residue のみ削除し、unknown files を保持して空の場合だけ directory を削除します。
+- `cairn memory check|index [--root <repo>]`: `check` は `MEMORY.md` と `docs/memory/*.md` を照合して JSON report を 1 つ出力します。unindexed notes、dead links、duplicates、stale summaries、summary 内の制御文字、unsafe paths があれば exit 1 で、warnings は `--strict` のときだけ失敗します。entries は `## Domain Knowledge` の下の list 行です(その section がない古い file ではすべての list 行)。他の section の note link は言及であり、`index` は書き換えません。`index` は抜けている notes を追加し、`Summary:` が変わると link の後ろの summary 部分だけを置き換えます(link が複数ある行はそのまま)。その section 内で完全に一致する Cairn placeholder 行だけを削除し、entries や dead links は削除せず、それ以外は byte 単位で保持します。`--dry-run` で事前確認できます。挿入位置が閉じていない code fence の中なら、`index` は何も書かず `unclosed-fence` で exit 1 になります。usage error は exit 2 で、subcommand なしの `cairn memory` は従来の案内を出力します。
+- `cairn plan check|index [--archive] [--root <repo>]`: `PLAN.md` と `docs/plan/*.md` に同じ check と index を適用し、entries は見出しが `Plans` で終わる `## ` section(`## Superseded Plans` など)の list 行です。`index` は checkbox がすべて checked の plan を `## Completed Plans` の先頭に、それ以外を `## Active Plans` に追加します。行を移動するのは `--archive` だけで、最新 20 件を超える completed entries(インデントされた段落を含む)と legacy `## Planning Rules` section の本文を `docs/plan/ARCHIVE.md` へ移します。`check` は `## Completed Plans` が 20 件を超えるか legacy `## Planning Rules` section が残っていると warning を出します。
+- `cairn goal ...`: repository goal を管理します(`cairn goal --help`)。`goal stats --history [--limit N]` は repository のすべての worktree で終了した goals を集計します。completed/cancelled 数、所要時間の median と p90、task と receipt の median、rerun rate、memory promotion の決定数、completed goal が 4 件以上のときの older/newer `trend`、最近の goals です。history がなければ `{"schemaVersion":1,"scope":"repository","goals":0}` を出力します。`completionCriteria`(`goal start --criteria`)は `advisory` です。Cairn は記録するだけで強制せず、完了は required evidence だけで判定されます。
 - `cairn-memory`: domain knowledge を探索し `MEMORY.md` を更新します。
 - `cairn-plan`: `docs/plan/` に decision-complete plan を作成します。
 - `cairn-work`: 現在の `PLAN.md` の次の module task を実行し、2 つの verification gates を取得します。

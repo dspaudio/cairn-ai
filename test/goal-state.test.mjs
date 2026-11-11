@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   assignTask,
@@ -628,7 +628,13 @@ test("worktree reconciliation removes legacy state without a worktree id", async
 test("legacy project cleanup inspects by default and preserves unknown entries", async () => {
   await withTempRoot(async (root) => {
     await mkdir(join(root, ".cairn", "tools"), { recursive: true });
-    await writeFile(join(root, ".cairn", "state.lock"), "stale\n");
+    await writeFile(join(root, ".cairn", "state.lock"), `${JSON.stringify({
+      schemaVersion: 1,
+      pid: 99999999,
+      hostname: hostname(),
+      nonce: "dead-owner",
+      acquiredAt: new Date().toISOString(),
+    })}\n`);
     await writeFile(join(root, ".cairn", "keep.txt"), "user data\n");
 
     const inspected = await cleanupProjectCairn({ root });

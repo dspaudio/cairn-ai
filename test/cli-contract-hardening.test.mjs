@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -169,4 +169,145 @@ test("task status returns the active task or a requested task", async () => {
     await rm(root, { recursive: true, force: true });
     await rm(stateHome, { recursive: true, force: true });
   }
+});
+
+const initUsage = "Usage: cairn init [--root PATH]\n";
+const goalUsage = [
+  "Usage: cairn goal <start|status|ready|stats|task|replan|claim|assign|receipt|verify|finish|pause|resume|block|cancel|complete> [options] [--root PATH]",
+  "Note: --criteria (completionCriteria) is advisory and is not enforced; completion is gated only by required evidence.",
+  "",
+].join("\n");
+
+async function withIsolatedCli(operation) {
+  const sandbox = await mkdtemp(join(tmpdir(), "cairn-cli-contract-"));
+  try {
+    const root = join(sandbox, "repo");
+    const home = join(sandbox, "home");
+    const stateHome = join(sandbox, "cairn-home");
+    await Promise.all([mkdir(root), mkdir(home), mkdir(stateHome)]);
+    const env = { ...process.env, LC_ALL: "en_US.UTF-8", HOME: home, CAIRN_HOME: stateHome };
+    await operation({ root, home, stateHome, env });
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+  }
+}
+
+async function listTree(directory) {
+  return (await readdir(directory, { recursive: true })).sort();
+}
+
+test("init --help and --version exit 0 and create no files", async () => {
+  await withIsolatedCli(async ({ root, home, stateHome, env }) => {
+    assertExit(run(rootCli, ["init", "--help", "--root", root], { env }), { status: 0, stdout: initUsage, stderr: "" });
+    assertExit(run(rootCli, ["init", "--root", root, "--version"], { env }), { status: 0, stdout: `cairn ${version}\n`, stderr: "" });
+    assert.deepEqual(await listTree(root), []);
+    assert.deepEqual(await listTree(home), []);
+    assert.deepEqual(await listTree(stateHome), []);
+  });
+});
+
+test("init rejects unknown options with exit 2 and creates no files", async () => {
+  await withIsolatedCli(async ({ root, home, stateHome, env }) => {
+    for (const [args, message] of [
+      [["init", "--root", root, "--bogus"], "unknown option: --bogus"],
+      [["init", "--root", root, "extra"], "unknown option: extra"],
+      [["init", "--root", root, "--help", "--yes"], "unknown option: --yes"],
+      [["init", "--root", root, "--help", "--version"], "--help and --version cannot be used together"],
+    ]) {
+      const result = run(rootCli, args, { env });
+      assertExit(result, { status: 2, stdout: "", stderr: `Cairn error: ${message}\n` });
+    }
+    assert.deepEqual(await listTree(root), []);
+    assert.deepEqual(await listTree(home), []);
+    assert.deepEqual(await listTree(stateHome), []);
+  });
+});
+
+test("goal and task --help print usage with the advisory criteria notice and exit 0 without reading state", async () => {
+  await withIsolatedCli(async ({ root, stateHome, env }) => {
+    // A fresh Cairn home stays empty: help creates no state.
+    for (const args of [
+      ["goal", "--help"],
+      ["goal", "start", "--help", "--root", root],
+      ["goal", "start", "--goal", "--help"],
+      ["task", "--help"],
+      ["task", "complete", "first", "--help", "--root", root],
+    ]) {
+      assertExit(run(rootCli, args, { env }), { status: 0, stdout: goalUsage, stderr: "" });
+    }
+    assert.deepEqual(await listTree(stateHome), []);
+    assert.deepEqual(await listTree(root), []);
+
+    // A corrupted state file would fail any read; help never touches it.
+    const started = run(rootCli, ["goal", "start", "--quiet", "--root", root, "--goal", "help contract", "--plan", "plan-help", "--tasks", "Only task"], { env });
+    assert.equal(started.status, 0, started.stderr);
+    const statePath = (await listTree(stateHome)).find((path) => path.endsWith("state.json"));
+    assert.ok(statePath, "goal start must persist a state file");
+    await writeFile(join(stateHome, statePath), "{corrupt\n");
+    assert.equal(run(rootCli, ["goal", "status", "--root", root], { env }).status, 1);
+    const treeBefore = await listTree(stateHome);
+    for (const args of [
+      ["goal", "status", "--help", "--root", root],
+      ["goal", "complete", "--root", root, "--help"],
+      ["task", "status", "--help", "--root", root],
+    ]) {
+      assertExit(run(rootCli, args, { env }), { status: 0, stdout: goalUsage, stderr: "" });
+    }
+    assert.equal(await readFile(join(stateHome, statePath), "utf8"), "{corrupt\n");
+    assert.deepEqual(await listTree(stateHome), treeBefore);
+  });
+});
+
+test("goal --version prints the package version", async () => {
+  await withIsolatedCli(async ({ root, stateHome, env }) => {
+    assertExit(run(rootCli, ["goal", "--version"], { env }), { status: 0, stdout: `cairn ${version}\n`, stderr: "" });
+    assertExit(run(rootCli, ["task", "status", "--version", "--root", root], { env }), { status: 0, stdout: `cairn ${version}\n`, stderr: "" });
+    assertExit(run(rootCli, ["goal", "--help", "--version"], { env }), {
+      status: 1,
+      stdout: "",
+      stderr: "Cairn goal error: --help and --version cannot be used together\n",
+    });
+    assert.deepEqual(await listTree(stateHome), []);
+  });
+});
+
+test("bare goal prints usage and exits 0", async () => {
+  await withIsolatedCli(async ({ root, stateHome, env }) => {
+    assertExit(run(rootCli, ["goal"], { env, cwd: root }), { status: 0, stdout: goalUsage, stderr: "" });
+    assertExit(run(rootCli, ["goal", "help"], { env, cwd: root }), { status: 0, stdout: goalUsage, stderr: "" });
+    assertExit(run(rootCli, ["goal", "help", "--root", root], { env }), { status: 0, stdout: goalUsage, stderr: "" });
+    assert.deepEqual(await listTree(stateHome), []);
+  });
+});
+
+test("--help after -- is passed through to goal verify", async () => {
+  await withIsolatedCli(async ({ root, env }) => {
+    const probe = join(root, "probe.mjs");
+    await writeFile(probe, "process.exit(process.argv.slice(2).join(' ') === '--help' ? 0 : 7);\n");
+    const started = run(rootCli, ["goal", "start", "--quiet", "--root", root, "--goal", "passthrough", "--plan", "plan-passthrough", "--tasks", "Only task"], { env });
+    assert.equal(started.status, 0, started.stderr);
+    const taskId = JSON.parse(run(rootCli, ["task", "status", "--root", root], { env }).stdout).id;
+
+    const result = run(rootCli, ["goal", "verify", "--root", root, "--task", taskId, "--kind", "test", "--", process.execPath, probe, "--help"], { env });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.equal(JSON.parse(result.stdout).exitCode, 0);
+  });
+});
+
+test("unknown goal subcommands exit 1 with a one-line error", async () => {
+  await withIsolatedCli(async ({ root, stateHome, env }) => {
+    assertExit(run(rootCli, ["goal", "bogus", "--root", root], { env }), {
+      status: 1,
+      stdout: "",
+      stderr: "Cairn goal error: unknown goal command: bogus (run cairn goal --help)\n",
+    });
+    assertExit(run(rootCli, ["goal", "bogus", "--unknown-flag", "--root", root], { env }), {
+      status: 1,
+      stdout: "",
+      stderr: "Cairn goal error: unknown goal command: bogus (run cairn goal --help)\n",
+    });
+    assert.deepEqual(await listTree(stateHome), []);
+  });
 });

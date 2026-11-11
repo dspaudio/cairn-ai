@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { cleanupProjectCairn } from "../scripts/cairn-cleanup.mjs";
@@ -11,6 +11,12 @@ import { cleanupProjectCairn } from "../scripts/cairn-cleanup.mjs";
 const cleanupScript = resolve("scripts/cairn-cleanup.mjs");
 const ownedStaleLock = "state.lock.stale.owner.123e4567-e89b-42d3-a456-426614174000";
 const malformedStaleLock = "state.lock.stale.malformed.123e4567-e89b-42d3-a456-426614174001";
+const cleanupUsage = "Usage: cairn cleanup [--root PATH] [--check | --yes]";
+const { version: packageVersion } = JSON.parse(await readFile("package.json", "utf8"));
+
+function lockRecord({ pid = 99999999, hostname: host = hostname(), nonce, acquiredAt = "2026-01-01T00:00:00.000Z" }) {
+  return `${JSON.stringify({ schemaVersion: 1, pid, hostname: host, nonce, acquiredAt })}\n`;
+}
 
 async function withTempRoot(operation) {
   const root = await mkdtemp(join(tmpdir(), "cairn-cleanup-hardening-"));
@@ -44,6 +50,22 @@ function runCleanup(root, apply) {
   return spawnSync(process.execPath, [cleanupScript, "--root", root, ...(apply ? ["--yes"] : [])], {
     encoding: "utf8",
   });
+}
+
+function runCleanupArgs(args) {
+  return spawnSync(process.execPath, [cleanupScript, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "en_US.UTF-8" },
+    timeout: 5_000,
+  });
+}
+
+function assertExit(result, expected) {
+  assert.equal(result.error, undefined);
+  assert.equal(result.signal, null);
+  assert.equal(result.status, expected.status, result.stderr);
+  assert.equal(result.stdout, expected.stdout);
+  assert.equal(result.stderr, expected.stderr);
 }
 
 for (const [label, apply] of [["dry-run", false], ["--yes", true]]) {
@@ -172,17 +194,178 @@ test("cleanup removes known legacy entries with their owned filesystem types", a
   await withTempRoot(async (root) => {
     // Given
     await mkdir(join(root, ".cairn", "tools", "bin"), { recursive: true });
-    await writeFile(join(root, ".cairn", "state.lock"), "legacy lock\n");
+    await writeFile(join(root, ".cairn", "state.lock"), lockRecord({ nonce: "legacy" }));
     await writeFile(join(root, ".cairn", "tools", "bin", "tool"), "legacy tool\n");
-    await writeFile(join(root, ".cairn", ownedStaleLock), "stale lock\n");
-    await writeFile(join(root, ".cairn", malformedStaleLock), "malformed stale lock\n");
+    await writeFile(join(root, ".cairn", ownedStaleLock), lockRecord({ nonce: "owner" }));
 
     // When
     const result = await cleanupProjectCairn({ root, apply: true });
 
     // Then
-    assert.deepEqual(result.removed, [malformedStaleLock, "state.lock", ownedStaleLock, "tools"].sort());
+    assert.deepEqual(result.removed, ["state.lock", ownedStaleLock, "tools"].sort());
+    assert.deepEqual(result.preservedReasons, {});
     assert.equal(result.projectDirectoryRemoved, true);
     await assert.rejects(lstat(join(root, ".cairn")), { code: "ENOENT" });
+  });
+});
+
+test("cleanup preserves lock files whose content is not a valid lock record", async () => {
+  await withTempRoot(async (root) => {
+    // Given
+    const oversized = "state.lock.stale.big.123e4567-e89b-42d3-a456-426614174004";
+    await mkdir(join(root, ".cairn"));
+    await writeFile(join(root, ".cairn", "state.lock"), "legacy lock\n");
+    await writeFile(join(root, ".cairn", ownedStaleLock), "stale lock\n");
+    await writeFile(join(root, ".cairn", malformedStaleLock), "malformed stale lock\n");
+    await writeFile(join(root, ".cairn", oversized), `${lockRecord({ nonce: "big" }).trimEnd()}${" ".repeat(4096)}\n`);
+    await writeFile(join(root, ".cairn", "state.lock.stale.notes"), lockRecord({ nonce: "notes" }));
+    const before = await snapshotTree(root);
+    const preserved = ["state.lock", ownedStaleLock, malformedStaleLock, oversized, "state.lock.stale.notes"].sort();
+    const expectedReasons = Object.fromEntries(preserved.map((name) => [name, "invalid-lock-record"]));
+
+    // When
+    const inspected = await cleanupProjectCairn({ root });
+    const applied = await cleanupProjectCairn({ root, apply: true });
+
+    // Then
+    for (const result of [inspected, applied]) {
+      assert.deepEqual(result.known, []);
+      assert.deepEqual(result.unknown, preserved);
+      assert.deepEqual(result.removed, []);
+      assert.deepEqual(result.preservedReasons, expectedReasons);
+      assert.equal(result.projectDirectoryRemoved, false);
+    }
+    assert.deepEqual(await snapshotTree(root), before);
+  });
+});
+
+test("cleanup preserves a state.lock held by a live owner in dry-run and --yes", async () => {
+  await withTempRoot(async (root) => {
+    // Given
+    await mkdir(join(root, ".cairn"));
+    await writeFile(join(root, ".cairn", "state.lock"), lockRecord({ pid: process.pid, nonce: "live" }));
+    const before = await snapshotTree(root);
+
+    for (const apply of [false, true]) {
+      // When
+      const result = runCleanup(root, apply);
+
+      // Then
+      assert.equal(result.status, 0, result.stderr);
+      const report = JSON.parse(result.stdout);
+      assert.deepEqual(report.known, []);
+      assert.deepEqual(report.unknown, ["state.lock"]);
+      assert.deepEqual(report.removed, []);
+      assert.deepEqual(report.preservedReasons, { "state.lock": "live-lock-owner" });
+      assert.deepEqual(await snapshotTree(root), before);
+    }
+  });
+});
+
+test("cleanup preserves a foreign-host lock and reports preservedReasons", async () => {
+  await withTempRoot(async (root) => {
+    // Given
+    await mkdir(join(root, ".cairn"));
+    await writeFile(join(root, ".cairn", "state.lock"), lockRecord({ hostname: `${hostname()}-elsewhere`, nonce: "foreign" }));
+    const before = await snapshotTree(root);
+
+    // When
+    const inspected = runCleanup(root, false);
+    const applied = runCleanup(root, true);
+
+    // Then
+    for (const result of [inspected, applied]) {
+      assert.equal(result.status, 0, result.stderr);
+      const report = JSON.parse(result.stdout);
+      assert.deepEqual(report.unknown, ["state.lock"]);
+      assert.deepEqual(report.removed, []);
+      assert.deepEqual(report.preservedReasons, { "state.lock": "foreign-host-lock" });
+    }
+    assert.deepEqual(await snapshotTree(root), before);
+  });
+});
+
+test("cleanup removes a quarantined lock only when its name nonce matches the record", async () => {
+  await withTempRoot(async (root) => {
+    // Given
+    const matching = "state.lock.stale.alpha.123e4567-e89b-42d3-a456-426614174005";
+    const mismatched = "state.lock.stale.beta.123e4567-e89b-42d3-a456-426614174006";
+    await mkdir(join(root, ".cairn"));
+    await writeFile(join(root, ".cairn", matching), lockRecord({ nonce: "alpha" }));
+    await writeFile(join(root, ".cairn", mismatched), lockRecord({ nonce: "gamma" }));
+
+    // When
+    const inspected = await cleanupProjectCairn({ root });
+    const applied = await cleanupProjectCairn({ root, apply: true });
+
+    // Then
+    assert.deepEqual(inspected.known, [matching]);
+    assert.deepEqual(inspected.unknown, [mismatched]);
+    assert.deepEqual(inspected.preservedReasons, { [mismatched]: "invalid-lock-record" });
+    assert.deepEqual(applied.removed, [matching]);
+    assert.deepEqual(applied.preservedReasons, { [mismatched]: "invalid-lock-record" });
+    await assert.rejects(lstat(join(root, ".cairn", matching)), { code: "ENOENT" });
+    assert.equal(await readFile(join(root, ".cairn", mismatched), "utf8"), lockRecord({ nonce: "gamma" }));
+  });
+});
+
+test("cleanup --help and --version exit 0 without inspecting the repository", async () => {
+  await withTempRoot(async (sandbox) => {
+    // Given: a symlinked .cairn root fails any inspection.
+    const root = join(sandbox, "repo");
+    const outside = join(sandbox, "outside");
+    await mkdir(outside);
+    await mkdir(root);
+    await writeFile(join(outside, "state.lock"), "outside\n");
+    await symlink(outside, join(root, ".cairn"));
+    const before = await snapshotTree(outside);
+
+    // When
+    const help = runCleanupArgs(["--help", "--root", root]);
+    const version = runCleanupArgs(["--root", root, "--version"]);
+
+    // Then
+    assertExit(help, { status: 0, stdout: `${cleanupUsage}\n`, stderr: "" });
+    assertExit(version, { status: 0, stdout: `cairn ${packageVersion}\n`, stderr: "" });
+    assert.deepEqual(await snapshotTree(outside), before);
+  });
+});
+
+test("cleanup usage errors exit 2 and runtime errors exit 1 as one-line messages without stack traces", async () => {
+  await withTempRoot(async (sandbox) => {
+    // Given
+    const root = join(sandbox, "repo");
+    const fileRoot = join(sandbox, "file-repo");
+    await mkdir(root);
+    await mkdir(fileRoot);
+    await symlink(join(sandbox, "missing"), join(root, ".cairn"));
+    await writeFile(join(fileRoot, ".cairn"), "not a directory\n");
+
+    // When / Then: usage errors
+    for (const [args, message] of [
+      [["--bogus"], "unknown option: --bogus"],
+      [["unexpected"], "unknown option: unexpected"],
+      [["--root"], "--root requires a path"],
+      [["--root", root, "--root", root], "--root may only be provided once"],
+      [["--yes", "--yes", "--root", root], "--yes may only be provided once"],
+      [["--check", "--yes", "--root", root], "--check and --yes cannot be used together"],
+      [["--help", "--version"], "--help and --version cannot be used together"],
+    ]) {
+      assertExit(runCleanupArgs(args), { status: 2, stdout: "", stderr: `Cairn cleanup error: ${message}\n` });
+    }
+
+    // When / Then: runtime errors
+    for (const [args, pattern] of [
+      [["--root", root], /^Cairn cleanup error: Legacy Cairn root must not be a symbolic link: .+\n$/],
+      [["--root", root, "--yes"], /^Cairn cleanup error: Legacy Cairn root must not be a symbolic link: .+\n$/],
+      [["--root", fileRoot, "--check"], /^Cairn cleanup error: Legacy Cairn root is not a directory: .+\n$/],
+    ]) {
+      const result = runCleanupArgs(args);
+      assert.equal(result.status, 1, result.stderr);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, pattern);
+      assert.doesNotMatch(result.stderr, /\n\s+at |file:\/\/|Node\.js v/);
+    }
+    assert.equal(await readFile(join(fileRoot, ".cairn"), "utf8"), "not a directory\n");
   });
 });

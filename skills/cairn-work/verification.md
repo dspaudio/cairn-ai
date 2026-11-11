@@ -1,6 +1,6 @@
 # Cairn Work: Verification Detail
 
-Reference for `cairn-work`. Read when a gate needs more than the evidence rules in `SKILL.md`: watch sets, timeouts, freshness, defect investigation, missing tools, or external-state dry-runs.
+Reference for `cairn-work`. Read when a gate needs more than the evidence rules in `SKILL.md`: watch sets, timeouts, freshness, defect investigation, missing tools, or external-state dry-runs, and before `goal finish` for the memory promotion decision.
 
 ## Goal Verify Semantics
 
@@ -34,6 +34,20 @@ On success retain only the command, exit code, and pass count needed for evidenc
 
 - The implementer must not be able to change the judge. Never edit, weaken, skip, or delete existing tests, fixtures, snapshots, or recorded verification commands to make a gate pass. When a contract genuinely changes, record the reason in `docs/plan/<topic>.md` before that edit; review rejects any judge change without a recorded reason.
 - Prefer executable checks (test, lint, script, hook) for machine-checkable rules; keep prose only for rules that need judgment.
+
+## Memory Promotion
+
+Decide once per goal, before `goal finish`, whether the goal produced repository knowledge the next agent should reuse, and record the decision in the plan's `## Evidence` as exactly one of:
+
+- `Memory promotion: docs/memory/<domain>.md`: the note written or updated for this goal.
+- `Memory promotion: none: <reason>`: nothing worth promoting, with the reason.
+
+The decision line is required; the note is optional. When nothing qualifies, do not create a note; record `none: <reason>`.
+
+- Promote: non-obvious constraints or invariants the next task would have to rediscover, decisions with their rejected alternatives, recurring failures and their fixes, and verification recipes.
+- Do not promote: what the code or tests already state, details that apply only to this task, or a restatement of the plan.
+- When promoting, write or update `docs/memory/<domain>.md` with its `Summary:` line (`cairn-memory`), then run `node "<pluginRoot>/scripts/cairn.mjs" memory index --root "<repoRoot>"` and `memory check --root "<repoRoot>"`.
+- The `Memory promotion:` key and the `none` value are fixed English tokens. When a goal completes through `goal finish` or `goal complete` and its plan file has no filled `Memory promotion:` line, Cairn prints a one-line reminder on stderr; exit code and stdout are unchanged and completion is never blocked. `goal stats --history` counts the decisions across goals.
 
 ## Defect Investigation
 

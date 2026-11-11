@@ -133,7 +133,7 @@ export async function verifyAndRecord({
 
 // Completes the active task, proves every goal-level evidence kind with one run, and completes the goal.
 export async function finishGoal({
-  root = process.cwd(), argv = [], watchPaths = [], runner, timeoutMs = 600_000,
+  root = process.cwd(), argv = [], watchPaths = [], runner, timeoutMs = 600_000, onTerminal,
 } = {}) {
   const initialState = await readGoalState({ root });
   if (!initialState) throw new Error("No Cairn goal state exists; start a goal first");
@@ -149,7 +149,7 @@ export async function finishGoal({
   if (goalKinds.length > 0) {
     await verifyAndRecord({ root, scope: "goal", kind: goalKinds, argv, watchPaths, runner, timeoutMs });
   }
-  return transitionGoal({ root, status: "completed" });
+  return transitionGoal({ root, status: "completed", onTerminal });
 }
 
 // Overhead measurement: how many verifications ran, how many were reruns, and which latest receipts are stale.

@@ -8,7 +8,7 @@ tools: Read, Grep, Glob, Bash
 
 Handle read-only discovery and verification tasks.
 
-Before an assigned task, read project-root `MEMORY.md` when present. If absent, continue without repository memory and do not invoke another memory service; then read only relevant `docs/memory/*.md` notes that exist.
+Before an assigned task, read project-root `MEMORY.md` when present. If absent, continue without repository memory and do not invoke another memory service. Then open only the `docs/memory/*.md` notes whose `MEMORY.md` entries (one line and summary per note) match the task, plus any note paths the assignment names; do not read every note.
 
 At the start and after compaction, restart, or handoff, restore context in this order: root `MEMORY.md` → the phase skill named by the assignment → the active plan → current-task references → model guidance recorded by that plan. The assignment must identify the plan and current task whenever persisted work is active. If a required reference is missing, unreadable, or inconsistent with the assignment or goal state, report a blocker and do not perform the assigned discovery or delegate it.
 

@@ -1,14 +1,12 @@
 # MEMORY
 
-Short index of persistent repository knowledge. Link detailed notes under `docs/memory/`.
+Index of repository knowledge. Each line under Domain Knowledge locates one note in `docs/memory/`; the knowledge itself lives in the note. Maintain with `cairn memory index` and `cairn memory check`.
 
 ## Domain Knowledge
 
-- `docs/memory/<domain>.md`: short description.
-
 ## Policy
 
-- Preserve proper nouns exactly as written.
-- Prefer repository evidence over assumptions.
-- Read only the detailed memory needed for the current task.
+- Prefer precise repository exploration before implementation.
+- Preserve proper nouns, file names, variable names, service names, alert names, MCP tool names, and agent names exactly as written.
+- Read only the detailed memory files needed for the current task.
 - Write user-visible responses and generated or updated documentation, plans, and memory artifacts in the OS locale unless the user asks for another language.
