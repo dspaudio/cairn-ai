@@ -6,8 +6,8 @@
 // Races: FAKE_NPM_UNINSTALL_FIRST=<cairn-lifecycle.mjs> runs `uninstall` with it before `install` copies anything;
 // FAKE_NPM_LOCK_STAGE=1 makes the staged scripts/ directory read-only after `install`, so the stage cannot be removed.
 import { spawnSync } from "node:child_process";
-import { appendFileSync, chmodSync, cpSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { appendFileSync, chmodSync, cpSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // node --test also loads files under test/; without CLI arguments this module is a no-op there.
@@ -43,11 +43,22 @@ if (command === "view") {
   }
   const modules = join(process.cwd(), "node_modules");
   const destination = join(modules, "cairn-ai");
-  const excluded = new Set([".git", "node_modules", "test", ".omo", ".cairn", "docs/plan", "docs/memory"]);
-  cpSync(sourceRoot, destination, {
-    recursive: true,
-    filter: (source) => !excluded.has(relative(sourceRoot, source).split(sep).join("/")),
-  });
+  // Entries are copied one by one instead of through a cpSync filter: the path a filter receives differs between
+  // Node versions on Windows, and a copied .git would make the lifecycle record a checkout-origin installation.
+  const excluded = new Set([".git", "node_modules", "test", ".omo", ".cairn"]);
+  const excludedDocs = new Set(["plan", "memory"]);
+  mkdirSync(destination, { recursive: true });
+  for (const name of readdirSync(sourceRoot)) {
+    if (excluded.has(name)) continue;
+    if (name !== "docs") {
+      cpSync(join(sourceRoot, name), join(destination, name), { recursive: true });
+      continue;
+    }
+    mkdirSync(join(destination, "docs"), { recursive: true });
+    for (const child of readdirSync(join(sourceRoot, "docs"))) {
+      if (!excludedDocs.has(child)) cpSync(join(sourceRoot, "docs", child), join(destination, "docs", child), { recursive: true });
+    }
+  }
   for (const manifest of ["package.json", join(".codex-plugin", "plugin.json")]) {
     const path = join(destination, manifest);
     const value = JSON.parse(readFileSync(path, "utf8"));

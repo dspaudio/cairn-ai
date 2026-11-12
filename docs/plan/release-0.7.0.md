@@ -38,7 +38,7 @@
   - head `23c5588`에서 Windows 두 job이 실패했다(macOS·Linux 4개는 통과). 실패는 모두 `test/auto-upgrade.test.mjs`의 테스트 쪽 문제였고 제품 코드는 고치지 않았다.
     - "the runner upgrades an older installation…": stage 경로를 8.3 짧은 임시 경로(`RUNNER~1`)와 realpath 긴 경로로 비교했다. 부모 디렉터리를 양쪽 모두 realpath로 비교하도록 고쳤다.
     - "an installed runtime's SessionStart starts the runner…": 구버전 설치를 만드는 helper가 JSON 안의 경로를 raw 문자열로만 치환해, Windows의 escape된 백슬래시 경로가 바뀌지 않았다. 옛 runtime의 locator가 새 버전 경로를 가리켜 hook이 runner를 띄우지 않았다. escape된 형태도 치환하도록 고쳤다.
-    - "an error after the upgrade commits…"(Node 18만): 두 번째 runner가 npm을 호출하지 않고 끝났다. 직전 runner가 놓은 `update.lock`이 Windows에서 잠시 남아 `locked`로 끝난 것으로 추정한다(로그로 확정하지 못함). helper가 `locked` 응답을 짧게 재시도하고, 단언 메시지에 runner 출력을 넣었다.
+    - "an error after the upgrade commits…"(Node 18만): 두 번째 runner가 npm을 호출하지 않고 끝났다. 처음에는 `update.lock` 잔류로 추정해 helper에 `locked` 재시도를 넣었지만 head `3dd9a13`에서 다시 실패했고, 단언 메시지에 넣어 둔 runner 출력으로 원인을 확정했다: `reason: "checkout"`. 대역 `test/fixtures/fake-npm.mjs`의 `cpSync` filter가 Windows Node 18에서 `.git`을 걸러내지 못해 stage 패키지에 `.git`이 복사됐고 lifecycle이 `origin: "checkout"`으로 기록했다. filter 대신 항목별 복사로 바꾸고, runner 업그레이드 테스트에 `origin === "package"` 단언을 추가했다. 제품 코드의 origin 판정(`pluginRoot/.git`)은 의도된 동작이라 고치지 않았다.
 
 ## Status
 

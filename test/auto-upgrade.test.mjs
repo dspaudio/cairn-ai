@@ -145,6 +145,7 @@ test("the runner upgrades an older installation and writes one updated notice", 
     const result = runRunner(env);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal((await readJson(paths.ownership)).version, releaseVersion);
+    assert.equal((await readJson(paths.ownership)).origin, "package", "a staged registry package is never a checkout");
     const calls = await npmCalls(env);
     assert.deepEqual(calls.map((call) => call.args), [
       ["view", "cairn-ai@latest", "version", "--json"],
