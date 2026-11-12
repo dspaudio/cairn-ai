@@ -92,7 +92,7 @@ Cairn은 Claude-family와 Codex-family 모델에만 모델별 조정을 적용�
 
 `cairn-work`는 `goal finish` 전에 goal마다 한 번 메모리 승격 결정을 계획의 Evidence에 기록합니다. 다시 쓸 저장소 지식이 생겼으면 `Memory promotion: docs/memory/<domain>.md`, 아니면 `Memory promotion: none: <reason>`입니다. 결정 기록은 필수이고 노트 작성은 선택입니다. goal이 완료됐는데 계획 파일에 채워진 `Memory promotion:` 줄이 없으면 `goal finish`와 `goal complete`가 stderr에 한 줄 알림을 내며, exit code와 stdout은 바뀌지 않습니다.
 
-런타임 script, template, command, agent, model guidance는 설치된 플러그인 루트에 유지합니다. 각 표면의 locator가 같은 설치본을 가리키므로 대상 저장소에 Cairn 내부 파일을 복사하지 않습니다. 공유 런타임 또는 locator가 없거나 읽을 수 없거나 불일치하면 이를 가리키는 모든 mirror 사용을 중단하고 게시 패키지에서 `bunx cairn-ai@latest doctor` 후 `bunx cairn-ai@latest upgrade`를 실행해 복구합니다. 다른 host mirror나 대상 저장소를 복구 원본으로 사용하지 않습니다.
+런타임 script, template, command, agent, model guidance는 설치된 canonical runtime `~/.cairn/install/runtime/<version>/`에 유지합니다. 각 표면의 locator가 같은 설치본을 가리키므로 대상 저장소에 Cairn 내부 파일을 복사하지 않습니다. 공유 런타임 또는 locator가 없거나 읽을 수 없거나 불일치하면 이를 가리키는 모든 mirror 사용을 중단하고 게시 패키지에서 `bunx cairn-ai@latest doctor` 후 `bunx cairn-ai@latest upgrade`를 실행해 복구합니다. 다른 host mirror나 대상 저장소를 복구 원본으로 사용하지 않습니다.
 
 ## Commands
 
@@ -115,12 +115,14 @@ cairn upgrade
 cairn doctor
 cairn uninstall
 cairn toolcheck
+cairn auto-upgrade status
 ```
 
-- `cairn install`: custom marketplace source, versioned Codex runtime cache, Cairn-owned config section, Claude Code mirror와 플러그인, 현재 Antigravity IDE/CLI skill 표면을 transaction으로 설치합니다.
-- `cairn upgrade`: ownership manifest의 installed digest와 현재 값이 같은 항목만 교체하며, staged validation과 역순 rollback을 적용합니다.
-- `cairn doctor`: ownership manifest, managed digest, 유효 Codex feature, 실제 plugin installed/enabled/version, mirror/runtime locator를 수정 없이 진단합니다.
-- `cairn uninstall`: 먼저 config 외 모든 ownership manifest 항목을 설치 digest와 대조하고, 수정되거나 삭제된 managed artifact가 하나라도 있으면 아무것도 바꾸지 않고 uninstall 전체를 거부합니다. 그렇지 않으면 managed 항목을 제거·복원하고 빈 managed cache scaffold를 정리하며, unmanaged target과 그 상위 디렉터리는 보존하고 commit 전 실패는 rollback합니다.
+- `cairn install [--hosts all|codex,claude,antigravity]`: canonical runtime을 `~/.cairn/install/` 아래에 설치하고, 선택한 호스트에 대해 Codex marketplace source, versioned Codex runtime cache, Cairn-owned config section, Claude Code mirror와 플러그인, 현재 Antigravity IDE/CLI skill 표면을 transaction으로 설치합니다. `--hosts`가 없으면 터미널에서 처음 설치할 때 호스트를 묻고, 비대화형 실행과 CI는 모든 호스트를 설치합니다.
+- `cairn upgrade [--hosts all|codex,claude,antigravity]`: ownership manifest의 installed digest와 현재 값이 같은 항목만 교체하며, staged validation과 역순 rollback을 적용합니다. `--hosts`로 바꾸지 않으면 기록된 호스트를 유지하고, Cairn 0.6.0 이하에서 만든 설치를 이전하며, 다른 버전을 담은 Claude Code 플러그인 캐시를 갱신합니다. 설치본 버전이 이 CLI보다 높으면 `install`과 `upgrade`는 아무것도 바꾸지 않고 거부하며, 그래도 이 CLI 버전으로 내리려면 `--allow-downgrade`를 붙입니다.
+- `cairn doctor`: 첫 줄에 `Hosts: <ids>`를 출력한 뒤 선택된 호스트의 ownership manifest, managed digest, 유효 Codex feature, 실제 plugin installed/enabled/version(`Claude plugin cache version` 포함), mirror/runtime locator를 수정 없이 진단합니다. legacy 설치가 있으면 `cairn upgrade`로 이전하라는 안내를 출력합니다.
+- `cairn uninstall`: 먼저 config 외 모든 ownership manifest 항목을 설치 digest와 대조하고, 수정되거나 삭제된 managed artifact가 하나라도 있으면 아무것도 바꾸지 않고 uninstall 전체를 거부합니다. 그렇지 않으면 managed 항목과 유예 중인 runtime을 제거·복원하고 빈 managed scaffold를 정리하며, unmanaged target과 그 상위 디렉터리는 보존하고 commit 전 실패는 rollback합니다. `~/.cairn/update/`도 지우며 `~/.cairn/config.json`과 `~/.cairn/projects/`는 남깁니다. legacy 레이아웃 설치는 이전하지 않고 그 자리에서 제거합니다.
+- `cairn auto-upgrade status|on|off|run`: `status`는 설정, 설치 버전, 마지막 확인, 대기 중인 알림을 JSON으로 출력합니다. `on`과 `off`는 `~/.cairn/config.json`에 `autoUpgrade`를 쓰고 같은 보고를 출력합니다. `run`은 하루 주기와 backoff를 무시하고 지금 npm을 확인해 결과를 출력합니다. exit 0은 성공, 1은 실행 오류 또는 실패한 실행, 2는 사용법 오류입니다.
 - `cairn toolcheck`: 저장소 스택과 필요한 LSP·검증 도구를 확인하며, 승인된 지원 installer만 실행합니다.
 - `cairn cleanup --root <repo>`: 기본값은 legacy 프로젝트 로컬 `.cairn` 잔여물을 읽기 전용으로 보고합니다. `--yes`는 유효한 활성 상태를 사용자 홈 저장소로 조정·이관하고 알려진 상태/lock/tool 잔여물만 제거하며, 알 수 없는 파일은 보존하고 비었을 때만 디렉터리를 정리합니다. `state.lock`은 이 host에서 owner 프로세스가 종료된 유효한 lock 레코드일 때만 삭제하고, 격리된 `state.lock.stale.*` 파일은 유효한 레코드의 nonce가 파일 이름과 일치할 때만 삭제합니다. owner가 살아 있거나 다른 host의 lock, 파싱할 수 없는 lock은 보존하고 `preservedReasons`에 사유를 남깁니다. `--help`와 `--version`은 exit 0, 사용법 오류는 exit 2, 실행 오류는 `Cairn cleanup error:` 한 줄과 exit 1입니다.
 - `cairn goal ...`: 저장소의 영속 goal을 시작·조회·일시정지·재개·차단·취소·완료합니다. `goal claim --session <id>`는 같은 작업을 이어받는 session(재개·압축·handoff·fork)에 미완료 goal의 소유권을 넘기며, 미완료 goal 중에 들어온 새 작업은 goal을 취소하지 않고 `goal replan`으로 합칩니다. 기본 tool-bound 정책은 `goal verify -- <argv>`가 명령을 직접 실행해 성공 증거를 기록합니다. `goal receipt`는 기존 선언 증거를 가져오는 호환 명령입니다. 모든 `goal` 하위 명령에서 `--root`는 선택이며, 생략하면 `HARNESS_REPO_ROOT`, 없으면 cwd에서 가장 가까운 `.git` 상위 디렉터리로 결정됩니다. `goal verify --kind "moduleAcceptance|surfaceIntegration" -- <argv>`는 한 번 실행으로 kind마다 receipt를 기록하며, evidence scope는 `task`와 `goal`뿐입니다. `goal finish [--watch "<path|path>"] [--timeout-ms N] -- <argv>`는 active task를 완료하고(필수 증거가 fresh여야 함) argv를 한 번 실행해 goal requiredEvidence의 모든 kind(기본 `finalReview`)를 goal scope로 기록한 뒤 goal을 완료합니다. 이 goal scope 증거가 모든 task receipt 이후에 기록되면 이전 task 검사를 다시 실행하지 않습니다. `goal stats`는 현재 goal의 receipt 수, 재실행, stale receipt를 JSON으로 출력합니다. `goal stats --history [--limit N]`은 저장소의 모든 worktree에서 끝난 goal을 집계합니다: 완료·취소 수, 소요 시간 중앙값과 p90, task·receipt 중앙값, 재실행 비율, 메모리 승격 결정 수, 완료 goal이 4개 이상일 때의 이전/최근 `trend`, 최근 goal 목록입니다. 이력이 없으면 `{"schemaVersion":1,"scope":"repository","goals":0}`을 출력합니다. `completionCriteria`(`goal start --criteria`)는 `advisory`입니다. Cairn은 이를 기록만 하고 강제하지 않으며, 완료는 필수 증거로만 판정합니다. task는 `dependsOn`(생략 시 이전 task)과 `writeScope`를 선언하고, `goal ready`는 active/ready/blocked task id를 출력하며, write scope가 겹치지 않는 ready task는 같은 worktree에서 최대 4개까지 병렬로 active가 될 수 있습니다.
@@ -135,13 +137,37 @@ cairn toolcheck
 
 토큰 효율 실행에서는 구현보다 먼저 요구사항·불변식·경계·실패 모드로 집중 실행 test contract를 설계하는 데 추론을 배분합니다. 구현에는 실패 계약과 제한된 파일 범위만 전달하고 통과에 필요한 최소 변경을 요구합니다. 성공 여부는 도구 exit code와 기계적 요약으로 판정하며 성공 출력은 축약하고 실패할 때만 컨텍스트를 확장합니다. 명시적 `--watch`가 없으면 Git fingerprint는 ignored file을 제외하므로 주장에 필요한 ignored artifact는 각각 `--watch <path>` 또는 명시적인 상위 디렉터리로 지정해야 합니다. package 검증 전 lifecycle script를 검사하고 기본적으로 정상 `npm pack --dry-run`을 실행합니다. content-producing 또는 미분류 script에는 `--ignore-scripts`를 사용하면 안 되며, script가 없거나 content-neutral임을 입증했고 전체 검사 증거가 여전히 유효할 때만 사용할 수 있습니다. 성공한 상태 변경은 `--quiet`를 지원하므로 커지는 goal JSON이 대화 토큰을 소모하지 않습니다.
 
-`install`과 `upgrade`는 custom marketplace lifecycle을 유지하며 `codex plugin add`를 호출하지 않습니다. candidate를 staging에서 검증한 뒤 commit하고, 현재 managed destination과 digest를 ownership manifest에 기록하며 실패 시 완료된 phase를 역순 rollback합니다. 별도의 고정된 SHA-256 release 0.2.2 file-hash allowlist는 정확한 legacy file set 검증 전용이며 현재 package file list나 암호학적 서명이 아닙니다. 수정되지 않은 지원 legacy 설치만 release-integrity 검증 뒤 인수하고, 수정되거나 알 수 없는 artifact는 보존한 채 거부합니다. Cairn-owned TOML section만 편집하고 public feature/agent 설정은 강제하지 않습니다. lifecycle command는 교체 대상 cache copy가 아니라 게시/전역 package에서 실행해야 합니다.
+`install`과 `upgrade`는 custom marketplace lifecycle을 유지하며 `codex plugin add`를 호출하지 않습니다. candidate를 staging에서 검증한 뒤 commit하고, 현재 managed destination과 digest를 ownership manifest에 기록하며 실패 시 완료된 phase를 역순 rollback합니다. 별도의 고정된 SHA-256 release 0.2.2 file-hash allowlist는 정확한 legacy file set 검증 전용이며 현재 package file list나 암호학적 서명이 아닙니다. 수정되지 않은 지원 legacy 설치만 release-integrity 검증 뒤 인수하고, 수정되거나 알 수 없는 artifact는 보존한 채 거부합니다. Cairn-owned TOML section만 편집하고 public feature/agent 설정은 강제하지 않습니다. lifecycle command는 교체 대상인 `~/.cairn/install/` 아래 설치본이나 Codex plugin cache가 아니라 게시/전역 package에서 실행해야 합니다.
 
-Clean uninstall은 모든 managed scaffold가 비었을 때만 recursive 삭제 없이 빈 디렉터리 제거로 Cairn marketplace cache root를 정리합니다. 소스 저장소와 저장소의 `MEMORY.md`/`PLAN.md`, 사용자 홈 Cairn goal 상태, 전역 `cairn-ai` package, package-manager download cache, legacy backup, 현재 ownership manifest 밖의 legacy shared setting은 지우지 않으며 별도의 명시적 정리 판단이 필요합니다.
+Clean uninstall은 모든 managed scaffold가 비었을 때만 recursive 삭제 없이 빈 디렉터리 제거로 `~/.cairn/install/`과 Codex cache root `$CODEX_HOME/plugins/cache/cairn`을 정리합니다. 소스 저장소와 저장소의 `MEMORY.md`/`PLAN.md`, 사용자 홈 Cairn goal 상태, 전역 `cairn-ai` package, package-manager download cache, legacy backup, 현재 ownership manifest 밖의 legacy shared setting은 지우지 않으며 별도의 명시적 정리 판단이 필요합니다.
 
 Codex는 `skills/`와 `commands/`를 사용합니다. Claude Code는 `~/.claude/` 아래의 mirror command·agent definition과 Claude Code 플러그인 `cairn@cairn`을 사용합니다. Antigravity는 `.agents/workflows`와 global skills mirror를 사용합니다.
 
-Claude Code 플러그인은 Cairn이 소유한 로컬 marketplace `~/.codex/plugins/cache/cairn/claude`에 생성되며, Cairn skill 4개와 SessionStart·UserPromptSubmit·PostToolUse·Stop·SubagentStop hook을 담습니다. hook은 설치된 버전 런타임을 절대경로로 호출합니다. 파일 commit 뒤 `cairn install`/`upgrade`가 `claude plugin marketplace add`와 `claude plugin install cairn@cairn --scope user`로 등록하므로 다음 세션부터 Claude Code 터미널·데스크톱 앱·IDE 플러그인 목록에 표시됩니다. `claude` CLI가 없으면 등록을 건너뛰고 수동 명령을 안내하며, 이미 `cairn`이라는 다른 marketplace가 있으면 건드리지 않습니다. `cairn uninstall`은 파일 제거 전에 Cairn 소유 marketplace만 등록 해제하고, uninstall이 rollback되면 다시 등록합니다. `cairn doctor`는 `Claude plugin files`, `Claude plugin registered`, `Claude plugin enabled`를 보고합니다.
+Claude Code 플러그인은 Cairn이 소유한 로컬 marketplace `~/.cairn/install/claude`에 생성되며, Cairn skill 4개와 SessionStart·UserPromptSubmit·PostToolUse·Stop·SubagentStop hook을 담습니다. hook은 canonical runtime을 절대경로로 호출합니다. 파일 commit 뒤 `cairn install`/`upgrade`가 `claude plugin marketplace add`와 `claude plugin install cairn@cairn --scope user`로 등록하므로 다음 세션부터 Claude Code 터미널·데스크톱 앱·IDE 플러그인 목록에 표시됩니다. `claude` CLI가 없으면 등록을 건너뛰고 수동 명령을 안내하며, 이미 `cairn`이라는 다른 marketplace가 있으면 건드리지 않습니다. `cairn uninstall`은 파일 제거 전에 Cairn 소유 marketplace만 등록 해제하고, uninstall이 rollback되면 다시 등록합니다. Claude Code 플러그인 캐시에 다른 버전이 있으면 `cairn upgrade`가 `claude plugin marketplace update cairn`과 `claude plugin update cairn@cairn --scope user`로 갱신합니다. 갱신에 실패하면 업그레이드된 설치는 그대로 두고 수동으로 마칠 명령을 출력하며 exit 1입니다. `cairn doctor`는 `Claude plugin files`, `Claude plugin registered`, `Claude plugin enabled`, `Claude plugin cache version`을 보고합니다.
+
+## Install Layout And Auto-Upgrade
+
+Cairn은 설치본을 `CAIRN_HOME`(기본 `~/.cairn`) 아래에 둡니다. `CODEX_HOME`, `CLAUDE_HOME`, `ANTIGRAVITY_HOME`, `ANTIGRAVITY_CLI_HOME`, `CODEX_CONFIG_PATH`는 여전히 각 호스트 경로를 따로 정합니다.
+
+```text
+~/.cairn/
+  install/                  lifecycle 관리 파일
+    lifecycle.json          ownership manifest (schema 2: hosts, origin, 유예 runtime)
+    lifecycle.lock, transaction.json, transactions/
+    runtime/<version>/      모든 runtime locator와 Claude Code hook이 쓰는 canonical runtime
+    codex/                  Codex 로컬 marketplace source
+    claude/                 Claude Code 로컬 marketplace
+  projects/                 goal 상태
+  config.json               사용자 설정 ("autoUpgrade")
+  update/                   자동 업그레이드 상태
+$CODEX_HOME/plugins/cache/cairn/cairn/<version>/   Codex 플러그인 캐시 사본 (Codex를 선택했을 때만)
+```
+
+- 호스트: `--hosts`는 `install`과 `upgrade`에서만 받으며 값은 `all` 또는 `codex`, `claude`, `antigravity`의 쉼표 목록입니다. 선택은 ownership manifest에 기록되고 `upgrade`, `doctor`, `uninstall`이 따릅니다. `cairn upgrade --hosts <list>`는 호스트를 추가하고 빠진 호스트를 제거합니다(빠지는 호스트의 관리 파일이 수정됐으면 거부). 대화형 prompt는 전체(기본), Claude Code만, Codex만, Antigravity만, 쉼표 목록을 제시하며 아직 아무것도 설치되지 않았을 때만 나옵니다.
+- 이전: Cairn 0.6.0 이하에서 만든 설치(`$CODEX_HOME/plugins/cache/cairn` 아래 전체)는 `cairn upgrade` 한 번으로 `~/.cairn/install/`로 옮겨지고, Claude Code 플러그인도 새 marketplace 경로로 다시 등록됩니다. 이전이 실패하거나 중단되면 원래 상태로 복구하고, 수정된 관리 파일이 있으면 아무것도 바꾸지 않고 거부합니다. legacy 설치는 모든 호스트를 가진 채 이전되므로 전체가 아닌 `--hosts`는 거부되며, 다음 실행에서 고릅니다. 이전한 뒤에는 이 레이아웃을 아는 Cairn CLI로만 설치본을 다루고, 이전 중 열려 있던 세션은 다시 시작합니다.
+- 유예: 버전이 바뀌는 업그레이드는 직전 canonical runtime과 Codex 캐시 사본을 3일 동안(종류별 최대 3개) 남겨, 업그레이드 전에 시작한 세션이 계속 동작하게 합니다. 기간이 지난 것은 다음 install이나 upgrade가 제거하고, uninstall은 모두 제거합니다. 새 버전과 같거나 높은 Codex 캐시 사본은 남기지 않습니다. Codex는 캐시에서 가장 높은 버전을 로드하기 때문입니다.
+- 자동 업그레이드: 기본으로 켜져 있습니다. 24시간에 한 번 이하로(설치·업그레이드 직후 24시간은 제외) `SessionStart`가 분리 프로세스를 시작합니다. 이 프로세스는 npm에서 `cairn-ai` 최신 버전을 읽고, 그 정확한 버전을 `--ignore-scripts`로 `~/.cairn/update/stage/`에 설치해 검증한 뒤, 그 패키지의 `cairn-lifecycle.mjs upgrade --auto`를 실행합니다. major를 포함한 모든 새 버전을 적용하며 다운그레이드하지 않습니다. 다음 `SessionStart`는 결과를 한 줄로 한 번만 알립니다: `updated`, `failed`, `manual`(설치됐지만 Claude Code 플러그인 캐시에 `claude plugin update cairn@cairn`이 필요함). npm 조회·설치 실패는 알림 없이 backoff하고, 업그레이드 실패는 backoff하며 버전마다 한 번 알립니다. git 체크아웃에서 설치한 설치본(`origin: "checkout"`)과 소스 체크아웃 실행에서는 동작하지 않습니다.
+- 끄기: `cairn auto-upgrade off`, `CAIRN_AUTO_UPGRADE=0`(`false`, `off`, `no`도 가능), 또는 `~/.cairn/config.json`의 `"autoUpgrade": false`. 읽을 수 없는 `config.json`도 자동 업그레이드를 끕니다. 상태와 마지막 실행 출력은 `~/.cairn/update/`(`state.json`, `notice.json`, `last-run.log`, `update.lock`, `stage/`)에 있습니다.
 
 ## Antigravity Compatibility
 

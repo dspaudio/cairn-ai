@@ -102,12 +102,14 @@ cairn upgrade
 cairn doctor
 cairn uninstall
 cairn toolcheck
+cairn auto-upgrade status
 ```
 
-- `cairn install`: custom marketplace source、versioned runtime、Cairn-owned config sections、現行 host mirrors を transaction で install します。
-- `cairn upgrade`: staged validation 後、ownership manifest の未変更 entry だけを置換し、失敗時は rollback します。
-- `cairn doctor`: ownership digests、effective Codex features、実際の plugin status、runtime locators を修復せず診断します。
-- `cairn uninstall`: 未変更の managed entry だけを削除し、modified または unmanaged target は conflict として preserve します。
+- `cairn install [--hosts all|codex,claude,antigravity]`: custom marketplace source、versioned runtime、Cairn-owned config sections、現行 host mirrors を transaction で install します。 canonical runtime は `~/.cairn/install/` に置き、上記は選択した host の分だけ install します。`--hosts` がない場合、terminal での最初の install は host を尋ね、非対話実行と CI はすべての host を install します。
+- `cairn upgrade [--hosts all|codex,claude,antigravity]`: staged validation 後、ownership manifest の未変更 entry だけを置換し、失敗時は rollback します。 `--hosts` で変えない限り記録された hosts を維持し、Cairn 0.6.0 以前の install を移行し、別 version を持つ Claude Code plugin cache を更新します。 install 済み version がこの CLI より新しい場合、`install` と `upgrade` は何も変えずに拒否し、それでもこの CLI の version を入れるには `--allow-downgrade` を付けます。
+- `cairn doctor`: ownership digests、effective Codex features、実際の plugin status、runtime locators を修復せず診断します。 最初の行に `Hosts: <ids>` を出力し、選択された host だけを検査します(`Claude plugin cache version` を含む)。legacy install があれば `cairn upgrade` での移行を案内します。
+- `cairn uninstall`: まず config 以外のすべての ownership manifest entry を installed digest と照合し、変更または削除された managed artifact が一つでもあれば何も変えずに uninstall 全体を拒否します。そうでなければ managed entry と retained runtimes を削除・復元し、空の managed scaffold を整理し、unmanaged target とその親ディレクトリは preserve し、commit 前の失敗は rollback します。 `~/.cairn/update/` も削除し、`~/.cairn/config.json` と `~/.cairn/projects/` は残します。legacy layout の install は移行せずにその場で削除します。
+- `cairn auto-upgrade status|on|off|run`: `status` は設定、installed version、最終確認、保留中の notice を JSON で出力します。`on`/`off` は `~/.cairn/config.json` の `autoUpgrade` を書き換えて同じ report を出力し、`run` は 24 時間周期と backoff を無視して今すぐ npm を確認します。exit 0 は成功、1 は実行エラーまたは失敗した run、2 は usage error です。
 - `cairn toolcheck`: repository stacks と required tools を確認し、承認済み supported installer だけを実行します。それ以外は `installer-unavailable` です。
 - `cairn cleanup --root <repo>`: 既定では legacy project-local `.cairn` residue を read-only で報告します。`--yes` は valid active state を user-home store に移行・調整し、known state/lock/tool residue のみ削除し、unknown files を保持して空の場合だけ directory を削除します。
 - `cairn memory check|index [--root <repo>]`: `check` は `MEMORY.md` と `docs/memory/*.md` を照合して JSON report を 1 つ出力します。unindexed notes、dead links、duplicates、stale summaries、summary 内の制御文字、unsafe paths があれば exit 1 で、warnings は `--strict` のときだけ失敗します。entries は `## Domain Knowledge` の下の list 行です(その section がない古い file ではすべての list 行)。他の section の note link は言及であり、`index` は書き換えません。`index` は抜けている notes を追加し、`Summary:` が変わると link の後ろの summary 部分だけを置き換えます(link が複数ある行はそのまま)。その section 内で完全に一致する Cairn placeholder 行だけを削除し、entries や dead links は削除せず、それ以外は byte 単位で保持します。`--dry-run` で事前確認できます。挿入位置が閉じていない code fence の中なら、`index` は何も書かず `unclosed-fence` で exit 1 になります。usage error は exit 2 で、subcommand なしの `cairn memory` は従来の案内を出力します。
@@ -120,9 +122,34 @@ cairn toolcheck
 
 custom marketplace lifecycle は source と versioned runtime を分離します。各 commit 前に staged validation を行い、ownership manifest が全 managed digest を結び、失敗時は reverse-order rollback します。modified または unmanaged artifacts は preserve して conflict として報告します。Cairn-owned TOML sections だけを変更し、public feature/agent settings は強制しません。
 
-Clean uninstall は、すべての managed scaffold directory が空の場合に限り Cairn marketplace cache root を削除し、unmanaged content は保持します。source repository と repository `MEMORY.md`/`PLAN.md`、user-home Cairn goal state、global `cairn-ai` package、package-manager cache、現在の ownership manifest 外の legacy backup/settings は自動削除しません。
+Clean uninstall は、すべての managed scaffold directory が空の場合に限り `~/.cairn/install/` と Codex cache root `$CODEX_HOME/plugins/cache/cairn` を削除し、unmanaged content は保持します。source repository と repository `MEMORY.md`/`PLAN.md`、user-home Cairn goal state、global `cairn-ai` package、package-manager cache、現在の ownership manifest 外の legacy backup/settings は自動削除しません。
 
 Codex は `skills/` と `commands/` を使います。Claude Code は `.claude/` 配下の mirrored commands と agent definitions を使います。Antigravity は `.agents/workflows` と global skills mirrors を使います。
+
+## Install Layout And Auto-Upgrade
+
+Cairn は install を `CAIRN_HOME`(既定 `~/.cairn`)の下に置きます。host の paths は引き続き `CODEX_HOME`、`CLAUDE_HOME`、`ANTIGRAVITY_HOME`、`ANTIGRAVITY_CLI_HOME`、`CODEX_CONFIG_PATH` で個別に設定します。
+
+```text
+~/.cairn/
+  install/                  lifecycle が管理する files
+    lifecycle.json          ownership manifest (schema 2: hosts, origin, retained runtimes)
+    lifecycle.lock, transaction.json, transactions/
+    runtime/<version>/      すべての runtime locator と Claude Code hooks が使う canonical runtime
+    codex/                  Codex local marketplace source
+    claude/                 Claude Code local marketplace
+  projects/                 goal state
+  config.json               user settings ("autoUpgrade")
+  update/                   auto-upgrade state
+$CODEX_HOME/plugins/cache/cairn/cairn/<version>/   Codex plugin cache copy (Codex を選択した場合のみ)
+```
+
+- Hosts: `--hosts` は `install` と `upgrade` だけが受け付け、値は `all` または `codex`、`claude`、`antigravity` のカンマ区切りです。選択は ownership manifest に記録され、`upgrade`、`doctor`、`uninstall` がそれに従います。変更は `cairn upgrade --hosts <list>` で、外す host の managed file が変更されていれば拒否します。対話 prompt(すべて(既定)、Claude Code のみ、Codex のみ、Antigravity のみ、カンマ区切り)は、まだ何も install されていないときだけ表示されます。
+- 移行: Cairn 0.6.0 以前の install(`$CODEX_HOME/plugins/cache/cairn` 配下)は `cairn upgrade` 1 回で `~/.cairn/install/` へ移り、Claude Code plugin も新しい marketplace path で再登録されます。失敗・中断した移行は復元され、変更された managed file があれば何も変えずに拒否します。legacy install はすべての host のまま移行するため、全体でない `--hosts` は次の実行で指定します。移行後はこの layout を扱える Cairn CLI だけで管理し、移行中に開いていた session は再起動してください。
+- 猶予: version が変わる upgrade は、直前の canonical runtime と Codex cache copy を 3 日間(種類ごとに最大 3 個)残し、upgrade 前に始まった session が動き続けるようにします。期限切れは次の install/upgrade が削除し、uninstall はすべて削除します。新しい version 以上の Codex cache copy は残しません(Codex は cache の中で最も高い version を読み込むため)。
+- Claude Code plugin cache: 別 version が残っていれば `cairn upgrade` が `claude plugin marketplace update cairn` と `claude plugin update cairn@cairn --scope user` で更新します。失敗した場合は upgrade 済みの install を残し、手動で完了する command を出力して exit 1 になります。
+- Auto-upgrade: 既定で有効です。`SessionStart` が 24 時間に 1 回まで(install・upgrade 直後の 24 時間は除く)detached process を起動し、npm の最新 `cairn-ai` をその version 固定で `--ignore-scripts` 付きで `~/.cairn/update/stage/` に install・検証してから、その package の `cairn-lifecycle.mjs upgrade --auto` を実行します。major を含むすべての新しい version を適用し、downgrade はしません。次の `SessionStart` が結果(`updated`、`failed`、`manual`)を 1 行で 1 回だけ知らせます。git checkout からの install(`origin: "checkout"`)と source checkout からの実行では動作しません。
+- 無効化: `cairn auto-upgrade off`、`CAIRN_AUTO_UPGRADE=0`(`false`、`off`、`no` も可)、または `~/.cairn/config.json` の `"autoUpgrade": false`。読めない `config.json` も無効として扱います。状態と最後の実行 log は `~/.cairn/update/` にあります。
 
 ## Antigravity Compatibility
 

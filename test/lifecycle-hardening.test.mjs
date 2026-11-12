@@ -10,7 +10,7 @@ const root = resolve(".");
 const lifecycleScript = join(root, "scripts", "cairn-lifecycle.mjs");
 
 for (const fixture of [
-  { name: "Codex", ancestor: (env) => join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins") },
+  { name: "Codex", ancestor: (env) => join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn") },
   { name: "Claude", ancestor: (env) => join(env.CLAUDE_HOME, "commands") },
   { name: "Antigravity", ancestor: (env) => join(env.ANTIGRAVITY_HOME, "skills") },
 ]) {
@@ -32,6 +32,33 @@ for (const fixture of [
   });
 }
 
+test("install rejects a symlinked CAIRN_HOME install ancestor without outside writes", async () => {
+  // doctor only takes the lifecycle lock, so it checks the lock path ancestors; install and uninstall check every target.
+  for (const { ancestor, commands } of [
+    { ancestor: (env) => env.CAIRN_HOME, commands: ["install", "doctor", "uninstall"] },
+    { ancestor: (env) => join(env.CAIRN_HOME, "install"), commands: ["install", "doctor", "uninstall"] },
+    { ancestor: (env) => join(env.CAIRN_HOME, "install", "codex"), commands: ["install", "uninstall"] },
+  ]) {
+    // Given
+    await withHome(async ({ env, outside }) => {
+      const link = ancestor(env);
+      await mkdir(dirname(link), { recursive: true });
+      await symlink(outside, link);
+
+      // When
+      const results = commands.map((command) => run([command], env));
+
+      // Then
+      for (const result of results) {
+        assert.equal(result.status, 1, result.stdout + result.stderr);
+        assert.match(result.stderr, /ancestor must not be a symlink/);
+      }
+      assert.deepEqual(await readdir(outside), []);
+      await assert.rejects(stat(join(env.CODEX_HOME, "plugins", "cache", "cairn")));
+    });
+  }
+});
+
 test("install rejects every trailing argument before lock or stage mutation", async () => {
   // Given
   await withHome(async ({ env, paths }) => {
@@ -42,10 +69,75 @@ test("install rejects every trailing argument before lock or stage mutation", as
       // Then
       assert.equal(result.status, 1, `${args.join(" ")}\n${result.stderr}`);
       assert.match(result.stderr, /does not accept arguments/);
-      await assert.rejects(stat(paths.marketplace));
+      await assert.rejects(stat(paths.install));
+      await assert.rejects(stat(paths.codexCache));
     }
   });
 });
+
+test("--hosts accepts all or a comma list and rejects missing, empty, unknown, and duplicate values before mutation", async () => {
+  // Given
+  await withHome(async ({ env, paths }) => {
+    for (const args of [
+      ["install", "--hosts"], ["install", "--hosts="], ["install", "--hosts", ""], ["install", "--hosts", "gemini"],
+      ["install", "--hosts", "codex,codex"], ["upgrade", "--hosts=codex,,claude"], ["upgrade", "--hosts", "all,codex"],
+      ["install", "--hosts", "claude", "--hosts", "codex"],
+    ]) {
+      // When
+      const result = run(args, env);
+
+      // Then
+      assert.equal(result.status, 1, `${args.join(" ")}\n${result.stderr}`);
+      assert.match(result.stderr, /^Cairn lifecycle error: Invalid --hosts value/, args.join(" "));
+      await assert.rejects(stat(paths.install));
+      await assert.rejects(stat(paths.codexCache));
+    }
+    for (const args of [["doctor", "--hosts", "all"], ["uninstall", "--hosts=all"], ["install", "--hosts", "all", "--dry-run"]]) {
+      const result = run(args, env);
+      assert.equal(result.status, 1, `${args.join(" ")}\n${result.stderr}`);
+      assert.match(result.stderr, /does not accept arguments/, args.join(" "));
+      await assert.rejects(stat(paths.install));
+    }
+  });
+  for (const [args, hosts] of [[["install", "--hosts", "all"], ["codex", "claude", "antigravity"]], [["install", "--hosts=antigravity,codex"], ["codex", "antigravity"]]]) {
+    await withHome(async ({ env, paths }) => {
+      // When
+      const result = run(args, env);
+
+      // Then
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      assert.deepEqual(JSON.parse(await readFile(paths.ownership, "utf8")).hosts, hosts);
+    });
+  }
+});
+
+for (const fixture of [
+  { name: "Codex", ancestor: (env) => join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn"), hosts: "claude,antigravity" },
+  { name: "Codex config", ancestor: (env) => env.CODEX_HOME, hosts: "claude,antigravity" },
+  { name: "Claude", ancestor: (env) => join(env.CLAUDE_HOME, "commands"), hosts: "codex,antigravity" },
+  { name: "Antigravity", ancestor: (env) => join(env.ANTIGRAVITY_HOME, "skills"), hosts: "codex,claude" },
+]) {
+  test(`a symlinked ${fixture.name} home of an unselected host does not block install`, async () => {
+    // Given
+    await withHome(async ({ env, outside, paths }) => {
+      const ancestor = fixture.ancestor(env);
+      await mkdir(dirname(ancestor), { recursive: true });
+      await symlink(outside, ancestor);
+
+      // When
+      const install = run(["install", "--hosts", fixture.hosts], env);
+      const upgrade = run(["upgrade"], env);
+      const uninstall = run(["uninstall"], env);
+
+      // Then
+      assert.equal(install.status, 0, install.stdout + install.stderr);
+      assert.equal(upgrade.status, 0, upgrade.stdout + upgrade.stderr);
+      assert.equal(uninstall.status, 0, uninstall.stdout + uninstall.stderr);
+      assert.deepEqual(await readdir(outside), []);
+      await assert.rejects(stat(paths.install));
+    });
+  });
+}
 
 test("invalid lifecycle lock timeouts fail within a bounded interval before mutation", async () => {
   // Given
@@ -60,7 +152,8 @@ test("invalid lifecycle lock timeouts fail within a bounded interval before muta
       assert.equal(result.status, 1, `${timeout}\n${result.stderr}`);
       assert.match(result.stderr, /CAIRN_LIFECYCLE_LOCK_TIMEOUT_MS must be an integer between 1 and 2147483647/);
       assert.ok(elapsedMs < 2_000, `${timeout} took ${elapsedMs}ms`);
-      await assert.rejects(stat(paths.marketplace));
+      await assert.rejects(stat(paths.install));
+      await assert.rejects(stat(paths.codexCache));
     }
   });
 });
@@ -131,6 +224,7 @@ async function withHome(runTest) {
   const env = {
     ...process.env,
     HOME: join(temp, "home"),
+    CAIRN_HOME: join(temp, "cairn-home"),
     CODEX_HOME: join(temp, "codex"),
     CLAUDE_HOME: join(temp, "claude"),
     CAIRN_CLAUDE_CLI: fakeClaudeCli,
@@ -139,12 +233,13 @@ async function withHome(runTest) {
     CAIRN_LEGACY_ANTIGRAVITY_HOME: join(temp, "legacy-agents"),
     CODEX_CONFIG_PATH: join(temp, "codex", "config.toml"),
   };
-  const marketplace = join(env.CODEX_HOME, "plugins", "cache", "cairn");
+  const install = join(env.CAIRN_HOME, "install");
   const paths = {
-    marketplace,
-    ownership: join(marketplace, ".cairn", "lifecycle.json"),
-    transaction: join(marketplace, ".cairn", "transaction.json"),
-    transactions: join(marketplace, ".cairn", "transactions"),
+    install,
+    codexCache: join(env.CODEX_HOME, "plugins", "cache", "cairn"),
+    ownership: join(install, "lifecycle.json"),
+    transaction: join(install, "transaction.json"),
+    transactions: join(install, "transactions"),
   };
   const outside = join(temp, "outside");
   await mkdir(outside);

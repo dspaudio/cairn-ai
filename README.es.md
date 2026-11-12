@@ -102,12 +102,14 @@ cairn upgrade
 cairn doctor
 cairn uninstall
 cairn toolcheck
+cairn auto-upgrade status
 ```
 
-- `cairn install`: instala de forma transaccional custom marketplace source, versioned runtime, secciones config propias de Cairn y mirrors actuales.
-- `cairn upgrade`: reemplaza solo entradas sin modificar del ownership manifest tras staged validation y usa rollback al fallar.
-- `cairn doctor`: valida ownership digests, features efectivos de Codex, el estado real del plugin y runtime locators sin reparar.
-- `cairn uninstall`: elimina solo entradas gestionadas sin modificar; los objetivos modified o unmanaged se preservan como conflict.
+- `cairn install [--hosts all|codex,claude,antigravity]`: instala de forma transaccional custom marketplace source, versioned runtime, secciones config propias de Cairn y mirrors actuales. El canonical runtime vive en `~/.cairn/install/` y el resto se instala solo para los hosts elegidos. Sin `--hosts`, la primera instalación en una terminal pregunta los hosts; las ejecuciones no interactivas y CI instalan todos.
+- `cairn upgrade [--hosts all|codex,claude,antigravity]`: reemplaza solo entradas sin modificar del ownership manifest tras staged validation y usa rollback al fallar. Mantiene los hosts registrados salvo que `--hosts` los cambie, migra una instalación de Cairn 0.6.0 o anterior y actualiza un Claude Code plugin cache que aún tenga otra versión. Si la versión instalada es más nueva que esta CLI, `install` y `upgrade` se niegan sin cambiar nada; `--allow-downgrade` instala de todos modos la versión de esta CLI.
+- `cairn doctor`: valida ownership digests, features efectivos de Codex, el estado real del plugin y runtime locators sin reparar. Imprime primero `Hosts: <ids>` y solo revisa los hosts elegidos (incluido `Claude plugin cache version`). Si hay una instalación legacy, indica migrarla con `cairn upgrade`.
+- `cairn uninstall`: primero compara cada entrada no config del ownership manifest con su installed digest y rechaza todo el uninstall, sin cambiar nada, si algún managed artifact fue modificado o eliminado. Si no, elimina o restaura las entradas gestionadas y los retained runtimes, limpia los managed scaffolds vacíos, preserva los objetivos unmanaged y sus directorios padre, y aplica rollback a los fallos anteriores al commit. También elimina `~/.cairn/update/`, y conserva `~/.cairn/config.json` y `~/.cairn/projects/`. Una instalación con layout legacy se elimina en su sitio sin migrarla.
+- `cairn auto-upgrade status|on|off|run`: `status` imprime en JSON la configuración, la versión instalada, la última comprobación y el aviso pendiente; `on`/`off` escriben `autoUpgrade` en `~/.cairn/config.json` e imprimen el mismo informe; `run` consulta npm ahora, sin esperar el intervalo de 24 horas ni el backoff. Exit 0 es éxito, 1 un error de ejecución o una ejecución fallida y 2 un error de uso.
 - `cairn toolcheck`: detecta repository stacks y revisa required tools; solo ejecuta un installer compatible aprobado, o devuelve `installer-unavailable`.
 - `cairn cleanup --root <repo>`: por defecto informa en modo read-only el residuo legacy `.cairn` local al proyecto. `--yes` migra/reconcilia active state válido al almacén user-home, elimina solo residuos conocidos de state/lock/tool, conserva archivos desconocidos y poda el directorio solo si queda vacío.
 - `cairn memory check|index [--root <repo>]`: `check` compara `MEMORY.md` con `docs/memory/*.md` e imprime un informe JSON; sale con 1 ante notas sin indexar, dead links, duplicados, resúmenes desactualizados, caracteres de control en resúmenes o rutas inseguras, y los warnings solo fallan con `--strict`. Las entradas son líneas de lista bajo `## Domain Knowledge` (o todas las líneas de lista en un archivo antiguo sin esa sección); un enlace a una nota en otra sección es una mención que `index` nunca reescribe. `index` añade las notas que faltan y, si el `Summary:` cambió, reemplaza solo el resumen tras el enlace (una línea con varios enlaces queda como está); solo elimina líneas placeholder de Cairn que coinciden exactamente dentro de esa sección, nunca borra entradas ni dead links y conserva el resto byte a byte. `--dry-run` muestra una vista previa. Si el punto de inserción está dentro de un bloque de código sin cerrar, `index` no escribe nada y sale con 1 con `unclosed-fence`. Los errores de uso salen con 2; `cairn memory` sin subcomando sigue mostrando la guía.
@@ -120,9 +122,34 @@ cairn toolcheck
 
 El custom marketplace lifecycle mantiene separados source y versioned runtime. Staged validation precede cada commit, el ownership manifest vincula todos los managed digests y un fallo aplica reverse-order rollback. Los artifacts modified o unmanaged se preservan y se reportan como conflict. Cairn modifica solo sus propias TOML sections y no fuerza feature/agent settings públicos.
 
-Clean uninstall elimina el Cairn marketplace cache root solo cuando todos los managed scaffold directories están vacíos; cualquier contenido unmanaged se conserva. No elimina el source repository, los `MEMORY.md`/`PLAN.md` del repository ni el Cairn goal state de user-home, el paquete global `cairn-ai`, los package-manager caches ni legacy backups/settings fuera del ownership manifest actual.
+Clean uninstall elimina `~/.cairn/install/` y el Codex cache root `$CODEX_HOME/plugins/cache/cairn` solo cuando todos los managed scaffold directories están vacíos; cualquier contenido unmanaged se conserva. No elimina el source repository, los `MEMORY.md`/`PLAN.md` del repository ni el Cairn goal state de user-home, el paquete global `cairn-ai`, los package-manager caches ni legacy backups/settings fuera del ownership manifest actual.
 
 Codex usa `skills/` y `commands/`. Claude Code usa comandos reflejados y definiciones de agentes bajo `.claude/`. Antigravity usa `.agents/workflows` y mirrors globales de skills.
+
+## Install Layout And Auto-Upgrade
+
+Cairn guarda la instalación bajo `CAIRN_HOME` (por defecto `~/.cairn`). Las rutas de cada host siguen definiéndose por separado con `CODEX_HOME`, `CLAUDE_HOME`, `ANTIGRAVITY_HOME`, `ANTIGRAVITY_CLI_HOME` y `CODEX_CONFIG_PATH`.
+
+```text
+~/.cairn/
+  install/                  archivos gestionados por el lifecycle
+    lifecycle.json          ownership manifest (schema 2: hosts, origin, retained runtimes)
+    lifecycle.lock, transaction.json, transactions/
+    runtime/<version>/      canonical runtime que usan todos los runtime locators y los hooks de Claude Code
+    codex/                  Codex local marketplace source
+    claude/                 Claude Code local marketplace
+  projects/                 goal state
+  config.json               ajustes del usuario ("autoUpgrade")
+  update/                   estado de auto-upgrade
+$CODEX_HOME/plugins/cache/cairn/cairn/<version>/   copia en el Codex plugin cache (solo si se elige Codex)
+```
+
+- Hosts: solo `install` y `upgrade` aceptan `--hosts`, con `all` o una lista separada por comas de `codex`, `claude` y `antigravity`. La selección queda en el ownership manifest y `upgrade`, `doctor` y `uninstall` la siguen. Se cambia con `cairn upgrade --hosts <list>`; si un archivo gestionado de un host retirado fue modificado, se rechaza. El prompt interactivo (todos por defecto, solo Claude Code, solo Codex, solo Antigravity o una lista) aparece solo cuando aún no hay nada instalado.
+- Migración: una instalación de Cairn 0.6.0 o anterior (todo bajo `$CODEX_HOME/plugins/cache/cairn`) pasa a `~/.cairn/install/` con un solo `cairn upgrade`, que también vuelve a registrar el plugin de Claude Code desde la nueva ruta del marketplace. Una migración fallida o interrumpida se restaura, y archivos gestionados modificados la rechazan sin cambios. La instalación legacy migra con todos los hosts, así que un `--hosts` parcial se indica en la siguiente ejecución. Después, gestiona la instalación solo con un Cairn CLI que conozca este layout y reinicia las sesiones abiertas durante la migración.
+- Retención: un upgrade que cambia de versión conserva el canonical runtime anterior y la copia del Codex cache durante 3 días (como máximo 3 de cada tipo) para que las sesiones iniciadas antes sigan funcionando. El siguiente install o upgrade elimina las vencidas y uninstall las elimina todas. Nunca se conserva una copia del Codex cache igual o superior a la nueva versión, porque Codex carga la versión más alta del cache.
+- Claude Code plugin cache: si aún tiene otra versión, `cairn upgrade` lo actualiza con `claude plugin marketplace update cairn` y `claude plugin update cairn@cairn --scope user`. Si falla, la instalación actualizada se mantiene, se imprimen los comandos para terminar a mano y sale con exit 1.
+- Auto-upgrade: activado por defecto. Como máximo una vez cada 24 horas (y no en las 24 horas siguientes a un install o upgrade), `SessionStart` lanza un proceso separado que lee la última versión de `cairn-ai` en npm, instala esa versión exacta con `--ignore-scripts` en `~/.cairn/update/stage/`, la verifica y ejecuta su `cairn-lifecycle.mjs upgrade --auto`. Aplica todas las versiones nuevas, incluidas las major, y nunca hace downgrade. El siguiente `SessionStart` muestra el resultado (`updated`, `failed` o `manual`) en una línea, una sola vez. No funciona en instalaciones desde un git checkout (`origin: "checkout"`) ni al ejecutar desde un source checkout.
+- Desactivar: `cairn auto-upgrade off`, `CAIRN_AUTO_UPGRADE=0` (también `false`, `off` o `no`) o `"autoUpgrade": false` en `~/.cairn/config.json`. Un `config.json` ilegible también lo desactiva. El estado y el log de la última ejecución están en `~/.cairn/update/`.
 
 ## Antigravity Compatibility
 

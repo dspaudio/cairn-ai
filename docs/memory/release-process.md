@@ -23,7 +23,7 @@ Summary: 버전 표면, dev→main PR 승격, exact-main tarball 게시와 npm �
 4. 병합된 `main` SHA의 clean detached worktree에서 `npm pack`을 한 번만 한다. 같은 tarball로 `npm publish --dry-run`과 실제 publish를 한다.
 5. 게시 뒤 `npm view cairn-ai@<v> dist --json`의 shasum·integrity와 `latest`를 tarball과 대조한다.
 6. 격리된 prefix·cache·HOME·`CAIRN_HOME`에 registry 버전을 설치해 새 기능을 확인한다.
-7. 사용자가 요청한 경우에만 로컬 설치본을 올린다: `npm install -g cairn-ai@<v>` → `cairn upgrade` → `cairn doctor`.
+7. 사용자가 요청한 경우에만 로컬 설치본을 올린다: `npm install -g cairn-ai@<v>` → `cairn upgrade` → `cairn doctor`(첫 줄 `Hosts:`). 0.6.0 이하 설치본은 이 `cairn upgrade`가 `~/.cairn/install/`로 이전하고, 자동 업그레이드가 켜진 package 설치본은 게시 뒤 24시간 안에 SessionStart가 스스로 올리므로 먼저 `cairn auto-upgrade status`로 확인한다(`lifecycle-install.md` 자동 업그레이드).
 8. `main`의 병합 커밋을 `dev`에 다시 합친다. 빠뜨리면 hotfix가 `dev`에 없게 된다(`docs/plan/release-0.3.0.md` 후속).
 
 출처: `docs/plan/release-0.5.0.md`, `docs/plan/release-0.4.1.md`, `docs/plan/release-0.2.7.md` "Execution Contracts".

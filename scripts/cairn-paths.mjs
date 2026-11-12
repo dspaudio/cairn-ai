@@ -11,6 +11,16 @@ export function cairnHome(env = process.env) {
   return resolve(env.CAIRN_HOME ?? join(userHome, ".cairn"));
 }
 
+// Lifecycle-managed files (ownership manifest, journal, lock, canonical runtime, marketplaces) live under
+// <cairnHome>/install so they stay separate from goal state under <cairnHome>/projects.
+export function installRoot(env = process.env) {
+  return join(cairnHome(env), "install");
+}
+
+export function installManifestPath(env = process.env) {
+  return join(installRoot(env), "lifecycle.json");
+}
+
 export function repositoryId(root = process.cwd()) {
   return `project-${hashPath(gitLayout(root).commonDir)}`;
 }
@@ -140,6 +150,8 @@ const runtimeEntryRelativePaths = [
   join("scripts", "cairn-toolcheck.mjs"),
   join("scripts", "cairn-goal.mjs"),
   join("scripts", "cairn-cleanup.mjs"),
+  // Spawned by path from the SessionStart hook, so it is an entrypoint of its own.
+  join("scripts", "cairn-auto-upgrade.mjs"),
 ];
 const localModuleSpecifier = /^(?:import|export)\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|[\w$]+)(?:\s*,\s*(?:\{[^}]*\}|\*\s+as\s+\w+))?\s+from\s+)?["'](\.[^"']+)["']/gm;
 

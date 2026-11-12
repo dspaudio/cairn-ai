@@ -11,6 +11,7 @@ import { createRuntimeLocator, parseRootArgs, resolvePluginRoot } from "../scrip
 const fakeClaudeCli = resolve("test/fixtures/fake-claude.mjs");
 const sourceRoot = resolve(".");
 const lifecycleScript = join(sourceRoot, "scripts", "cairn-lifecycle.mjs");
+const releaseVersion = JSON.parse(await readFile(join(sourceRoot, "package.json"), "utf8")).version;
 
 test("plugin and repository roots remain separate", async () => {
   const temp = await mkdtemp(join(tmpdir(), "cairn roots "));
@@ -74,7 +75,7 @@ test("installed mirrors resolve Cairn resources through runtime locators", async
   const env = isolatedEnvironment(temp);
   const project = join(temp, "target project");
   const unrelatedCwd = join(temp, "unrelated cwd");
-  const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.6.0");
+  const installedRoot = join(env.CAIRN_HOME, "install", "runtime", releaseVersion);
   const claudeLocatorPath = join(env.CLAUDE_HOME, "cairn", "runtime.json");
 
   try {
@@ -171,9 +172,66 @@ test("installed mirrors resolve Cairn resources through runtime locators", async
   }
 });
 
+test("install or upgrade from the canonical runtime, the Codex cache, or the Codex source is refused", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn installed cache "));
+  const env = isolatedEnvironment(temp);
+  try {
+    await mkdir(dirname(env.CODEX_CONFIG_PATH), { recursive: true });
+    await writeFile(env.CODEX_CONFIG_PATH, "");
+    const install = runLifecycle("install", env);
+    assert.equal(install.status, 0, install.stderr);
+    const ownershipPath = join(env.CAIRN_HOME, "install", "lifecycle.json");
+    const ownership = await readFile(ownershipPath, "utf8");
+
+    for (const installedRoot of [
+      join(env.CAIRN_HOME, "install", "runtime", releaseVersion),
+      join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", releaseVersion),
+      join(env.CAIRN_HOME, "install", "codex", "plugins", "cairn"),
+    ]) {
+      for (const command of ["install", "upgrade"]) {
+        const result = spawnSync(process.execPath, [join(installedRoot, "scripts", "cairn.mjs"), command], { env, encoding: "utf8" });
+        assert.equal(result.status, 1, `${installedRoot} ${command}\n${result.stdout}${result.stderr}`);
+        assert.match(result.stderr, /package\/global source, not from the installed cache/);
+      }
+    }
+    assert.equal(await readFile(ownershipPath, "utf8"), ownership);
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("SessionStart from an installed copy prints the canonical CLI path", async () => {
+  const temp = await mkdtemp(join(tmpdir(), "cairn installed session "));
+  const env = isolatedEnvironment(temp);
+  const project = join(temp, "project");
+  try {
+    await mkdir(project, { recursive: true });
+    await mkdir(dirname(env.CODEX_CONFIG_PATH), { recursive: true });
+    await writeFile(env.CODEX_CONFIG_PATH, "");
+    const install = runLifecycle("install", env);
+    assert.equal(install.status, 0, install.stderr);
+    const canonicalCli = join(env.CAIRN_HOME, "install", "runtime", releaseVersion, "scripts", "cairn.mjs");
+    // Codex runs hooks from its cache copy, which an upgrade can remove; the capsule points at the canonical runtime.
+    for (const installedRoot of [
+      join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", releaseVersion),
+      join(env.CAIRN_HOME, "install", "runtime", releaseVersion),
+    ]) {
+      const hook = spawnSync(process.execPath, [join(installedRoot, "scripts", "cairn-state.mjs"), "session-start"], {
+        cwd: project, env, encoding: "utf8", input: JSON.stringify({ cwd: project, session_id: "installed-session" }),
+      });
+      assert.equal(hook.status, 0, hook.stderr);
+      const context = JSON.parse(hook.stdout).hookSpecificOutput.additionalContext;
+      assert.ok(context.includes(`Cairn CLI: node ${JSON.stringify(canonicalCli)} goal <command>`), `${installedRoot}\n${context}`);
+    }
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
 function isolatedEnvironment(temp) {
   return {
     ...process.env,
+    CAIRN_HOME: join(temp, "Cairn Home"),
     CODEX_HOME: join(temp, "Codex Home"),
     CLAUDE_HOME: join(temp, "Claude Home"),
     CAIRN_CLAUDE_CLI: fakeClaudeCli,
