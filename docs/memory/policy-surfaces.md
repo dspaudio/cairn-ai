@@ -35,7 +35,7 @@ Summary: 정책 문구를 바꿀 때 함께 고칠 표면 지도(skill·command�
 
 - memory 표면(skill, command, workflow)은 `Summary:` 줄과 `cairn memory index`/`check`를 요구한다. plan 표면은 관련 노트와 완료 계획(최대 3개) 재사용, `Related completed plans:` 기록, `PLAN.md` 한 줄 항목을 요구한다. work·review 표면은 `Memory promotion:` 결정(`docs/memory/<domain>.md` 또는 `none: <reason>`)을 요구하고 노트 작성을 강요하지 않는다. 출처: `test/contract-parity.test.mjs` 34·48·76행.
 - 두 `delegation.md`의 위임 프롬프트 `CONTEXT:`에는 고른 노트 경로가 들어간다. agent와 Claude 미러는 `MEMORY.md` 항목으로 노트를 고르라고 지시한다. 출처: 같은 파일 109·117행.
-- README 8개는 `cairn memory check|index`, `cairn plan check|index [--archive]`, `docs/plan/ARCHIVE.md`, `## Completed Plans`, SessionStart, `goal stats --history`, advisory `completionCriteria`, `Memory promotion:`을 모두 담는다. cleanup lock 문장은 en·ko에만 있다. 출처: `test/docs-package-hardening.test.mjs:89-115`.
+- README 8개는 `cairn memory check|index`, `cairn plan check|index [--archive]`, `docs/plan/ARCHIVE.md`, `## Completed Plans`, SessionStart, `goal stats --history`, advisory `completionCriteria`, `Memory promotion:`, `--hosts`, `cairn auto-upgrade status|on|off|run`, `CAIRN_AUTO_UPGRADE=0`, `~/.cairn/install/`을 모두 담고 옛 Claude marketplace 경로 `~/.codex/plugins/cache/cairn/claude`는 담지 않는다. cleanup lock 문장은 en·ko에만 있다. 출처: `test/docs-package-hardening.test.mjs:89-126`.
 - 8 locale 안내문은 같은 영문 정책 상수(`tokenEfficientWorkPolicy`, `reasoningEffortPolicy`, `memoryIndexPolicy`, `planIndexPolicy` 등)를 붙인다. ko는 일부 상수의 한국어 판을 쓴다. 출처: `scripts/cairn.mjs:117-185`, `test/token-efficiency.test.mjs:450`.
 - 메모리 승격 절차 본문은 `skills/cairn-work/verification.md` `## Memory Promotion`, 계획 재활용 절차는 `skills/cairn-plan/planning-rules.md` `## Reuse Before Planning`에 있다. 옛 `PLAN.md`의 Planning Rules 정본도 이 파일이다.
 

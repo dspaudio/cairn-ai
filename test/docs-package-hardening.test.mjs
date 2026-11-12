@@ -100,6 +100,18 @@ test("all readmes document the memory and plan index commands, ARCHIVE.md, goal 
   }
 });
 
+test("all readmes document host selection, auto-upgrade, and the CAIRN_HOME install layout", async () => {
+  for (const path of readmes) {
+    const readme = await read(path);
+    assert.match(readme, /`--hosts/, `${path} --hosts`);
+    assert.match(readme, /`--allow-downgrade`/, `${path} --allow-downgrade`);
+    assert.match(readme, /`cairn auto-upgrade status\|on\|off\|run`/, `${path} auto-upgrade CLI`);
+    assert.match(readme, /`CAIRN_AUTO_UPGRADE=0`/, `${path} CAIRN_AUTO_UPGRADE`);
+    assert.match(readme, /`~\/\.cairn\/install\//, `${path} ~/.cairn install layout`);
+    assert.doesNotMatch(readme, /~\/\.codex\/plugins\/cache\/cairn\/claude/, `${path} legacy Claude marketplace path`);
+  }
+});
+
 test("the README cleanup entry states that only valid dead-owner lock records are removed", async () => {
   const cases = {
     "README.md": [/valid lock record/, /owner process (?:on this host )?is dead/, /preserved/, /`preservedReasons`/],

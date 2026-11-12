@@ -10,6 +10,7 @@ const contextLimits = {
   memoryLine: 84,
   indexName: 32,
   planNames: 3,
+  noticeVersion: 24,
 };
 
 export function prependContext(result, notice) {
@@ -127,6 +128,30 @@ export function foreignSessionContextResult({ ko, event, sessionId, index = null
   // Repository notes are shared knowledge; plan names would reveal the owner's work, so they never appear here.
   const memory = event === "session-start" ? memoryBlock(ko, index?.memory) : "";
   return contextHookResult({ event, message: withBlocks(message, memory) });
+}
+
+// One SessionStart line after an auto-upgrade run (decision 8 of docs/plan/auto-upgrade-cairn-home.md). Versions are
+// clipped so the line stays within 160 characters; it is shown once and never in UserPromptSubmit.
+export function updateNoticeLine({ ko, notice }) {
+  const version = (value) => clipText(plainText(value), contextLimits.noticeVersion);
+  const from = version(notice?.from);
+  const to = version(notice?.to);
+  if (notice?.kind === "updated") {
+    return ko
+      ? `Cairn 업데이트: ${from} → ${to} 자동 업그레이드되었습니다. 이 세션부터 적용됩니다. 사용자에게 한 번 알려 주세요.`
+      : `Cairn update: auto-upgraded ${from} → ${to}; this session runs ${to}. Mention it to the user once.`;
+  }
+  if (notice?.kind === "failed") {
+    return ko
+      ? `Cairn 업데이트: ${to} 자동 업그레이드가 실패했습니다. 사용자에게 "npx cairn-ai@latest upgrade" 실행 또는 "cairn auto-upgrade status" 확인을 안내하세요.`
+      : `Cairn update: auto-upgrade to ${to} failed. Tell the user to run "npx cairn-ai@latest upgrade" or check "cairn auto-upgrade status".`;
+  }
+  if (notice?.kind === "manual") {
+    return ko
+      ? `Cairn 업데이트: ${to}이 설치되었지만 Claude Code 플러그인 캐시가 갱신되지 않았습니다. 사용자에게 "claude plugin update cairn@cairn" 실행을 안내하세요.`
+      : `Cairn update: ${to} is installed but the Claude Code plugin cache was not refreshed. Tell the user to run "claude plugin update cairn@cairn".`;
+  }
+  return null;
 }
 
 function withBlocks(message, ...blocks) {

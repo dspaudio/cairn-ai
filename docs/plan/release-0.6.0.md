@@ -32,14 +32,24 @@
 
 ## Evidence
 
-- 진행에 따라 기록.
+- `release-commit`: 브랜치 `feat/memory-plan-index-reuse`, 커밋 `6918926`. `goal verify -- npm run check` exit 0(302 pass).
+- `dev-pr`: https://github.com/dspaudio/cairn-ai/pull/80. 첫 head `6918926`에서 Windows 두 job이 실패했다(macOS·Linux는 통과). 원인은 두 가지였다.
+  - CRLF 체크아웃: `skills/cairn-plan/SKILL.md`가 9065바이트로 측정돼 9000 예산을 넘었고 템플릿 동일성 테스트가 깨졌다. `.gitattributes`(`* text=auto eol=lf`)를 추가했다.
+  - 8.3 짧은 임시 경로(`RUNNER~1`): worktree 간 이력 집계 테스트에서 두 checkout의 `repositoryId`가 달라졌다. 테스트가 임시 root를 `realpathSync.native`로 풀도록 고쳤다. `repositoryId` 계산 자체는 0.5.0부터의 동작이라 바꾸지 않았다(짧은 경로명으로 연 Windows 저장소에서는 worktree 간 집계가 갈릴 수 있다).
+  - 수정 커밋 `008d36f`에서 CI 6개 매트릭스와 요약 `check`가 통과해 head 고정 병합(merge `a6ee93d`).
+- `main-pr`: https://github.com/dspaudio/cairn-ai/pull/81 head `a6ee93d` CI 통과 후 head 고정 병합(merge `9e2e137`).
+- `npm-publish`: `9e2e137`의 clean detached worktree에서 pack 1회(prepack의 `npm run check` 통과). tarball `cairn-ai-0.6.0.tgz`, 176,718 bytes, 97 files, sha1 `d7dae8ee035bf3de520f7cde48f328c1d0ff6716`, integrity `sha512-OFvI1a1Kwq43KFoShgPcY4raP+MFvHdKdMw+fngvmLAKlFXrdIw635130aveNT24+NRZDUsnbTnqpB22XdmwiQ==`. 같은 파일로 dry-run 통과. npm 토큰이 만료돼(`npm whoami` 401) 사용자가 `npm login --auth-type=web`으로 다시 로그인했고, publish는 사용자 터미널에서 브라우저 인증으로 실행해 `+ cairn-ai@0.6.0`을 받았다. registry 조회는 약 2분간 404였다가 반영됐고, version·shasum·integrity·`latest`가 tarball과 일치했다(재게시 없음).
+- `release-verify`: 격리된 prefix, cache, HOME, `CAIRN_HOME`에 registry 0.6.0을 설치해 확인했다. `cairn --version` 0.6.0, `init`이 만든 `PLAN.md`에 Planning Rules 없음, 노트 추가 뒤 `memory check` 실패 → `memory index` → `memory check --strict`·`plan check --strict` exit 0, 설치본 hook의 SessionStart에 노트 이름과 요약, UserPromptSubmit에 노트 개수 문장, `goal stats --history`의 `goals: 0`, `goal --help`의 advisory 고지, `init --help`가 파일을 만들지 않음.
+- `release-record`: 이 기록 브랜치(`docs/release-0.6.0-record`)에서 `main`의 머지 커밋 `9e2e137`을 `dev`에 합치고 증거를 기록한다.
+- 하지 않은 것: 로컬 Cairn 설치본 upgrade(요청 범위 아님). 이 PC의 hook은 `cairn upgrade` 전까지 0.5.0이다.
+- Memory promotion: docs/memory/release-process.md
 
 ## Status
 
 - [x] Planned
-- [ ] Dry-run or check passed, or not applicable was recorded
-- [ ] Implemented
-- [ ] Module acceptance passed
-- [ ] Surface integration passed
-- [ ] Reviewed
-- [ ] Goal completed, or an explicit paused/blocked/cancelled reason was recorded
+- [x] Dry-run or check passed, or not applicable was recorded
+- [x] Implemented
+- [x] Module acceptance passed
+- [x] Surface integration passed
+- [x] Reviewed
+- [x] Goal completed, or an explicit paused/blocked/cancelled reason was recorded

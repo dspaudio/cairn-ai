@@ -2,18 +2,41 @@ import { createHash } from "node:crypto";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import { basename, join, relative, sep } from "node:path";
 import { cairnConfigProjection, readSharedConfigSnapshot } from "./cairn-lifecycle-config.mjs";
+import { HOSTS, hostOfTarget, isHostSelection } from "./cairn-lifecycle-hosts.mjs";
 import { createLegacyIntegrity } from "./cairn-lifecycle-legacy.mjs";
 import { antigravityRuntimeLocatorPath } from "./cairn-lifecycle-mirror.mjs";
+
+export const OWNERSHIP_SCHEMA_VERSION = 2;
+export const OWNERSHIP_ORIGINS = ["checkout", "package"];
+// Runtimes a version change leaves behind stay for open sessions: at most this many per id, for this long.
+export const RETAINED_RUNTIME_IDS = ["runtime", "codex-runtime"];
+export const RETAINED_RUNTIME_LIMIT = 3;
+export const RETAINED_RUNTIME_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
+const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
+// Orders release versions by major.minor.patch; a prerelease suffix compares equal to its release.
+export function compareVersions(left, right) {
+  const parse = (value) => String(value).split("-")[0].split(".").map(Number);
+  const [a, b] = [parse(left), parse(right)];
+  for (let index = 0; index < 3; index += 1) if (a[index] !== b[index]) return a[index] - b[index];
+  return 0;
+}
 
 export function createIntegrity(context) {
   const {
     antigravityCliHome, antigravityHome, claudeHome, claudePluginMarketplaceRoot, claudeRuntimeLocatorPath,
-    commandNames, configPath, installedPluginRoot, legacyAntigravityHome,
-    marketplaceJsonPath, marketplaceRoot, ownershipPath, phases, pluginName,
+    commandNames, configPath, installedPluginRoot, layout, legacyAntigravityHome,
+    marketplaceJsonPath, ownershipPath, phases, pluginName,
     releaseVersion, skillNames,
   } = context;
+  // The current layout writes schema 2; a legacy stack built from layout.legacy validates schema 1 unchanged.
+  const ownershipSchemaVersion = context.ownershipSchemaVersion ?? OWNERSHIP_SCHEMA_VERSION;
+// A journal-only removal (previous runtime, legacy root) names the record it removes with `ownedBy` and must match
+// that record's path, type, and digest. A record claimed that way moves away from its id, so the new target with the
+// same id at a different path starts unowned. A retired-runtime removal carries its `retained` entry instead.
 async function assertTargetsReplaceable(targets, ownership) {
   const records = new Map((ownership?.targets ?? []).map((record) => [record.id, record]));
+  const moved = new Set(targets.filter((target) => target.ownedBy).map((target) => target.ownedBy));
   for (const target of targets) {
     if (!(await exists(target.path))) {
       target.preflightDigest = "missing";
@@ -21,18 +44,29 @@ async function assertTargetsReplaceable(targets, ownership) {
     }
     const current = await targetDigest(target.path, target.type);
     target.preflightDigest = current;
-    if (target.id === "previous-codex-runtime") {
-      const previous = records.get("codex-runtime");
-      if (!previous || previous.path !== target.path || previous.type !== target.type) throw new Error("Previous runtime does not match ownership manifest.");
+    if (target.ownedBy || target.retained) {
+      const owner = target.retained ? { ...target.retained, type: "tree" } : records.get(target.ownedBy);
+      if (!owner || owner.path !== target.path || owner.type !== target.type) throw new Error(`Removal target does not match ownership manifest: ${target.id}`);
+      if (target.type !== "config" && current !== owner.installedDigest) throw new Error(`Managed artifact was modified: ${target.path}`);
       continue;
     }
-    const record = records.get(target.id);
+    const claimed = records.get(target.id);
+    const record = claimed && !(moved.has(target.id) && claimed.path !== target.path) ? claimed : undefined;
+    const versionedRuntime = target.id === "runtime" || target.id === "codex-runtime";
+    // After a version change the release's runtime is owned only when an earlier upgrade retained it. A removal
+    // (a deselected host's record) is checked against its own record below.
+    if (versionedRuntime && target.operation !== "remove" && ownership && ownership.version !== releaseVersion) {
+      const retained = (ownership.retained ?? []).find((entry) => entry.id === target.id && entry.version === releaseVersion);
+      if (!retained || retained.path !== target.path || target.type !== "tree") {
+        throw new Error(`Refusing to overwrite unmanaged current-version runtime: ${target.path}`);
+      }
+      if (current !== retained.installedDigest) throw new Error(`Managed artifact was modified: ${target.path}`);
+      continue;
+    }
     if (!record) {
       if (target.type === "config" && cairnConfigProjection((await readSharedConfigSnapshot(target.path)).text).length === 0) continue;
+      if (claimed && versionedRuntime) throw new Error(`Refusing to overwrite unmanaged current-version runtime: ${target.path}`);
       throw new Error(`Refusing to overwrite unmanaged artifact: ${target.path}`);
-    }
-    if (target.id === "codex-runtime" && ownership?.version !== releaseVersion) {
-      throw new Error(`Refusing to overwrite unmanaged current-version runtime: ${target.path}`);
     }
     if (record.path !== target.path || record.type !== target.type) throw new Error(`Ownership manifest target mismatch: ${target.id}`);
     if (target.type !== "config" && current !== record.installedDigest) throw new Error(`Managed artifact was modified: ${target.path}`);
@@ -40,12 +74,22 @@ async function assertTargetsReplaceable(targets, ownership) {
 }
 
 async function assertOwnershipDigests(ownership) {
-  for (const record of ownership.targets) {
+  for (const record of [...ownership.targets, ...(ownership.retained ?? []).map((entry) => ({ ...entry, type: "tree" }))]) {
     const current = await targetDigest(record.path, record.type);
     if (record.type !== "config" && current !== record.installedDigest) {
       throw new Error(`Managed artifact was modified: ${record.path}`);
     }
   }
+}
+
+// A retained runtime that no longer exists was removed outside Cairn (by Codex or the user) and counts as already
+// gone: install, upgrade, and uninstall drop it from the manifest instead of removing or recording it, and doctor does
+// not report it. One that exists with other content is still a modified managed artifact.
+async function withoutMissingRetained(ownership) {
+  if (!Array.isArray(ownership?.retained)) return ownership;
+  const retained = [];
+  for (const entry of ownership.retained) if (await exists(entry.path)) retained.push(entry);
+  return { ...ownership, retained };
 }
 
 async function targetRecord(target) {
@@ -69,13 +113,38 @@ function validateOwnershipShape(ownership, { required = false } = {}) {
     if (required) throw new Error("Ownership manifest is required.");
     return;
   }
-  if (!sameKeys(ownership, ["schemaVersion", "plugin", "version", "transactionId", "installedAt", "targets"])
-      || ownership.schemaVersion !== 1 || ownership.plugin !== pluginName
-      || typeof ownership.version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(ownership.version)
+  if (ownershipSchemaVersion === 1) {
+    if (!sameKeys(ownership, ["schemaVersion", "plugin", "version", "transactionId", "installedAt", "targets"])
+        || ownership.schemaVersion !== 1 || ownership.plugin !== pluginName
+        || typeof ownership.version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(ownership.version)
+        || typeof ownership.transactionId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(ownership.transactionId)
+        || typeof ownership.installedAt !== "string" || Number.isNaN(Date.parse(ownership.installedAt))
+        || !Array.isArray(ownership.targets)) {
+      throw new Error("Ownership manifest schema or plugin identity is invalid.");
+    }
+  } else if (!sameKeys(ownership, ["schemaVersion", "plugin", "version", "transactionId", "installedAt", "origin", "hosts", "targets", "retained"])
+      || ownership.schemaVersion !== OWNERSHIP_SCHEMA_VERSION || ownership.plugin !== pluginName
+      || typeof ownership.version !== "string" || !VERSION_PATTERN.test(ownership.version)
       || typeof ownership.transactionId !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(ownership.transactionId)
       || typeof ownership.installedAt !== "string" || Number.isNaN(Date.parse(ownership.installedAt))
-      || !Array.isArray(ownership.targets)) {
+      || !OWNERSHIP_ORIGINS.includes(ownership.origin)
+      || !isHostSelection(ownership.hosts)
+      || !Array.isArray(ownership.targets) || !Array.isArray(ownership.retained)) {
     throw new Error("Ownership manifest schema or plugin identity is invalid.");
+  }
+  const retainedKeys = new Set();
+  for (const record of ownership.retained ?? []) {
+    if (!record || !sameKeys(record, ["id", "version", "path", "installedDigest", "retiredAt"])
+        || !RETAINED_RUNTIME_IDS.includes(record.id) || typeof record.version !== "string" || !VERSION_PATTERN.test(record.version)
+        || record.version === ownership.version || retainedKeys.has(`${record.id}\0${record.version}`)
+        || record.path !== retainedRuntimePath(record.id, record.version)
+        || typeof record.installedDigest !== "string" || !/^sha256:[a-f0-9]{64}$/.test(record.installedDigest)
+        || typeof record.retiredAt !== "string" || Number.isNaN(Date.parse(record.retiredAt))
+        || ownership.retained.filter((entry) => entry?.id === record.id).length > RETAINED_RUNTIME_LIMIT
+        || (record.id === "codex-runtime" && !ownership.hosts.includes("codex"))) {
+      throw new Error("Ownership manifest contains an invalid retained runtime.");
+    }
+    retainedKeys.add(`${record.id}\0${record.version}`);
   }
   const ids = new Set();
   const paths = new Set();
@@ -96,36 +165,41 @@ function validateOwnershipShape(ownership, { required = false } = {}) {
     ids.add(record.id);
     paths.add(record.path);
   }
-  const requiredTargets = requiredOwnershipTargets(ownership.version);
+  // Schema 1 predates host selection and always held every host.
+  const hosts = ownershipSchemaVersion === 1 ? HOSTS : ownership.hosts;
+  const unselected = [...ids].find((id) => !hosts.includes(hostOfTarget(id)) && hostOfTarget(id) !== "core");
+  if (unselected) throw new Error(`Ownership manifest schema is inconsistent: ${unselected} belongs to a host that is not selected.`);
+  const requiredTargets = requiredOwnershipTargets(ownership.version, hosts);
   const optionalIds = new Set(requiredTargets.has("claude-plugin") ? [] : ["claude-plugin"]);
   if ([...ids].some((id) => !requiredTargets.has(id) && !optionalIds.has(id)) || [...requiredTargets.keys()].some((id) => !ids.has(id))) {
     throw new Error("Ownership manifest does not contain the complete managed target set.");
   }
 }
 
-const CLAUDE_PLUGIN_SINCE = "0.2.9";
-
-function compareVersions(left, right) {
-  const parse = (value) => String(value).split("-")[0].split(".").map(Number);
-  const [a, b] = [parse(left), parse(right)];
-  for (let index = 0; index < 3; index += 1) if (a[index] !== b[index]) return a[index] - b[index];
-  return 0;
+function retainedRuntimePath(id, version) {
+  return id === "runtime" ? layout.runtimeRootFor(version) : layout.codexRuntimeRootFor(version);
 }
 
-function requiredOwnershipTargets(version = releaseVersion) {
+const CLAUDE_PLUGIN_SINCE = "0.2.9";
+
+// The core runtime is always required; every other required target belongs to one selected host.
+function requiredOwnershipTargets(version = releaseVersion, hosts = HOSTS) {
   const ids = ["codex-source", "codex-runtime", "marketplace", "claude-runtime", "ide-runtime", "cli-runtime", "codex-config"];
-  // Manifests written before the Claude Code plugin existed must stay valid so those installs can upgrade.
-  if (compareVersions(version, CLAUDE_PLUGIN_SINCE) >= 0) ids.push("claude-plugin");
+  if (ownershipSchemaVersion !== 1) ids.unshift("runtime");
+  // Schema 1 manifests written before the Claude Code plugin existed must stay valid so those installs can upgrade.
+  if (ownershipSchemaVersion !== 1 || compareVersions(version, CLAUDE_PLUGIN_SINCE) >= 0) ids.push("claude-plugin");
   for (const name of commandNames()) ids.push(`claude-command-${name}`, `ide-workflow-${name}`, `cli-workflow-${name}`);
   for (const name of ["explorer", "worker"]) ids.push(`claude-agent-${name}`);
   for (const name of skillNames()) ids.push(`ide-skill-${name}`, `cli-skill-${name}`);
-  return new Map(ids.map((id) => [id, expectedManagedTarget(id, version)]));
+  const selected = ids.filter((id) => hostOfTarget(id) === "core" || hosts.includes(hostOfTarget(id)));
+  return new Map(selected.map((id) => [id, expectedManagedTarget(id, version)]));
 }
 
 function expectedManagedTarget(id, version = releaseVersion) {
   const exact = {
+    ...(ownershipSchemaVersion === 1 ? {} : { runtime: { phase: "core", path: layout.runtimeRootFor(version), type: "tree" } }),
     "codex-source": { phase: "codex", path: installedPluginRoot, type: "tree" },
-    "codex-runtime": { phase: "codex", path: versionedRuntimeRoot(version), type: "tree" },
+    "codex-runtime": { phase: "codex", path: layout.codexRuntimeRootFor(version), type: "tree" },
     marketplace: { phase: "codex", path: marketplaceJsonPath, type: "file" },
     "claude-runtime": { phase: "claude", path: claudeRuntimeLocatorPath, type: "file" },
     "claude-plugin": { phase: "claude", path: claudePluginMarketplaceRoot, type: "tree" },
@@ -149,11 +223,6 @@ function expectedManagedTarget(id, version = releaseVersion) {
     if (id === `legacy-cli-skill-${name}`) return { phase: "antigravity", path: join(antigravityCliHome, "skills", name), type: "tree" };
   }
   return null;
-}
-
-function versionedRuntimeRoot(version) {
-  if (typeof version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid Cairn runtime version: ${version}`);
-  return join(marketplaceRoot, pluginName, version);
 }
 
 async function anyManagedArtifactExists(targets) {
@@ -207,6 +276,10 @@ function sha(value) {
     try {
       validateOwnershipShape(ownership, { required: true });
       for (const record of ownership.targets) if (await targetDigest(record.path, record.type) !== record.installedDigest) return false;
+      for (const record of ownership.retained ?? []) {
+        const digest = await targetDigest(record.path, "tree");
+        if (digest !== "missing" && digest !== record.installedDigest) return false;
+      }
       return true;
     } catch {
       return false;
@@ -217,7 +290,7 @@ function sha(value) {
   return {
     ...legacy, anyManagedArtifactExists, assertOwnershipDigests, assertRegularTree,
     assertTargetsReplaceable, expectedManagedTarget, ownershipDigestsValid, readOwnership,
-    targetDigest, targetRecord, validateOwnershipShape, versionedRuntimeRoot,
+    targetDigest, targetRecord, validateOwnershipShape, withoutMissingRetained,
   };
 
   function sameKeys(value, expected) {

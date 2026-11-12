@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { contextResult, foreignSessionContextResult, prependContext } from "./cairn-state-context.mjs";
+import { contextResult, foreignSessionContextResult, prependContext, updateNoticeLine } from "./cairn-state-context.mjs";
 import { continuationReason, stopAllowedMessage, stopHookOutput } from "./cairn-state-hook.mjs";
 import { initializeProject } from "./cairn-state-init.mjs";
 import { evaluateStop, isGoalOwnedBySession, reconcileWorktreeState } from "./cairn-goal.mjs";
 import { readHookGuard, readStopGuard, writeHookGuard, writeStopGuard } from "./cairn-goal-state.mjs";
 import { hookIndexSnapshot } from "./cairn-index.mjs";
-import { resolveRepoRoot } from "./cairn-paths.mjs";
+import { resolvePluginRoot, resolveRepoRoot } from "./cairn-paths.mjs";
+import { sessionStartUpdate } from "./cairn-update-state.mjs";
 
 const recoverableGoalStatuses = new Set(["active", "paused", "blocked"]);
 
@@ -33,6 +34,7 @@ export async function runStateResult(event = "manual", {
   root,
   locale = localeValue(),
   payload,
+  update = {},
 } = {}) {
   const resolvedRoot = resolveRoot(root, payload);
   const ko = locale.toLowerCase().startsWith("ko");
@@ -48,22 +50,8 @@ export async function runStateResult(event = "manual", {
   }
 
   if (event === "session-start" || event === "user-prompt-submit") {
-    const reconciled = await reconcileWorktreeState({ root: resolvedRoot });
-    const state = reconciled.state;
-    const recoverable = recoverableGoalStatuses.has(state?.goal?.status);
-    const index = await readHookIndex(resolvedRoot, event, recoverable);
-    if (recoverable && !isGoalOwnedBySession(state, payload?.session_id)) {
-      return foreignSessionContextResult({ ko, event, sessionId: payload?.session_id, root: resolvedRoot, index });
-    }
-    const context = contextResult({ ko, state, event, index });
-    // SessionStart (also after compaction) carries a literal CLI prefix so agents do not rebuild or store it in a
-    // shell variable, which does not survive between tool calls.
-    const result = event === "session-start" ? appendContext(context, cliPrefixLine()) : context;
-    if (!reconciled.removed) return result;
-    const notice = ko
-      ? "Cairn worktree 점검: 현재 worktree에 속하지 않는 stale Cairn 상태를 제거했습니다."
-      : "Cairn worktree check: removed stale Cairn state that did not belong to this worktree.";
-    return prependContext(result, notice);
+    const result = await promptContextResult(event, { ko, resolvedRoot, payload });
+    return event === "session-start" ? withUpdateNotice(result, ko, update) : result;
   }
 
   if (event === "post-tool-use") {
@@ -123,6 +111,25 @@ export async function runStateResult(event = "manual", {
   };
 }
 
+async function promptContextResult(event, { ko, resolvedRoot, payload }) {
+  const reconciled = await reconcileWorktreeState({ root: resolvedRoot });
+  const state = reconciled.state;
+  const recoverable = recoverableGoalStatuses.has(state?.goal?.status);
+  const index = await readHookIndex(resolvedRoot, event, recoverable);
+  if (recoverable && !isGoalOwnedBySession(state, payload?.session_id)) {
+    return foreignSessionContextResult({ ko, event, sessionId: payload?.session_id, root: resolvedRoot, index });
+  }
+  const context = contextResult({ ko, state, event, index });
+  // SessionStart (also after compaction) carries a literal CLI prefix so agents do not rebuild or store it in a
+  // shell variable, which does not survive between tool calls.
+  const result = event === "session-start" ? appendContext(context, cliPrefixLine()) : context;
+  if (!reconciled.removed) return result;
+  const notice = ko
+    ? "Cairn worktree 점검: 현재 worktree에 속하지 않는 stale Cairn 상태를 제거했습니다."
+    : "Cairn worktree check: removed stale Cairn state that did not belong to this worktree.";
+  return prependContext(result, notice);
+}
+
 async function recordStopProgress(root, state, event, payload) {
   const scope = event === "subagent-stop" ? `subagent:${payload?.agent_id ?? ""}` : "turn";
   // Parallel workers share this guard: keep one entry per scope, and measure a worker's progress by its own task
@@ -150,10 +157,20 @@ async function readHookIndex(root, event, recoverable) {
 }
 
 // Only the CLI path: goal commands resolve the repository root themselves, and a second absolute path would let
-// long install or checkout paths push the SessionStart capsule past its budget.
+// long install or checkout paths push the SessionStart capsule past its budget. An installed copy names the canonical
+// runtime from its locator, since an upgrade can remove a host cache copy (Codex) while the session still runs.
 function cliPrefixLine() {
-  const cli = fileURLToPath(new URL("./cairn.mjs", import.meta.url));
+  const cli = installedCanonicalCli() ?? fileURLToPath(new URL("./cairn.mjs", import.meta.url));
   return `Cairn CLI: node ${JSON.stringify(cli)} goal <command>`;
+}
+
+function installedCanonicalCli() {
+  try {
+    const locator = JSON.parse(readFileSync(new URL("../.cairn-runtime.json", import.meta.url), "utf8"));
+    return locator?.plugin === "cairn" && typeof locator.entrypoints?.cli === "string" ? locator.entrypoints.cli : null;
+  } catch {
+    return null;
+  }
 }
 
 function appendContext(result, line) {
@@ -165,6 +182,22 @@ function appendContext(result, line) {
       ? { ...result.hookOutput, hookSpecificOutput: { ...specific, additionalContext: `${specific.additionalContext}\n${line}` } }
       : result.hookOutput,
   };
+}
+
+// The auto-upgrade step runs after the capsule is built and every error in it is swallowed, so it never changes the
+// capsule, the exit code, or the "could not read goal state" failure. A notice goes last (after the CLI line), keeping
+// the kernel-first prefix, and is mirrored in systemMessage for the user.
+function withUpdateNotice(result, ko, { env = process.env, now = new Date(), spawn, pluginRoot = resolvePluginRoot(import.meta.url) } = {}) {
+  let line = null;
+  try {
+    const notice = sessionStartUpdate({ env, now, spawn, pluginRoot });
+    line = notice ? updateNoticeLine({ ko, notice }) : null;
+  } catch {
+    line = null;
+  }
+  if (!line) return result;
+  const appended = appendContext(result, line);
+  return { ...appended, hookOutput: { ...appended.hookOutput, systemMessage: line } };
 }
 
 function hookFailureResult(event, error) {
