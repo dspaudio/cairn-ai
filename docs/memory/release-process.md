@@ -10,7 +10,8 @@ Summary: 버전 표면, dev→main PR 승격, exact-main tarball 게시와 npm �
 
 ### 버전 표면과 검사
 
-- 버전 문자열은 `package.json`, `.codex-plugin/plugin.json`과 테스트 5개 파일의 기대값에 있다: `test/contract-parity.test.mjs`, `test/installed-plugin.test.mjs`, `test/lifecycle.test.mjs`, `test/lifecycle-transaction.test.mjs`, `test/packed-install.test.mjs`. `test/index-context.test.mjs`의 `0.5.0`은 baseline 주석이라 바꾸지 않는다. 확인: `grep -rn '<현재 버전>' package.json .codex-plugin test`.
+- 버전 문자열은 `package.json`, `.codex-plugin/plugin.json`, `test/contract-parity.test.mjs`의 기대값 세 곳에 있다(0.7.0부터 나머지 테스트는 `package.json`에서 읽는다). 테스트와 문서의 `0.6.0` literal은 마지막 legacy 레이아웃 버전을 가리키므로 바꾸지 않고, `test/index-context.test.mjs`의 `0.5.0`은 baseline 주석이다. 확인: `grep -rn '<현재 버전>' package.json .codex-plugin test`. 출처: `docs/plan/release-0.7.0.md` Triage.
+- `test/repo-index.test.mjs`가 이 저장소의 `PLAN.md`·`MEMORY.md`를 `--strict`로 검사한다. 계획을 완료 목록으로 옮길 때 요약은 120자 이하로 쓰고, 완료 항목이 20개를 넘으면 `cairn plan index --archive`를 실행한다(0.7.0에서 `npm run check` 실패).
 - `npm run check`는 핵심 스크립트 `node --check`, JSON 파싱, `npm test`(`node --test`)를 실행한다. `prepack`이 `npm run check`라서 `npm pack`·`npm publish`도 전체 테스트를 돌린다. 로컬 pack 검증에 `--ignore-scripts`를 쓰지 않는다. 출처: `package.json` `scripts`.
 - CI(`.github/workflows/ci.yml`)는 ubuntu·windows·macos × Node 18·current 매트릭스에서 `npm run check`, CLI smoke, `toolcheck --json`, `npm pack --dry-run --ignore-scripts`를 실행한다. 여기서 `--ignore-scripts`는 같은 job에서 check가 이미 돌았기 때문이다. 브랜치 보호의 필수 상태는 요약 job `check` 하나다.
 - 배포 파일은 `package.json` `files`가 정한다. 저장소의 `docs/memory`, `docs/plan`, `MEMORY.md`, `PLAN.md`는 패키지에 들어가지 않는다.
@@ -39,6 +40,7 @@ Summary: 버전 표면, dev→main PR 승격, exact-main tarball 게시와 npm �
 - Windows + Node current에서 `test/lifecycle-transaction.test.mjs` "a stale lifecycle observer never displaces a confirmed live lifecycle owner"가 1회 실패한 적이 있다(lock 대기 1초에 1018ms). lock 코드를 건드리지 않았다면 실패 job만 재실행한다. 출처: `docs/plan/release-0.5.0.md` Evidence `dev-pr`.
 - Windows 체크아웃은 `.gitattributes`(`* text=auto eol=lf`)로 LF에 고정돼 있다. 이 파일이 없으면 CRLF 때문에 SKILL.md 바이트 예산과 템플릿 동일성 테스트가 Windows에서만 실패한다(0.6.0 dev PR에서 발생). 예산에 가까운 문서를 고쳤다면 Windows job 결과를 먼저 본다. 출처: `docs/plan/release-0.6.0.md` Evidence `dev-pr`.
 - Windows CI의 임시 경로는 8.3 짧은 이름(`RUNNER~1`)이다. git이 기록하는 긴 경로와 달라 worktree를 쓰는 테스트는 임시 root를 `realpathSync.native`로 풀어야 한다. `repositoryId`는 경로 해시라 같은 문제가 실제 사용에서도 날 수 있다(미수정). 출처: `test/goal-history.test.mjs` "goal stats --history aggregates across worktree directories of the same repository".
+- Windows에서만 깨지는 테스트 helper 패턴 두 가지(0.7.0 dev PR): JSON 파일 안의 경로는 백슬래시가 escape돼 있어 raw 문자열 치환으로 바뀌지 않는다. `cpSync`의 `filter`가 받는 경로 형태가 Windows Node 18에서 달라 제외가 듣지 않는다(항목별 복사를 쓴다). 출처: `docs/plan/release-0.7.0.md` Evidence `dev-pr`, `test/fixtures/fake-npm.mjs`.
 - 깊은 경로 worktree에서 pack하면 hook 예산 테스트가 경로 길이에 걸릴 수 있다(0.3.0 hotfix). 캡슐에 절대 경로를 넣지 않는 규칙이 이 사고에서 나왔다(`hook-context.md`).
 
 ## Policy
