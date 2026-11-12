@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { chmod, cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { startGoal } from "../scripts/cairn-goal.mjs";
 import { targetDigest } from "../scripts/cairn-lifecycle.mjs";
 import { createRuntimeLocator } from "../scripts/cairn-paths.mjs";
@@ -151,7 +151,9 @@ test("the runner upgrades an older installation and writes one updated notice", 
       ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--no-save", `cairn-ai@${releaseVersion}`],
     ]);
     for (const call of calls) for (const arg of call.args) assert.doesNotMatch(arg, /[\\/]/, "npm arguments never carry paths");
-    assert.equal(calls[1].cwd, join(await realpath(paths.update), "stage"));
+    // The stage is gone by now; compare its parent through realpath so a Windows 8.3 short temp path still matches.
+    assert.equal(basename(calls[1].cwd), "stage");
+    assert.equal(await realpath(dirname(calls[1].cwd)), await realpath(paths.update));
     const written = await readJson(paths.notice);
     assert.equal(written.kind, "updated");
     assert.equal(written.from, olderVersion);
@@ -413,7 +415,7 @@ test("an error after the upgrade commits writes one failed notice and is not ret
     await rm(env.FAKE_NPM_LOG, { force: true });
     const next = runRunner(env);
     assert.equal(next.status, 0, next.stdout + next.stderr);
-    assert.deepEqual((await npmCalls(env)).map((call) => call.args[0]), ["view"]);
+    assert.deepEqual((await npmCalls(env)).map((call) => call.args[0]), ["view"], next.stdout + next.stderr);
     assert.equal((await readJson(paths.state)).lastResult.kind, "current");
     await assert.rejects(lstat(paths.notice), { code: "ENOENT" });
   });
@@ -485,7 +487,7 @@ test("a second runner exits while update.lock is held, and a stale update.lock f
     await mkdir(paths.update, { recursive: true });
     const held = `${JSON.stringify(lockRecord(process.pid))}\n`;
     await writeFile(paths.lock, held);
-    const blocked = runRunner(env);
+    const blocked = runRunner(env, { expectLocked: true });
     assert.equal(blocked.status, 0, blocked.stdout + blocked.stderr);
     assert.equal(JSON.parse(blocked.stdout).reason, "locked");
     assert.deepEqual(await npmCalls(env), []);
@@ -880,15 +882,30 @@ async function replaceTextInManagedTarget(path, from, to) {
     return;
   }
   const content = await readFile(path, "utf8");
-  if (content.includes(from)) await writeFile(path, content.replaceAll(from, to));
+  // JSON files hold Windows paths with escaped backslashes, so the escaped form is replaced as well.
+  const escaped = (value) => JSON.stringify(value).slice(1, -1);
+  const replaced = content.replaceAll(from, to).replaceAll(escaped(from), escaped(to));
+  if (replaced !== content) await writeFile(path, replaced);
 }
 
 function runLifecycle(args, env) {
   return spawnSync(process.execPath, [lifecycleScript, ...args], { cwd: root, env, encoding: "utf8" });
 }
 
-function runRunner(env) {
-  return spawnSync(process.execPath, [runnerScript, "run"], { cwd: root, env, encoding: "utf8", timeout: 120_000 });
+// On Windows the update.lock a finished runner released can linger for a moment, so a "locked" answer is retried
+// briefly unless the test holds the lock on purpose.
+function runRunner(env, { expectLocked = false } = {}) {
+  const run = () => spawnSync(process.execPath, [runnerScript, "run"], { cwd: root, env, encoding: "utf8", timeout: 120_000 });
+  let result = run();
+  for (let attempt = 0; !expectLocked && attempt < 20 && lockedAnswer(result); attempt += 1) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+    result = run();
+  }
+  return result;
+}
+
+function lockedAnswer(result) {
+  try { return JSON.parse(result.stdout).reason === "locked"; } catch { return false; }
 }
 
 async function npmCalls(env) {
