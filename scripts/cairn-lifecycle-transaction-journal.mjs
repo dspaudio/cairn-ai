@@ -5,9 +5,24 @@ import { cairnConfigProjection, readSharedConfigSnapshot, removeCairnConfig } fr
 
 export function createTransactionJournal(context) {
   const {
-    marketplaceRoot, ownershipPath, pluginName, releaseVersion, transactionPath,
+    layout, legacyLayout, ownershipPath, transactionPath,
     transactionRoot, expectedManagedTarget, targetDigest,
   } = context;
+  // Journal-only id that removes the Codex cache runtime a version change leaves behind when it is not retained.
+  const previousRuntimeParents = { "previous-codex-runtime": layout.codexRuntimeParent };
+  // The versioned runtimes of any release (the installation's, not only this CLI's): a rollback or recovery by a CLI
+  // of another version still has to read them. The legacy stack has no canonical `runtime` id.
+  const versionedRuntimeIds = ["runtime", "codex-runtime"];
+  // Journal-only ids that remove a retained runtime: `retired-<runtime|codex-runtime>-<version>`, during install
+  // cleanup or uninstall core. Only the current stack retains runtimes.
+  const retiredRuntimeRoots = legacyLayout ? { runtime: layout.runtimeRootFor, "codex-runtime": layout.codexRuntimeRootFor } : {};
+  // Journal-only ids that remove a migrated 0.6.0-layout installation. Only the current stack knows them.
+  const legacyRemovalTargets = legacyLayout ? {
+    "legacy-ownership": { phase: "manifest", path: legacyLayout.ownershipPath, type: "file" },
+    "legacy-root-codex-source": { phase: "cleanup", path: legacyLayout.installedPluginRoot, type: "tree" },
+    "legacy-root-marketplace": { phase: "cleanup", path: legacyLayout.marketplaceJsonPath, type: "file" },
+    "legacy-root-claude-plugin": { phase: "cleanup", path: legacyLayout.claudePluginMarketplaceRoot, type: "tree" },
+  } : {};
 async function createTransaction() {
   const id = randomUUID();
   const root = join(transactionRoot, id);
@@ -105,8 +120,14 @@ function validateTransactionJournal(journal, { strict = false } = {}) {
   for (const entry of journal.entries) {
     const expected = entry.id === "ownership"
       ? { phase: "manifest", path: ownershipPath, type: "file" }
-      : entry.id === "previous-codex-runtime"
-        ? previousRuntimeTarget(entry.path)
+      : Object.hasOwn(previousRuntimeParents, entry.id)
+        ? previousRuntimeTarget(previousRuntimeParents[entry.id], entry.path)
+      : Object.hasOwn(legacyRemovalTargets, entry.id)
+        ? (entry.operation === "remove" ? legacyRemovalTargets[entry.id] : null)
+      : typeof entry.id === "string" && entry.id.startsWith("retired-")
+        ? (entry.operation === "remove" ? retiredRuntimeTarget(entry.id, entry.phase) : null)
+      : versionedRuntimeIds.includes(entry.id)
+        ? versionedRuntimeTarget(entry.id, entry.path)
       : expectedManagedTarget(entry.id);
     if (!expected || expected.path !== entry.path || expected.phase !== entry.phase || expected.type !== entry.type
         || !["prepared", "applied"].includes(entry.status)
@@ -126,11 +147,33 @@ function validateTransactionJournal(journal, { strict = false } = {}) {
   }
 }
 
-function previousRuntimeTarget(path) {
-  const parent = join(marketplaceRoot, pluginName);
+// A direct `<version>` child of `parent`; the version is any release, because the journal may come from a CLI of
+// another version than this one.
+function previousRuntimeTarget(parent, path) {
+  const relation = versionedChild(parent, path);
+  return relation ? { phase: "cleanup", path: join(parent, relation), type: "tree" } : null;
+}
+
+// `runtime` and `codex-runtime` keep their phase and type; only the version directory may differ from this release.
+function versionedRuntimeTarget(id, path) {
+  const expected = expectedManagedTarget(id);
+  if (!expected) return null;
+  const parent = dirname(expected.path);
+  const relation = versionedChild(parent, path);
+  return relation ? { ...expected, path: join(parent, relation) } : null;
+}
+
+function versionedChild(parent, path) {
+  if (typeof path !== "string") return null;
   const relation = relative(parent, resolve(path));
-  if (!relation || relation.includes(sep) || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(relation) || relation === releaseVersion) return null;
-  return { phase: "cleanup", path: join(parent, relation), type: "tree" };
+  if (!relation || relation.includes(sep) || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(relation)) return null;
+  return relation;
+}
+
+function retiredRuntimeTarget(id, phase) {
+  const match = /^retired-(runtime|codex-runtime)-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(id);
+  if (!match || !Object.hasOwn(retiredRuntimeRoots, match[1]) || !["core", "cleanup"].includes(phase)) return null;
+  return { phase, path: retiredRuntimeRoots[match[1]](match[2]), type: "tree" };
 }
 
 function sameKeys(value, expected) {

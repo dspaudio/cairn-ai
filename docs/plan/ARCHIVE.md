@@ -2,6 +2,7 @@
 
 Older completed plan entries moved from `PLAN.md` by `cairn plan index --archive`. Newest first.
 
+- [단계별 복잡도 재평가](staged-complexity-reassessment.md): 요청·계획·코드 체크포인트에서 경로를 재평가하고 변경 시 plan artifact·goal task roadmap·Codex UI plan을 `goal replan`으로 동기화합니다.
 - [Cairn 하네스 신뢰성 개선](harness-reliability-remediation.md): 상태 lock·검증 결속, lifecycle transaction과 교차 버전 rollback, 호스트 호환성, toolcheck·문서 계약을 보강(공식 plugin 경로 전환 제외).
 - [Cairn 0.2.2 릴리스](release-0.2.2.md): PR #39를 `dev`, PR #40을 `main`에 CI 통과 후 병합하고 `cairn-ai@0.2.2`를 npm `latest`로 게시했습니다.
 - [토큰 효율 방법론 검토 findings 전체 수정](fix-token-methodology-review-findings.md): inline 값 보존, 직접 실행된 tool-bound evidence와 stale fingerprint, lifecycle 분류 기반 package 검증, 700자 bounded roadmap, 8개 locale·증거 용어·상태 일관성을 실패 테스트부터 수정하고 전체 검사와 package dry-run으로 검증했습니다.

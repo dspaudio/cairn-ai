@@ -5,23 +5,47 @@ import {
   antigravityRuntimeLocatorPath, antigravitySkillLocatorPath, renderMirrorFile, writeLocator,
 } from "./cairn-lifecycle-mirror.mjs";
 import { stageClaudePlugin } from "./cairn-lifecycle-claude.mjs";
+import { HOSTS } from "./cairn-lifecycle-hosts.mjs";
 
 export function createStaging(context) {
   const {
     agentNames, antigravityCliHome, antigravityHome, claudeHome, claudePluginMarketplaceRoot,
-    claudeRuntimeLocatorPath, commandNames, releaseVersion, configPath, installedPluginRoot,
+    claudeRuntimeLocatorPath, codexRuntimeRoot, commandNames, releaseVersion, configPath, installedPluginRoot,
     legacyAntigravityHome, marketplaceJsonPath, marketplaceName, pluginName,
-    pluginRoot, skillNames, updateConfig, versionedPluginRoot, assertRegularTree,
+    pluginRoot, runtimeRoot, skillNames, updateConfig, assertRegularTree,
   } = context;
-async function stageInstall(stageRoot) {
+// The canonical runtime is always staged; each selected host adds its own targets (see cairn-lifecycle-hosts.mjs).
+async function stageInstall(stageRoot, hosts = HOSTS) {
   const targets = [];
   const add = (id, phase, destination, staged, type = "tree", details = {}) => targets.push({ id, phase, path: destination, staged, type, ...details });
+  // Every copy carries locators to the canonical runtime, so mirrors and hooks never depend on a host cache.
+  const runtimeStage = join(stageRoot, "runtime");
+  await copyPluginCandidate(runtimeStage, runtimeRoot);
+  add("runtime", "core", runtimeRoot, runtimeStage);
+  if (hosts.includes("codex")) await stageCodex(stageRoot, add);
+  if (hosts.includes("claude")) await stageClaude(stageRoot, runtimeStage, add);
+  if (hosts.includes("antigravity")) {
+    await stageAntigravity(targets, stageRoot, runtimeStage, antigravityHome, "ide", false);
+    await stageAntigravity(targets, stageRoot, runtimeStage, antigravityCliHome, "cli", true);
+  }
+  if (hosts.includes("codex")) {
+    const configStage = join(stageRoot, "config.toml");
+    const hookStates = await trustedHookStates(runtimeStage);
+    const configSnapshot = await readSharedConfigSnapshot(configPath);
+    await writeFile(configStage, updateConfig(configSnapshot.text, hookStates));
+    add("codex-config", "config", configPath, configStage, "config", { configSourceDigest: configSnapshot.digest });
+  }
+  for (const target of targets) await assertRegularTree(target.staged);
+  return targets;
+}
+
+async function stageCodex(stageRoot, add) {
   const sourceStage = join(stageRoot, "codex-source");
-  const runtimeStage = join(stageRoot, "codex-runtime");
-  await copyPluginCandidate(sourceStage, versionedPluginRoot);
-  await copyPluginCandidate(runtimeStage, versionedPluginRoot);
+  const codexRuntimeStage = join(stageRoot, "codex-runtime");
+  await copyPluginCandidate(sourceStage, runtimeRoot);
+  await copyPluginCandidate(codexRuntimeStage, runtimeRoot);
   add("codex-source", "codex", installedPluginRoot, sourceStage);
-  add("codex-runtime", "codex", versionedPluginRoot, runtimeStage);
+  add("codex-runtime", "codex", codexRuntimeRoot, codexRuntimeStage);
 
   const marketplaceStage = join(stageRoot, "marketplace.json");
   await writeFile(marketplaceStage, `${JSON.stringify({
@@ -30,64 +54,55 @@ async function stageInstall(stageRoot) {
     plugins: [{ name: pluginName, source: { source: "local", path: "./plugins/cairn" }, policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" }, category: "Productivity" }],
   }, null, 2)}\n`);
   add("marketplace", "codex", marketplaceJsonPath, marketplaceStage, "file");
+}
 
+async function stageClaude(stageRoot, runtimeStage, add) {
   const claudeLocator = join(stageRoot, "claude-runtime.json");
-  await writeLocator(claudeLocator, versionedPluginRoot);
+  await writeLocator(claudeLocator, runtimeRoot);
   add("claude-runtime", "claude", claudeRuntimeLocatorPath, claudeLocator, "file");
   for (const name of commandNames()) {
     const staged = join(stageRoot, "claude-commands", `cairn-${name}.md`);
-    await renderMirrorFile(join(runtimeStage, ".claude", "commands", `cairn-${name}.md`), staged, { locatorPath: claudeRuntimeLocatorPath, runtimeRoot: versionedPluginRoot });
+    await renderMirrorFile(join(runtimeStage, ".claude", "commands", `cairn-${name}.md`), staged, { locatorPath: claudeRuntimeLocatorPath, runtimeRoot });
     add(`claude-command-${name}`, "claude", join(claudeHome, "commands", `cairn-${name}.md`), staged, "file");
   }
   for (const name of agentNames()) {
     const staged = join(stageRoot, "claude-agents", `cairn-${name}.md`);
-    await renderMirrorFile(join(runtimeStage, ".claude", "agents", `${name}.md`), staged, { locatorPath: claudeRuntimeLocatorPath, runtimeRoot: versionedPluginRoot });
+    await renderMirrorFile(join(runtimeStage, ".claude", "agents", `${name}.md`), staged, { locatorPath: claudeRuntimeLocatorPath, runtimeRoot });
     add(`claude-agent-${name}`, "claude", join(claudeHome, "agents", `cairn-${name}.md`), staged, "file");
   }
 
   const claudePluginStage = await stageClaudePlugin({
-    stageRoot, runtimeStage, destinationRoot: claudePluginMarketplaceRoot, versionedPluginRoot,
+    stageRoot, runtimeStage, destinationRoot: claudePluginMarketplaceRoot, runtimeRoot,
     marketplaceName, pluginName, releaseVersion, skillNames: skillNames(),
   });
   add("claude-plugin", "claude", claudePluginMarketplaceRoot, claudePluginStage);
-
-  await stageAntigravity(targets, stageRoot, runtimeStage, antigravityHome, "ide", false);
-  await stageAntigravity(targets, stageRoot, runtimeStage, antigravityCliHome, "cli", true);
-
-  const configStage = join(stageRoot, "config.toml");
-  const hookStates = await trustedHookStates(runtimeStage);
-  const configSnapshot = await readSharedConfigSnapshot(configPath);
-  await writeFile(configStage, updateConfig(configSnapshot.text, hookStates));
-  add("codex-config", "config", configPath, configStage, "config", { configSourceDigest: configSnapshot.digest });
-  for (const target of targets) await assertRegularTree(target.staged);
-  return targets;
 }
 
 async function stageAntigravity(targets, stageRoot, runtimeStage, destinationRoot, label, flatSkills) {
   const locatorPath = antigravityRuntimeLocatorPath(destinationRoot);
   const locatorStage = join(stageRoot, `${label}-runtime.json`);
-  await writeLocator(locatorStage, versionedPluginRoot);
+  await writeLocator(locatorStage, runtimeRoot);
   targets.push({ id: `${label}-runtime`, phase: "antigravity", path: locatorPath, staged: locatorStage, type: "file" });
   for (const name of skillNames()) {
     if (flatSkills) {
       const staged = join(stageRoot, `${label}-skills`, `${name}.md`);
-      await renderMirrorFile(join(runtimeStage, "skills", name, "SKILL.md"), staged, { locatorPath, runtimeRoot: versionedPluginRoot, includeLocatorNotice: true });
+      await renderMirrorFile(join(runtimeStage, "skills", name, "SKILL.md"), staged, { locatorPath, runtimeRoot, includeLocatorNotice: true });
       targets.push({ id: `${label}-skill-${name}`, phase: "antigravity", path: join(destinationRoot, "skills", `${name}.md`), staged, type: "file" });
     } else {
       const staged = join(stageRoot, `${label}-skills`, name);
       await cp(join(runtimeStage, "skills", name), staged, { recursive: true });
       await renderMirrorFile(join(runtimeStage, "skills", name, "SKILL.md"), join(staged, "SKILL.md"), {
         locatorPath: antigravitySkillLocatorPath(destinationRoot, name),
-        runtimeRoot: versionedPluginRoot,
+        runtimeRoot,
         includeLocatorNotice: true,
       });
-      await writeLocator(join(staged, "references", "cairn-runtime.json"), versionedPluginRoot);
+      await writeLocator(join(staged, "references", "cairn-runtime.json"), runtimeRoot);
       targets.push({ id: `${label}-skill-${name}`, phase: "antigravity", path: join(destinationRoot, "skills", name), staged, type: "tree" });
     }
   }
   for (const name of commandNames()) {
     const staged = join(stageRoot, `${label}-workflows`, `cairn-${name}.md`);
-    await renderMirrorFile(join(runtimeStage, ".agents", "workflows", `cairn-${name}.md`), staged, { locatorPath, runtimeRoot: versionedPluginRoot });
+    await renderMirrorFile(join(runtimeStage, ".agents", "workflows", `cairn-${name}.md`), staged, { locatorPath, runtimeRoot });
     targets.push({ id: `${label}-workflow-${name}`, phase: "antigravity", path: join(destinationRoot, "workflows", `cairn-${name}.md`), staged, type: "file" });
   }
 }
@@ -104,14 +119,14 @@ async function legacyMigrationTargets() {
   return present;
 }
 
-async function copyPluginCandidate(destination, runtimeRoot) {
+async function copyPluginCandidate(destination, locatorRoot) {
   await copyPluginTree(pluginRoot, destination);
   const manifestPath = join(destination, ".codex-plugin", "plugin.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   manifest.hooks = "./hooks/hooks.json";
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  await writeLocator(join(destination, ".cairn-runtime.json"), runtimeRoot);
-  for (const name of skillNames()) await writeLocator(join(destination, "skills", name, "references", "cairn-runtime.json"), runtimeRoot);
+  await writeLocator(join(destination, ".cairn-runtime.json"), locatorRoot);
+  for (const name of skillNames()) await writeLocator(join(destination, "skills", name, "references", "cairn-runtime.json"), locatorRoot);
 }
 
 async function copyPluginTree(source, destination) {

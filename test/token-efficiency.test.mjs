@@ -16,6 +16,7 @@ import {
   transitionGoal,
 } from "../scripts/cairn-goal.mjs";
 import { runStateResult } from "../scripts/cairn-state.mjs";
+import { updateNoticeLine } from "../scripts/cairn-state-context.mjs";
 import { message } from "../scripts/cairn.mjs";
 
 const cliScript = resolve("scripts/cairn.mjs");
@@ -35,6 +36,35 @@ test("recurring Codex instructions are a small stable recovery kernel", async ()
   assert.match(prompt, /external-state changes.*dry-run\/check/i);
   assert.match(prompt, /side questions.*resume the current task/i);
   assert.doesNotMatch(prompt, /update_plan|create_goal|package lifecycle|--ignore-scripts|progress-reporting channel/i);
+});
+
+// A one-time SessionStart line outside the standing budgets above; long versions are bounded by the registry check
+// (x.y.z, at most 32 characters) and by clipping an installed prerelease.
+test("update notice lines stay within 160 characters", () => {
+  const longVersion = `${"1".repeat(14)}.${"2".repeat(8)}.${"3".repeat(8)}`;
+  assert.equal(longVersion.length, 32);
+  for (const ko of [false, true]) {
+    for (const kind of ["updated", "failed", "manual"]) {
+      for (const [from, to] of [["0.6.0", "0.7.0"], [`${longVersion}-prerelease.with.a.long.tail`, longVersion]]) {
+        const line = updateNoticeLine({ ko, notice: { schemaVersion: 1, kind, from, to, at: new Date().toISOString() } });
+        assert.ok(line.length <= 160, `${ko ? "ko" : "en"} ${kind} notice is ${line.length} characters; budget is 160`);
+        assert.doesNotMatch(line, /\n/);
+        assert.match(line, ko ? /^Cairn 업데이트: / : /^Cairn update: /);
+      }
+    }
+  }
+  assert.equal(
+    updateNoticeLine({ ko: false, notice: { kind: "updated", from: "0.6.0", to: "0.7.0" } }),
+    "Cairn update: auto-upgraded 0.6.0 → 0.7.0; this session runs 0.7.0. Mention it to the user once.",
+  );
+  assert.equal(
+    updateNoticeLine({ ko: true, notice: { kind: "failed", from: "0.6.0", to: "0.7.0" } }),
+    'Cairn 업데이트: 0.7.0 자동 업그레이드가 실패했습니다. 사용자에게 "npx cairn-ai@latest upgrade" 실행 또는 "cairn auto-upgrade status" 확인을 안내하세요.',
+  );
+  assert.equal(
+    updateNoticeLine({ ko: false, notice: { kind: "manual", from: "0.6.0", to: "0.7.0" } }),
+    'Cairn update: 0.7.0 is installed but the Claude Code plugin cache was not refreshed. Tell the user to run "claude plugin update cairn@cairn".',
+  );
 });
 
 test("hook context is a compact phase capsule without dropping recovery state", async () => {

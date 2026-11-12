@@ -102,12 +102,14 @@ cairn upgrade
 cairn doctor
 cairn uninstall
 cairn toolcheck
+cairn auto-upgrade status
 ```
 
-- `cairn install`: 以事务方式安装 custom marketplace source、versioned runtime、Cairn-owned config sections 和当前 host mirrors。
-- `cairn upgrade`: staged validation 后只替换 ownership manifest 中未修改的 entry，失败时 rollback。
-- `cairn doctor`: 只读验证 ownership digests、effective Codex features、真实 plugin status 和 runtime locators。
-- `cairn uninstall`: 只删除未修改的 managed entry；modified 或 unmanaged target 会 preserve 并报告 conflict。
+- `cairn install [--hosts all|codex,claude,antigravity]`: 以事务方式安装 custom marketplace source、versioned runtime、Cairn-owned config sections 和当前 host mirrors。 canonical runtime 位于 `~/.cairn/install/`，其余内容只为所选 host 安装。未提供 `--hosts` 时，在 terminal 中首次安装会询问 host，非交互运行和 CI 会安装所有 host。
+- `cairn upgrade [--hosts all|codex,claude,antigravity]`: staged validation 后只替换 ownership manifest 中未修改的 entry，失败时 rollback。 除非用 `--hosts` 修改，否则沿用已记录的 hosts；会迁移 Cairn 0.6.0 及更早版本的安装，并更新仍为其他版本的 Claude Code plugin cache。 已安装版本比当前 CLI 更新时，`install` 和 `upgrade` 不做任何更改并拒绝；如仍要安装当前 CLI 的版本，加 `--allow-downgrade`。
+- `cairn doctor`: 只读验证 ownership digests、effective Codex features、真实 plugin status 和 runtime locators。 第一行输出 `Hosts: <ids>`，只检查所选 host(包括 `Claude plugin cache version`)。发现 legacy 安装时提示运行 `cairn upgrade` 迁移。
+- `cairn uninstall`: 先将 config 以外的所有 ownership manifest entry 与 installed digest 对照，只要有任何 managed artifact 被修改或删除，就不做任何更改并拒绝整个 uninstall。否则删除或恢复 managed entry 和 retained runtimes，清理空的 managed scaffold，preserve unmanaged target 及其父目录，并 rollback commit 前的失败。 同时删除 `~/.cairn/update/`，保留 `~/.cairn/config.json` 和 `~/.cairn/projects/`。legacy layout 的安装不经迁移直接原地删除。
+- `cairn auto-upgrade status|on|off|run`: `status` 以 JSON 输出设置、已安装版本、上次检查时间和待显示的 notice；`on`/`off` 将 `autoUpgrade` 写入 `~/.cairn/config.json` 并输出同样的报告；`run` 忽略 24 小时周期和 backoff，立即检查 npm。exit 0 表示成功，1 表示执行错误或运行失败，2 表示用法错误。
 - `cairn toolcheck`: 检测 repository stacks 和 required tools；只执行已批准的 supported installer，否则返回 `installer-unavailable`。
 - `cairn cleanup --root <repo>`: 默认只读报告 legacy project-local `.cairn` residue。`--yes` 将 valid active state 迁移/协调到 user-home store，只删除 known state/lock/tool residue，保留 unknown files，并且仅在目录为空时清理目录。
 - `cairn memory check|index [--root <repo>]`: `check` 对照 `MEMORY.md` 与 `docs/memory/*.md` 并输出一个 JSON 报告；存在 unindexed notes、dead links、duplicates、stale summaries、summary 中的控制字符或 unsafe paths 时 exit 1，warnings 仅在 `--strict` 下失败。条目是 `## Domain Knowledge` 下的列表行(没有该 section 的旧文件则为所有列表行)；其他 section 中的 note 链接只是提及，`index` 不会改写。`index` 添加缺失的 notes，`Summary:` 变化时只替换链接后的 summary 部分(含多个链接的行保持原样)；只删除该 section 内完全匹配的 Cairn placeholder 行，不删除条目或 dead links，其余内容逐字节保留。可用 `--dry-run` 预览。插入位置位于未闭合的 code fence 内时，`index` 不写入任何内容，并以 `unclosed-fence` exit 1。用法错误 exit 2；不带子命令的 `cairn memory` 仍输出原有指引。
@@ -120,9 +122,34 @@ cairn toolcheck
 
 custom marketplace lifecycle 将 source 与 versioned runtime 分离。每次 commit 前执行 staged validation，ownership manifest 绑定全部 managed digests，失败时执行 reverse-order rollback。modified 或 unmanaged artifacts 会 preserve 并报告 conflict。Cairn 只修改自身 TOML sections，不强制 public feature/agent settings。
 
-Clean uninstall 仅在所有 managed scaffold directory 均为空时删除 Cairn marketplace cache root，并保留任何 unmanaged content。它不会自动删除 source repository、repository `MEMORY.md`/`PLAN.md`、user-home Cairn goal state、全局 `cairn-ai` package、package-manager cache，或当前 ownership manifest 之外的 legacy backup/settings。
+Clean uninstall 仅在所有 managed scaffold directory 均为空时删除 `~/.cairn/install/` 和 Codex cache root `$CODEX_HOME/plugins/cache/cairn`，并保留任何 unmanaged content。它不会自动删除 source repository、repository `MEMORY.md`/`PLAN.md`、user-home Cairn goal state、全局 `cairn-ai` package、package-manager cache，或当前 ownership manifest 之外的 legacy backup/settings。
 
 Codex 使用 `skills/` 和 `commands/`。Claude Code 使用 `.claude/` 下的 mirrored commands 和 agent definitions。Antigravity 使用 `.agents/workflows` 和 global skills mirrors。
+
+## Install Layout And Auto-Upgrade
+
+Cairn 将安装内容放在 `CAIRN_HOME`(默认 `~/.cairn`)下。各 host 的路径仍分别由 `CODEX_HOME`、`CLAUDE_HOME`、`ANTIGRAVITY_HOME`、`ANTIGRAVITY_CLI_HOME`、`CODEX_CONFIG_PATH` 决定。
+
+```text
+~/.cairn/
+  install/                  lifecycle 管理的文件
+    lifecycle.json          ownership manifest (schema 2: hosts, origin, retained runtimes)
+    lifecycle.lock, transaction.json, transactions/
+    runtime/<version>/      所有 runtime locator 和 Claude Code hooks 使用的 canonical runtime
+    codex/                  Codex local marketplace source
+    claude/                 Claude Code local marketplace
+  projects/                 goal state
+  config.json               用户设置 ("autoUpgrade")
+  update/                   auto-upgrade 状态
+$CODEX_HOME/plugins/cache/cairn/cairn/<version>/   Codex plugin cache copy (仅在选择 Codex 时)
+```
+
+- Hosts: 只有 `install` 和 `upgrade` 接受 `--hosts`，值为 `all` 或 `codex`、`claude`、`antigravity` 的逗号列表。选择会记录在 ownership manifest 中，`upgrade`、`doctor`、`uninstall` 都遵循它。用 `cairn upgrade --hosts <list>` 修改；被移除 host 的 managed file 若已被修改则拒绝。交互式 prompt(全部(默认)、仅 Claude Code、仅 Codex、仅 Antigravity、逗号列表)只在尚未安装任何内容时出现。
+- 迁移: Cairn 0.6.0 及更早版本的安装(`$CODEX_HOME/plugins/cache/cairn` 下的全部内容)只需一次 `cairn upgrade` 即迁移到 `~/.cairn/install/`，Claude Code plugin 也会用新的 marketplace 路径重新注册。迁移失败或中断时会恢复原状，存在被修改的 managed file 时不做任何改动并拒绝。legacy 安装以全部 host 迁移，因此非全部的 `--hosts` 需在下一次运行时指定。迁移后只用认识该 layout 的 Cairn CLI 管理，并重启迁移期间打开的 session。
+- 保留期: 改变版本的 upgrade 会把上一个 canonical runtime 和 Codex cache copy 保留 3 天(每类最多 3 个)，让 upgrade 前启动的 session 继续工作。过期的由下一次 install/upgrade 删除，uninstall 会全部删除。不低于新版本的 Codex cache copy 不会保留，因为 Codex 会加载 cache 中最高的版本。
+- Claude Code plugin cache: 若仍为其他版本，`cairn upgrade` 会用 `claude plugin marketplace update cairn` 和 `claude plugin update cairn@cairn --scope user` 更新。更新失败时保留已升级的安装，输出手动完成的命令并以 exit 1 结束。
+- Auto-upgrade: 默认开启。`SessionStart` 每 24 小时最多一次(install 或 upgrade 后 24 小时内不检查)启动一个 detached process：从 npm 读取最新的 `cairn-ai` 版本，以该确切版本加 `--ignore-scripts` 安装到 `~/.cairn/update/stage/` 并验证，然后运行该 package 的 `cairn-lifecycle.mjs upgrade --auto`。包括 major 在内的所有新版本都会应用，从不降级。下一个 `SessionStart` 用一行只提示一次结果(`updated`、`failed`、`manual`)。从 git checkout 安装(`origin: "checkout"`)或从 source checkout 运行时不会执行。
+- 关闭: `cairn auto-upgrade off`、`CAIRN_AUTO_UPGRADE=0`(也可用 `false`、`off`、`no`)，或在 `~/.cairn/config.json` 中设置 `"autoUpgrade": false`。无法读取的 `config.json` 也视为关闭。状态和上次运行日志位于 `~/.cairn/update/`。
 
 ## Antigravity Compatibility
 

@@ -1,27 +1,30 @@
 # Domain: hook-context
 
-Summary: hook 캡슐의 상태별 내용·문자 예산과 MEMORY.md/PLAN.md 인덱스 형식·검사 규칙. hook 문구나 인덱스 CLI를 바꿀 때 읽는다.
+Summary: hook 캡슐의 상태별 내용·문자 예산, SessionStart 업데이트 알림, MEMORY.md/PLAN.md 인덱스 형식·검사 규칙. hook 문구나 인덱스 CLI를 바꿀 때 읽는다.
 
 ## Scope
 
-hook 진입점 `scripts/cairn-state.mjs`, 순수 렌더링 `scripts/cairn-state-context.mjs`, 인덱스 검사·재생성·hook snapshot `scripts/cairn-index.mjs`, 등록 `hooks/hooks.json`. goal 상태 자체는 `goal-state.md`, 설치본의 hook 등록 경로는 `lifecycle-install.md`.
+hook 진입점 `scripts/cairn-state.mjs`, 순수 렌더링 `scripts/cairn-state-context.mjs`, 인덱스 검사·재생성·hook snapshot `scripts/cairn-index.mjs`, 등록 `hooks/hooks.json`. goal 상태 자체는 `goal-state.md`, 설치본의 hook 등록 경로와 자동 업그레이드 runner는 `lifecycle-install.md`.
 
 ## Facts
 
 ### 이벤트와 캡슐
 
 - hook은 5개다: SessionStart, UserPromptSubmit(UPS), PostToolUse(편집 도구 matcher), Stop, SubagentStop. 모두 `cairn-state.mjs <event>`, timeout 10초. 출처: `hooks/hooks.json`.
-- 모든 캡슐은 `Cairn kernel: root MEMORY.md is optional; read it when present.`(ko 판 있음)로 시작한다. 이 문장은 테스트가 고정한다. 출처: `cairn-state-context.mjs:95-97`, `test/token-efficiency.test.mjs` "hook context is a compact phase capsule without dropping recovery state", `test/goal-state.test.mjs` "automatic context hooks do not initialize an uninitialized repository".
-- 상태별 본문(`cairn-state-context.mjs:33-130`):
+- 모든 캡슐은 `Cairn kernel: root MEMORY.md is optional; read it when present.`(ko 판 있음)로 시작한다. 이 문장은 테스트가 고정한다. 출처: `cairn-state-context.mjs:96-98`, `test/token-efficiency.test.mjs` "hook context is a compact phase capsule without dropping recovery state", `test/goal-state.test.mjs` "automatic context hooks do not initialize an uninitialized repository".
+- 상태별 본문(`cairn-state-context.mjs:34-131`):
   - idle: cairn-plan 로드 지침. UPS에는 대상이 확정된 Git/GitHub 작업과 상담은 goal 없이 처리한다는 문장이 붙는다.
   - active: plan id, task roadmap(3개 이하면 전부, 넘으면 개수 요약과 현재 위치), current task. UPS에만 곁가지 질문 뒤 복귀 문장이 붙는다.
   - paused/blocked: plan·task·blocker와 "자동으로 상태를 바꾸지 말고 `goal resume`".
   - foreign(다른 session 소유): goal·plan·task 상세 없이 fail-closed 문장과 `goal claim --session` 안내.
-- SessionStart 끝에는 `Cairn CLI: node "<runtime scripts/cairn.mjs>" goal <command>` 한 줄이 붙는다. 저장소 경로는 넣지 않는다. 0.3.0 배포 전, 깊은 경로 worktree에서 절대 경로 2개 때문에 blocked 캡슐이 637자로 620 예산을 넘은 적이 있다. 출처: `cairn-state.mjs:152-157`, `docs/plan/release-0.3.0.md` Evidence.
-- 다른 worktree의 stale 상태를 지운 경우 캡슐 앞에 점검 문장 1줄이 붙는다. 출처: `cairn-state.mjs:62-66`.
-- PostToolUse는 소유 session의 active goal에서만 나오고, (goalId, 활성 taskId, sessionId) 조합당 1회다(guard `reminder-guard.json`). 출처: `cairn-state.mjs:69-102`.
+- SessionStart 끝에는 `Cairn CLI: node "<runtime scripts/cairn.mjs>" goal <command>` 한 줄이 붙는다. 설치본에서는 자기 `.cairn-runtime.json`의 `entrypoints.cli`(canonical runtime `~/.cairn/install/runtime/<version>/`)를 쓴다. upgrade가 Codex 캐시 사본을 지워도 열린 세션의 CLI 경로가 살아 있게 하기 위해서다. 저장소 경로는 넣지 않는다. 0.3.0 배포 전, 깊은 경로 worktree에서 절대 경로 2개 때문에 blocked 캡슐이 637자로 620 예산을 넘은 적이 있다. 출처: `cairn-state.mjs:159-174`, `test/installed-plugin.test.mjs` 224행, `docs/plan/release-0.3.0.md` Evidence.
+- SessionStart 업데이트 알림: 자동 업그레이드 runner가 남긴 `<CAIRN_HOME>/update/notice.json`이 있으면 캡슐 맨 끝(`Cairn CLI:` 줄 뒤)에 한 줄을 붙이고 같은 줄을 `systemMessage`에도 넣는다. 종류는 `updated`(`Cairn update: auto-upgraded <from> → <to>; …`), `failed`(`npx cairn-ai@latest upgrade` 또는 `cairn auto-upgrade status` 안내), `manual`(`claude plugin update cairn@cairn` 안내)이고 ko 판이 있다. UPS에는 싣지 않는다. 출처: `cairn-state.mjs:53-54,187-201`, `cairn-state-context.mjs:133-155`, `test/auto-upgrade.test.mjs` "the notice is appended after the Cairn CLI line and mirrored in systemMessage".
+- 알림은 rename으로 먼저 가져간 세션 하나만 한 번 보여 준다. `updated`는 새 버전 runtime의 세션에서만, `failed`·`manual`은 어느 설치 버전에서나 보이며, 14일이 지난 알림은 표시 없이 지운다. 설치된 canonical runtime이 아닌 곳(소스 체크아웃)의 hook은 update 상태를 읽지 않는다. 출처: `scripts/cairn-update-state.mjs:12,105-114,152-177`, `test/auto-upgrade.test.mjs` "the next SessionStart shows the notice once and only on the upgraded version", "SessionStart from a source checkout never reads or writes update state".
+- 이 단계의 오류는 모두 삼켜서 캡슐·exit code·"could not read goal state" 실패 결과를 바꾸지 않는다. 알림이 없으면 캡슐은 이전과 같다. 같은 단계가 확인 시기면 runner를 분리 프로세스로 띄운다(네트워크·lock 접근 없음). 출처: `cairn-state.mjs:187-201`, `scripts/cairn-update-state.mjs:125-150`, `test/auto-upgrade.test.mjs` "an auto-upgrade hook error never changes the capsule or the exit code", "capsules without a notice are unchanged".
+- 다른 worktree의 stale 상태를 지운 경우 캡슐 앞에 점검 문장 1줄이 붙는다. 출처: `cairn-state.mjs:126-130`.
+- PostToolUse는 소유 session의 active goal에서만 나오고, (goalId, 활성 taskId, sessionId) 조합당 1회다(guard `reminder-guard.json`). 출처: `cairn-state.mjs:57-90`.
 - Stop/SubagentStop은 active goal에 미완료 task가 있으면 block한다. `stop_hook_active`인데 상태 진척이 없으면 통과시킨다(loop guard). SubagentStop은 그 agent에 배정된 task만 본다. 출처: `scripts/cairn-goal-policy.mjs:19-51`, `scripts/cairn-state-hook.mjs`.
-- hook 내부 오류는 `systemMessage` JSON으로 알리고 exit 0이다. 자동 hook은 저장소를 init하지 않는다. 출처: `cairn-state.mjs:170-174`, `test/goal-state.test.mjs` "automatic context hooks do not initialize an uninitialized repository".
+- hook 내부 오류는 `systemMessage` JSON으로 알리고 exit 0이다. 자동 hook은 저장소를 init하지 않는다. 출처: `cairn-state.mjs:203-207`, `test/goal-state.test.mjs` "automatic context hooks do not initialize an uninitialized repository".
 
 ### 문자 예산(테스트가 강제)
 
@@ -31,14 +34,15 @@ hook 진입점 `scripts/cairn-state.mjs`, 순수 렌더링 `scripts/cairn-state-
 | UPS active (20 task, 최대 id 포함) | 700 | `test/token-efficiency.test.mjs:73,197` |
 | paused/blocked SessionStart (노트 없음) | 620 | `test/state-recovery-hardening.test.mjs:50,83` |
 | 병렬 active hook / 병렬 줄 | 820 / 160 | `test/goal-dag.test.mjs:256-257` |
-| memory 블록 / plan 줄 | 640 / 320 | `contextLimits`(`cairn-state-context.mjs:1-13`), `test/index-context.test.mjs` |
+| memory 블록 / plan 줄 | 640 / 320 | `contextLimits`(`cairn-state-context.mjs:1-14`), `test/index-context.test.mjs` |
+| SessionStart 업데이트 알림 줄 (버전 24자 clip, en·ko × 3종) | 160 | `test/token-efficiency.test.mjs` "update notice lines stay within 160 characters" |
 
 ### 인덱스 주입
 
-- SessionStart idle은 memory 블록과 plan 줄을 싣는다. SessionStart active·paused·blocked·foreign은 memory 블록만 싣는다. UPS idle은 노트가 1개 이상일 때 개수 문장 1개만 싣는다. 그 밖의 UPS는 디스크를 읽지 않는다. 출처: `cairn-state.mjs:144-150`.
+- SessionStart idle은 memory 블록과 plan 줄을 싣는다. SessionStart active·paused·blocked·foreign은 memory 블록만 싣는다. UPS idle은 노트가 1개 이상일 때 개수 문장 1개만 싣는다. 그 밖의 UPS는 디스크를 읽지 않는다. 출처: `cairn-state.mjs:153-157`.
 - memory 블록: 항목이 8개 이하이고 640자 이하면 `- name: summary` 줄(줄 84자, 이름 32자 clip)로 싣는다. 넘치면 이름만 쉼표로 이어 싣고 ` +N more in MEMORY.md`를 붙인다. 미색인 노트는 이름만 싣고 `(index out of date: run cairn memory index)`를 붙인다.
 - hook이 보여 주는 summary는 `MEMORY.md` 줄의 문구다. 노트 본문은 읽지 않는다. 노트 이름·summary·plan 이름의 제어문자와 줄 구분자(C0, DEL, C1, U+2028, U+2029)는 렌더링 때 공백으로 바뀌어 한 항목이 한 줄에 머문다. clip은 서로게이트 쌍을 자르지 않는다. 출처: `cairn-index.mjs` `memorySnapshot`, `cairn-state-context.mjs` `plainText`·`clipText`, `test/index-context.test.mjs` "SessionStart replaces control characters …".
-- plan 줄: 파일 수, Active 이름 최대 3개, Completed 앞 3개, `ARCHIVE.md`가 있으면 `older:` 구. 320자를 넘으면 최근 완료 이름을 뒤에서부터 뺀다. foreign에는 plan 이름을 싣지 않는다(소유자 작업 노출 금지). 출처: `cairn-state-context.mjs:172-196`, `test/index-context.test.mjs` "foreign SessionStart … never plan names".
+- plan 줄: 파일 수, Active 이름 최대 3개, Completed 앞 3개, `ARCHIVE.md`가 있으면 `older:` 구. 320자를 넘으면 최근 완료 이름을 뒤에서부터 뺀다. foreign에는 plan 이름을 싣지 않는다(소유자 작업 노출 금지). 출처: `cairn-state-context.mjs:198-222`, `test/index-context.test.mjs` "foreign SessionStart … never plan names".
 - 노트·계획이 없는 저장소의 출력은 0.5.0과 바이트 단위로 같다. `hookIndexSnapshot`은 throw하지 않고 쓰지 않는다. symlink, FIFO, 256 KiB를 넘는 인덱스는 해당 블록만 뺀다. 출처: `test/index-context.test.mjs` 1·11·12번 케이스, `cairn-index.mjs:293-310`.
 
 ### 인덱스 형식과 CLI

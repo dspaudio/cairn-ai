@@ -11,11 +11,15 @@ const fakeClaudeCli = resolve("test/fixtures/fake-claude.mjs");
 const sourceRoot = resolve(".");
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const lifecycleScript = join(sourceRoot, "scripts", "cairn-lifecycle.mjs");
+const releaseVersion = JSON.parse(await readFile(join(sourceRoot, "package.json"), "utf8")).version;
 
 test("runtime locator includes extracted goal CLI dependency", () => {
   const closure = new Set(runtimeRequiredRelativePaths(sourceRoot));
 
   assert.equal(closure.has(join("scripts", "cairn-goal-cli.mjs")), true);
+  // The detached auto-upgrade runner is spawned by path, so it is an entrypoint of its own.
+  assert.equal(closure.has(join("scripts", "cairn-auto-upgrade.mjs")), true);
+  assert.equal(closure.has(join("scripts", "cairn-update-state.mjs")), true);
 });
 
 test("packed install remains self-contained after the npm package source is removed", async () => {
@@ -28,6 +32,7 @@ test("packed install remains self-contained after the npm package source is remo
   const unrelated = join(temp, "unrelated cwd");
   const env = {
     ...process.env,
+    CAIRN_HOME: join(temp, "Cairn Home"),
     CODEX_HOME: join(temp, "Codex Home"),
     CLAUDE_HOME: join(temp, "Claude Home"),
     CAIRN_CLAUDE_CLI: fakeClaudeCli,
@@ -74,10 +79,13 @@ test("packed install remains self-contained after the npm package source is remo
     const lifecycleInstall = run(packageBin, ["install"], { cwd: unrelated, env });
     assert.equal(lifecycleInstall.status, 0, lifecycleInstall.stderr);
 
-    const marketplaceSource = join(env.CODEX_HOME, "plugins", "cache", "cairn", "plugins", "cairn");
-    const installedRoot = join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", "0.6.0");
+    const marketplaceSource = join(env.CAIRN_HOME, "install", "codex", "plugins", "cairn");
+    const installedRoot = join(env.CAIRN_HOME, "install", "runtime", releaseVersion);
     const installedCli = join(installedRoot, "scripts", "cairn.mjs");
     await stat(join(marketplaceSource, ".codex-plugin", "plugin.json"));
+    await stat(join(env.CODEX_HOME, "plugins", "cache", "cairn", "cairn", releaseVersion, "hooks", "hooks.json"));
+    const ownership = JSON.parse(await readFile(join(env.CAIRN_HOME, "install", "lifecycle.json"), "utf8"));
+    assert.equal(ownership.origin, "package", "an npm package source has no .git");
     const installedManifest = JSON.parse(await readFile(join(installedRoot, ".codex-plugin", "plugin.json"), "utf8"));
     assert.equal(installedManifest.hooks, "./hooks/hooks.json");
     const installedPrompt = installedManifest.interface.defaultPrompt.join("\n");
@@ -186,7 +194,7 @@ async function assertPackedLocatorRemovalMatrix({ installedRoot, installedLocato
   const required = runtimeRequiredPaths(installedLocator).map((path) => relative(installedRoot, path));
   for (const path of executableClosure) assert.equal(required.includes(path), true, `runtime locator closure includes ${path}`);
 
-  const ownershipPath = join(env.CODEX_HOME, "plugins", "cache", "cairn", ".cairn", "lifecycle.json");
+  const ownershipPath = join(env.CAIRN_HOME, "install", "lifecycle.json");
   const originalOwnership = await readFile(ownershipPath, "utf8");
   const quarantineRoot = join(temp, "locator-removal-matrix");
   for (const [index, relativePath] of required.entries()) {
@@ -196,7 +204,7 @@ async function assertPackedLocatorRemovalMatrix({ installedRoot, installedLocato
     await rename(requiredPath, quarantine);
     try {
       const ownership = JSON.parse(originalOwnership);
-      ownership.targets.find((record) => record.id === "codex-runtime").installedDigest = await targetDigest(installedRoot, "tree");
+      ownership.targets.find((record) => record.id === "runtime").installedDigest = await targetDigest(installedRoot, "tree");
       await writeFile(ownershipPath, `${JSON.stringify(ownership, null, 2)}\n`);
 
       const doctor = run(process.execPath, [lifecycleScript, "doctor"], { cwd: unrelated, env });

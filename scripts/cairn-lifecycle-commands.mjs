@@ -1,19 +1,29 @@
 import { spawnSync } from "node:child_process";
-import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { realpathSync } from "node:fs";
+import { lstat, mkdir, readFile, rmdir, writeFile } from "node:fs/promises";
+import { dirname, join, resolve, sep } from "node:path";
 import { hasSetting, readSharedConfigSnapshot, removeCairnConfig, splitSections } from "./cairn-lifecycle-config.mjs";
 import {
   installedSkillLocatorPath, validRuntimeLocator, validateAntigravitySkills,
 } from "./cairn-lifecycle-mirror.mjs";
 import { createClaudeRegistration } from "./cairn-lifecycle-claude.mjs";
+import { HOSTS, hostOfTarget, isHostSelection } from "./cairn-lifecycle-hosts.mjs";
+import {
+  OWNERSHIP_SCHEMA_VERSION, RETAINED_RUNTIME_GRACE_MS, RETAINED_RUNTIME_IDS, RETAINED_RUNTIME_LIMIT,
+  compareVersions,
+} from "./cairn-lifecycle-integrity.mjs";
+import { AUTO_UPGRADE_EXIT } from "./cairn-update-state.mjs";
+
+const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 export function createCommands(context) {
   const {
     antigravityCliHome, antigravityHome, claudeHome, claudeHomeOverridden, claudePluginMarketplaceRoot,
-    claudeRuntimeLocatorPath, codexHome, marketplaceName, configPath, installedPluginRoot, installedRuntimeLocatorPath,
+    claudeRuntimeLocatorPath, codexCacheRoot, codexHome, codexRuntimeRoot, marketplaceName, configPath,
+    installRoot, installedPluginRoot, layout, legacy, legacyLayout,
     marketplaceJsonPath, ownershipPath, phases, pluginName, pluginRoot,
-    pruneUninstallScaffolds, releaseVersion, samePath, skillNames, t, transaction,
-    versionedPluginRoot, staging, integrity,
+    pruneUninstallScaffolds, releaseVersion, runtimeRoot, skillNames, t, transaction,
+    staging, integrity,
   } = context;
   const {
     createTransaction, finishTransaction, recoverInterruptedTransaction,
@@ -21,101 +31,282 @@ export function createCommands(context) {
   } = transaction;
   const { legacyMigrationTargets, stageInstall } = staging;
   const claudeRegistration = createClaudeRegistration({
-    claudeHome, claudeHomeOverridden, marketplaceRoot: claudePluginMarketplaceRoot, marketplaceName, pluginName,
+    claudeHome, claudeHomeOverridden, marketplaceRoot: claudePluginMarketplaceRoot,
+    legacyMarketplaceRoot: legacyLayout?.claudePluginMarketplaceRoot, marketplaceName, pluginName, releaseVersion,
   });
   const {
-    adoptLegacy, anyManagedArtifactExists, assertOwnershipDigests,
+    anyManagedArtifactExists, assertOwnershipDigests,
     assertTargetsReplaceable, ownershipDigestsValid, readOwnership, targetDigest,
-    targetRecord, validateOwnershipShape, versionedRuntimeRoot,
+    targetRecord, validateOwnershipShape, withoutMissingRetained,
   } = integrity;
-async function install(mode) {
-  if (samePath(pluginRoot, installedPluginRoot) || samePath(pluginRoot, versionedPluginRoot)) {
+  // Legacy-layout records that live in a different place after migration; the transaction removes the old copy.
+  const legacyRootRemovals = {
+    "codex-source": "legacy-root-codex-source", marketplace: "legacy-root-marketplace", "claude-plugin": "legacy-root-claude-plugin",
+  };
+// `selection` is the --hosts value or the prompt answer; without one an upgrade keeps the recorded hosts and a first
+// install takes every host. `auto` is `upgrade --auto` from the auto-upgrade runner. `allowDowngrade` lets this CLI
+// replace an installation of a newer version.
+async function install(mode, { hosts: selection = null, auto = false, allowDowngrade = false } = {}) {
+  if (isInsidePath(installRoot, pluginRoot) || isInsidePath(codexCacheRoot, pluginRoot)) {
     throw new Error("Run install or upgrade from the Cairn package/global source, not from the installed cache.");
   }
-  await recoverInterruptedTransaction();
+  await recoverInterruptedTransactions();
+  await assertSingleOwnershipManifest();
+  // Checked under the lifecycle lock: an automatic upgrade only moves an existing installation forward, so a runner
+  // that started before an uninstall finished installs nothing.
+  if (auto && (await readJson(ownershipPath).catch(() => null))?.schemaVersion !== OWNERSHIP_SCHEMA_VERSION) {
+    throw new Error("auto-upgrade requires an existing installation");
+  }
+  // An older CLI (an old global install, an old npx cache) would otherwise move a newer installation back, and the
+  // auto-upgrade runner would move it forward again.
+  const installedVersion = await recordedVersion();
+  if (!allowDowngrade && installedVersion && compareVersions(installedVersion, releaseVersion) > 0) {
+    throw new Error(`Installed Cairn ${installedVersion} is newer than this CLI ${releaseVersion}; run the newer CLI, or pass --allow-downgrade to install ${releaseVersion}`);
+  }
   const transaction = await createTransaction();
+  let migration = null;
+  let unregisteredClaude = false;
+  let hosts = [...HOSTS];
+  let droppedHosts = false;
   try {
-    const targets = await stageInstall(transaction.stageRoot);
-    if (process.env.CAIRN_TEST_CRASH_AFTER_STAGE === "1") process.exit(87);
-    targets.push(...await legacyMigrationTargets());
     let ownership = await readOwnership();
+    if (ownership) validateOwnershipShape(ownership);
+    // A retained runtime that is already gone needs no removal and is no longer recorded.
+    if (ownership) ownership = await withoutMissingRetained(ownership);
+    hosts = selection ?? (ownership ? ownership.hosts : hosts);
+    droppedHosts = Boolean(ownership) && ownership.hosts.some((host) => !hosts.includes(host));
+    const targets = await stageInstall(transaction.stageRoot, hosts);
+    if (process.env.CAIRN_TEST_CRASH_AFTER_STAGE === "1") process.exit(87);
+    if (hosts.includes("antigravity")) targets.push(...await legacyMigrationTargets());
+    let retained = [];
     if (ownership) {
-      validateOwnershipShape(ownership);
       await assertOwnershipDigests(ownership);
-      if (ownership.version !== releaseVersion) {
-        targets.push({
-          id: "previous-codex-runtime",
-          phase: "cleanup",
-          path: versionedRuntimeRoot(ownership.version),
-          type: "tree",
-          operation: "remove",
-        });
+      const retention = planRetention(ownership, new Date(), hosts);
+      targets.push(...retention.removals);
+      retained = retention.retained;
+      targets.push(...await deselectedHostTargets(ownership, hosts, transaction));
+    } else {
+      // A 0.6.0-layout installation is validated by the legacy stack and moved here in this same transaction.
+      ownership = await legacy.integrity.readOwnership();
+      if (ownership) {
+        legacy.integrity.validateOwnershipShape(ownership);
+        await legacy.integrity.assertOwnershipDigests(ownership);
+        migration = { manifest: true };
+      } else {
+        const legacyTargets = legacyLayoutTargets(targets);
+        if (await anyManagedArtifactExists([...targets, ...legacyTargets])) {
+          ownership = await legacy.integrity.adoptLegacy(legacyTargets, transaction);
+          migration = { manifest: false };
+        }
+      }
+      if (migration) {
+        // A legacy installation had every host; it moves as a whole, and a narrower selection follows in a later run.
+        if (hosts.length !== HOSTS.length) {
+          throw new Error(`Invalid --hosts value: ${hosts.join(",")} (a legacy installation migrates with every host; run cairn upgrade first, then choose hosts)`);
+        }
+        targets.push(...legacyRemovalTargets(ownership));
       }
     }
-    else if (await anyManagedArtifactExists(targets)) ownership = await adoptLegacy(targets, transaction);
     await assertTargetsReplaceable(targets, ownership);
+    // Like uninstall, a deselected Claude Code plugin is unregistered before its files are removed; a rollback
+    // restores the files and then the registration.
+    if (ownership?.hosts?.includes("claude") && !hosts.includes("claude")) {
+      unregisteredClaude = claudeRegistration.unregister().unregistered;
+    }
     for (const phase of phases) {
       for (const target of targets.filter((candidate) => candidate.phase === phase)) {
         if (target.operation === "remove") await removeManagedTarget(target, transaction);
         else await replaceTarget(target, transaction);
       }
       injectFailure(`after-${phase}`);
+      if (process.env.CAIRN_TEST_CRASH_AFTER_PHASE === phase) process.exit(88);
     }
     const records = [];
-    for (const target of targets.filter((candidate) => candidate.operation !== "remove")) records.push(await targetRecord(target));
+    for (const target of targets.filter((candidate) => candidate.operation !== "remove" && !candidate.deselected)) records.push(await targetRecord(target));
     const nextOwnership = {
-      schemaVersion: 1,
+      schemaVersion: OWNERSHIP_SCHEMA_VERSION,
       plugin: pluginName,
       version: releaseVersion,
       transactionId: transaction.id,
       installedAt: new Date().toISOString(),
+      origin: await exists(join(pluginRoot, ".git")) ? "checkout" : "package",
+      hosts: [...hosts],
       targets: records,
+      retained,
     };
     const ownershipStage = join(transaction.stageRoot, "lifecycle.json");
     await mkdir(dirname(ownershipStage), { recursive: true });
     await writeFile(ownershipStage, `${JSON.stringify(nextOwnership, null, 2)}\n`);
     await replaceTarget({ id: "ownership", phase: "manifest", path: ownershipPath, staged: ownershipStage, type: "file" }, transaction);
+    if (migration?.manifest) {
+      await removeManagedTarget({ id: "legacy-ownership", phase: "manifest", path: legacyLayout.ownershipPath, type: "file" }, transaction);
+    }
     await finishTransaction(transaction);
     console.log(t(mode === "upgrade" ? "upgradeComplete" : "installComplete"));
-    console.log(`Codex plugin source: ${installedPluginRoot}`);
-    console.log(`Codex versioned runtime: ${versionedPluginRoot}`);
+    console.log(`Cairn runtime: ${runtimeRoot}`);
+    if (nextOwnership.hosts.includes("codex")) {
+      console.log(`Codex plugin source: ${installedPluginRoot}`);
+      console.log(`Codex versioned runtime: ${codexRuntimeRoot}`);
+    }
     console.log(`Ownership manifest: ${ownershipPath}`);
   } catch (error) {
-    if (transaction.state !== "committed") await rollback(transaction);
+    if (transaction.state !== "committed") {
+      await rollback(transaction);
+      if (unregisteredClaude) {
+        try { claudeRegistration.register(); } catch (registrationError) { console.error(`Claude Code plugin re-registration failed: ${registrationError.message}`); }
+      }
+    }
     throw error;
   }
-  reportClaudeRegistration();
+  if (hosts.includes("claude")) reportClaudeRegistration({ auto, migrated: Boolean(migration) });
+  if (migration) await pruneLegacyScaffolds();
+  // Removing a host can leave its empty scaffolds (Codex marketplace and cache directories); only empty ones go.
+  if (droppedHosts) await pruneUninstallScaffolds();
+  injectFailure("after-commit");
+}
+
+// The version a current or 0.6.0-layout manifest records, or null when there is none or it is unreadable (the
+// manifest checks that follow report that).
+async function recordedVersion() {
+  for (const path of [ownershipPath, legacyLayout?.ownershipPath].filter(Boolean)) {
+    const version = (await readJson(path).catch(() => null))?.version;
+    if (typeof version === "string" && VERSION_PATTERN.test(version)) return version;
+  }
+  return null;
+}
+
+// Records of hosts that are no longer selected are removed under their own ids, so assertTargetsReplaceable compares
+// them with the manifest and refuses modified ones. The shared config keeps everything but Cairn's sections, as in
+// uninstall, and a Codex cache runtime from another version is removed through its journal-only id.
+async function deselectedHostTargets(ownership, hosts, transaction) {
+  const removals = [];
+  for (const record of ownership.targets) {
+    const host = hostOfTarget(record.id);
+    if (host === "core" || hosts.includes(host)) continue;
+    if (record.type === "config") {
+      if (!(await exists(record.path))) continue;
+      const snapshot = await readSharedConfigSnapshot(record.path);
+      const staged = join(transaction.stageRoot, "deselected-config.toml");
+      await mkdir(dirname(staged), { recursive: true });
+      await writeFile(staged, removeCairnConfig(snapshot.text));
+      removals.push({ id: record.id, phase: record.phase, path: record.path, staged, type: record.type, configSourceDigest: snapshot.digest, deselected: true });
+    } else if (record.id === "codex-runtime" && record.path !== codexRuntimeRoot) {
+      removals.push({ id: "previous-codex-runtime", phase: "cleanup", path: record.path, type: record.type, operation: "remove", ownedBy: record.id });
+    } else {
+      removals.push({ id: record.id, phase: record.phase, path: record.path, type: record.type, operation: "remove" });
+    }
+  }
+  return removals;
+}
+
+function hostsOf(ownership) {
+  return isHostSelection(ownership?.hosts) ? ownership.hosts : [...HOSTS];
+}
+
+// A version change retains the previous runtimes for sessions that still run them, except a Codex cache copy that is
+// not older than the release: Codex loads the highest cached version, so that copy would replace the release. Retained
+// runtimes past the grace period, beyond the per-id limit (oldest first), or no longer older than a Codex release are
+// removed in cleanup; the release's own retained runtime becomes the installed target again.
+// Without Codex in the selection there is no codex-runtime record to retain, and Codex runtimes retained earlier are
+// removed in this run.
+function planRetention(ownership, now, hosts) {
+  const removals = [];
+  const candidates = [];
+  const retiredAt = now.toISOString();
+  const keepsCodex = hosts.includes("codex");
+  if (ownership.version !== releaseVersion) {
+    for (const id of RETAINED_RUNTIME_IDS) {
+      const record = ownership.targets.find((candidate) => candidate.id === id);
+      // A codex-runtime record of a deselected Codex is removed by deselectedHostTargets.
+      if (!record || (id === "codex-runtime" && !keepsCodex)) continue;
+      if (id === "codex-runtime" && compareVersions(ownership.version, releaseVersion) >= 0) {
+        removals.push({ id: "previous-codex-runtime", phase: "cleanup", path: record.path, type: "tree", operation: "remove", ownedBy: id });
+      } else {
+        candidates.push({ entry: { id, version: ownership.version, path: record.path, installedDigest: record.installedDigest, retiredAt }, retiring: true });
+      }
+    }
+  }
+  for (const entry of ownership.retained) {
+    if (entry.id === "codex-runtime" && !keepsCodex) {
+      removals.push(retiredRuntimeTarget(entry, "cleanup"));
+      continue;
+    }
+    if (entry.version === releaseVersion) continue;
+    const expired = now.getTime() - Date.parse(entry.retiredAt) >= RETAINED_RUNTIME_GRACE_MS;
+    const shadowsRelease = entry.id === "codex-runtime" && compareVersions(entry.version, releaseVersion) >= 0;
+    if (expired || shadowsRelease) removals.push(retiredRuntimeTarget(entry, "cleanup"));
+    else candidates.push({ entry, retiring: false });
+  }
+  const retained = [];
+  for (const id of RETAINED_RUNTIME_IDS) {
+    const newestFirst = candidates.filter(({ entry }) => entry.id === id).sort((left, right) => (right.retiring - left.retiring)
+      || (Date.parse(right.entry.retiredAt) - Date.parse(left.entry.retiredAt)) || compareVersions(right.entry.version, left.entry.version));
+    for (const [index, { entry, retiring }] of newestFirst.entries()) {
+      if (index < RETAINED_RUNTIME_LIMIT) retained.push(entry);
+      else if (!retiring) removals.push(retiredRuntimeTarget(entry, "cleanup"));
+    }
+  }
+  return { removals, retained: retained.sort((left, right) => Date.parse(left.retiredAt) - Date.parse(right.retiredAt)) };
+}
+
+function retiredRuntimeTarget(entry, phase) {
+  return { id: `retired-${entry.id}-${entry.version}`, phase, path: entry.path, type: "tree", operation: "remove", retained: entry };
 }
 
 // Files are committed first; registering with Claude Code is idempotent, and a failure leaves the files
 // installed with a manual command to finish, instead of rolling back a working Codex/Antigravity install.
-function reportClaudeRegistration() {
-  const manual = `claude plugin marketplace add ${JSON.stringify(claudePluginMarketplaceRoot)} && claude plugin install ${claudeRegistration.pluginId} --scope user`;
+// A missing claude CLI is only advice (exit 0), except under `upgrade --auto`. Under `--auto` every Claude Code step
+// left to the user exits AUTO_UPGRADE_EXIT.manual so the runner can tell it from other errors; a foreign `cairn`
+// marketplace is not Cairn's to change and exits 0 as in a manual upgrade.
+function reportClaudeRegistration({ auto = false, migrated = false } = {}) {
+  const register = `claude plugin marketplace add ${JSON.stringify(claudePluginMarketplaceRoot)} && claude plugin install ${claudeRegistration.pluginId} --scope user`;
+  // After a migration the 0.6.0-layout registration still points at the removed directory, and `marketplace add`
+  // fails on the name until it is removed.
+  const replaceLegacy = `claude plugin marketplace remove ${marketplaceName} && ${register}`;
+  const failedExit = auto ? AUTO_UPGRADE_EXIT.manual : 1;
   try {
     const result = claudeRegistration.register();
     if (result.registered) {
       console.log(`Claude Code plugin: ${claudeRegistration.pluginId} (${claudePluginMarketplaceRoot})`);
+      if (result.cacheRefresh && !result.cacheRefresh.refreshed) {
+        const refresh = `claude plugin marketplace update ${marketplaceName} && claude plugin update ${claudeRegistration.pluginId} --scope user`;
+        console.log(`Claude Code plugin cache refresh failed: ${result.cacheRefresh.reason}. To finish: ${refresh}`);
+        process.exitCode = failedExit;
+      }
       return;
     }
+    const manual = result.cliMissing && migrated ? replaceLegacy : register;
     console.log(`Claude Code plugin not registered: ${result.reason}. To register: ${manual}`);
+    if (auto && result.cliMissing) process.exitCode = AUTO_UPGRADE_EXIT.manual;
   } catch (error) {
+    // The 0.6.0-layout registration could not be removed, so the manual steps start by removing it.
+    const manual = error.legacyMarketplace ? replaceLegacy : register;
     console.log(`Claude Code plugin registration failed: ${error.message}. To register: ${manual}`);
-    process.exitCode = 1;
+    process.exitCode = failedExit;
   }
 }
 
 async function uninstall() {
-  await recoverInterruptedTransaction();
-  const ownership = await readOwnership({ required: true });
-  validateOwnershipShape(ownership, { required: true });
+  await recoverInterruptedTransactions();
+  if (legacy) {
+    await assertSingleOwnershipManifest();
+    // A 0.6.0-layout installation is removed in place by the legacy stack instead of being migrated first.
+    if (!(await exists(ownershipPath)) && await exists(legacyLayout.ownershipPath)) return legacy.commands.uninstall();
+  }
+  const recorded = await readOwnership({ required: true });
+  validateOwnershipShape(recorded, { required: true });
+  // A retained runtime that is already gone is not a conflict and has nothing left to remove.
+  const ownership = await withoutMissingRetained(recorded);
   const conflicts = [];
-  for (const record of ownership.targets) {
+  const retiredRuntimes = (ownership.retained ?? []).map((entry) => retiredRuntimeTarget(entry, "core"));
+  for (const record of [...ownership.targets, ...retiredRuntimes.map((target) => ({ ...target, installedDigest: target.retained.installedDigest }))]) {
     const current = await targetDigest(record.path, record.type);
     if (record.type !== "config" && current !== record.installedDigest) conflicts.push(record.path);
   }
   if (conflicts.length > 0) throw new Error(`Refusing to uninstall modified managed artifacts: ${conflicts.join(", ")}`);
   // Unregister before removing files so Claude Code never points at a deleted plugin; a failure aborts with nothing changed.
-  const unregistered = claudeRegistration.unregister().unregistered;
+  // Without Claude Code in the selection the claude CLI is never run.
+  const unregistered = hostsOf(ownership).includes("claude") ? claudeRegistration.unregister().unregistered : false;
   const transaction = await createTransaction();
   try {
     const configRecord = ownership.targets.find((record) => record.type === "config");
@@ -131,7 +322,10 @@ async function uninstall() {
       for (const record of ownership.targets.filter((candidate) => candidate.phase === phase).reverse()) await removeManagedTarget(record, transaction);
     }
     injectFailure("uninstall-after-external");
-    for (const record of ownership.targets.filter((candidate) => candidate.phase === "codex").reverse()) await removeManagedTarget(record, transaction);
+    for (const phase of ["codex", "core"]) {
+      for (const record of ownership.targets.filter((candidate) => candidate.phase === phase).reverse()) await removeManagedTarget(record, transaction);
+    }
+    for (const target of retiredRuntimes) await removeManagedTarget(target, transaction);
     injectFailure("uninstall-after-codex");
     await removeManagedTarget({ id: "ownership", phase: "manifest", path: ownershipPath, type: "file" }, transaction);
     injectFailure("uninstall-after-ownership");
@@ -151,53 +345,80 @@ async function uninstall() {
   console.log(t("uninstallComplete"));
 }
 
+// Only the selected hosts are checked, and only their host CLIs are run; without a valid manifest every host is checked.
+// Version-dependent paths follow the installed version, so a CLI of another version checks the installation as it is.
 async function doctor() {
   const checks = [];
   const ownership = await readOwnership();
+  const hosts = hostsOf(ownership);
+  const selected = (host) => hosts.includes(host);
+  console.log(`Hosts: ${hosts.join(",")}`);
+  const installedVersion = typeof ownership?.version === "string" && VERSION_PATTERN.test(ownership.version) ? ownership.version : releaseVersion;
+  if (installedVersion !== releaseVersion) console.log(`CLI version ${releaseVersion} differs from installed version ${installedVersion}`);
+  const runtimeRoot = layout.runtimeRootFor(installedVersion);
+  const codexRuntimeRoot = layout.codexRuntimeRootFor(installedVersion);
+  const installedRuntimeLocatorPath = join(runtimeRoot, ".cairn-runtime.json");
   checks.push(["source", await exists(join(pluginRoot, ".codex-plugin", "plugin.json"))]);
   checks.push(["ownership manifest", Boolean(ownership)]);
   checks.push(["ownership digests", await ownershipDigestsValid(ownership)]);
-  checks.push(["custom marketplace source", await exists(join(installedPluginRoot, ".codex-plugin", "plugin.json"))]);
-  checks.push(["versioned runtime", await exists(join(versionedPluginRoot, ".codex-plugin", "plugin.json"))]);
-  checks.push(["marketplace", await exists(marketplaceJsonPath)]);
-  checks.push(["installed hooks manifest field", (await readJson(join(versionedPluginRoot, ".codex-plugin", "plugin.json")))?.hooks === "./hooks/hooks.json"]);
-  checks.push(["hooks file", await exists(join(versionedPluginRoot, "hooks", "hooks.json"))]);
-  checks.push(["installed runtime locator", await validRuntimeLocator(installedRuntimeLocatorPath, versionedPluginRoot)]);
-  checks.push(["installed skill locators", (await Promise.all(skillNames().map((name) => validRuntimeLocator(installedSkillLocatorPath(versionedPluginRoot, name), versionedPluginRoot)))).every(Boolean)]);
-  checks.push(["installed CLI script", await exists(join(versionedPluginRoot, "scripts", "cairn.mjs"))]);
-  checks.push(["installed plan template", await exists(join(versionedPluginRoot, "templates", "work-plan.md"))]);
-  checks.push(["installed model guidance", await exists(join(versionedPluginRoot, "docs", "model-guidance", "codex.md"))]);
-  const config = (await readSharedConfigSnapshot(configPath)).text;
-  checks.push(["config marketplace", splitSections(config).some((section) => section.header === "marketplaces.cairn")]);
-  checks.push(["config plugin enabled", hasSetting(config, 'plugins."cairn@cairn"', "enabled", "true")]);
-  checks.push(["Claude runtime locator", await validRuntimeLocator(claudeRuntimeLocatorPath, versionedPluginRoot)]);
-  const claudePluginManifest = await readJson(join(claudePluginMarketplaceRoot, pluginName, ".claude-plugin", "plugin.json"));
-  checks.push(["Claude plugin files", claudePluginManifest?.version === releaseVersion
-    && await exists(join(claudePluginMarketplaceRoot, ".claude-plugin", "marketplace.json"))
-    && await exists(join(claudePluginMarketplaceRoot, pluginName, "hooks", "hooks.json"))]);
-  let claudeStatus = null;
-  try { claudeStatus = claudeRegistration.status(); } catch { claudeStatus = null; }
-  checks.push(["Claude plugin registered", Boolean(claudeStatus?.marketplace && claudeStatus.installed)]);
-  checks.push(["Claude plugin enabled", Boolean(claudeStatus?.enabled)]);
-  checks.push(["Antigravity IDE skills", await exists(join(antigravityHome, "skills", "cairn-plan", "SKILL.md"))]);
-  checks.push(["Antigravity CLI flat skills", await exists(join(antigravityCliHome, "skills", "cairn-plan.md"))]);
+  if (selected("codex")) checks.push(["custom marketplace source", await exists(join(installedPluginRoot, ".codex-plugin", "plugin.json"))]);
+  checks.push(["canonical runtime", await exists(join(runtimeRoot, ".codex-plugin", "plugin.json"))]);
+  if (selected("codex")) {
+    checks.push(["versioned runtime", await exists(join(codexRuntimeRoot, ".codex-plugin", "plugin.json"))]);
+    checks.push(["marketplace", await exists(marketplaceJsonPath)]);
+    checks.push(["installed hooks manifest field", (await readJson(join(codexRuntimeRoot, ".codex-plugin", "plugin.json")))?.hooks === "./hooks/hooks.json"]);
+    checks.push(["hooks file", await exists(join(codexRuntimeRoot, "hooks", "hooks.json"))]);
+  }
+  checks.push(["installed runtime locator", await validRuntimeLocator(installedRuntimeLocatorPath, runtimeRoot)]);
+  checks.push(["installed skill locators", (await Promise.all(skillNames().map((name) => validRuntimeLocator(installedSkillLocatorPath(runtimeRoot, name), runtimeRoot)))).every(Boolean)]);
+  checks.push(["installed CLI script", await exists(join(runtimeRoot, "scripts", "cairn.mjs"))]);
+  checks.push(["installed plan template", await exists(join(runtimeRoot, "templates", "work-plan.md"))]);
+  checks.push(["installed model guidance", await exists(join(runtimeRoot, "docs", "model-guidance", "codex.md"))]);
+  if (selected("codex")) {
+    const config = (await readSharedConfigSnapshot(configPath)).text;
+    checks.push(["config marketplace", splitSections(config).some((section) => section.header === "marketplaces.cairn")]);
+    checks.push(["config plugin enabled", hasSetting(config, 'plugins."cairn@cairn"', "enabled", "true")]);
+  }
+  if (selected("claude")) {
+    checks.push(["Claude runtime locator", await validRuntimeLocator(claudeRuntimeLocatorPath, runtimeRoot)]);
+    const claudePluginManifest = await readJson(join(claudePluginMarketplaceRoot, pluginName, ".claude-plugin", "plugin.json"));
+    checks.push(["Claude plugin files", claudePluginManifest?.version === installedVersion
+      && await exists(join(claudePluginMarketplaceRoot, ".claude-plugin", "marketplace.json"))
+      && await exists(join(claudePluginMarketplaceRoot, pluginName, "hooks", "hooks.json"))]);
+    let claudeStatus = null;
+    try { claudeStatus = claudeRegistration.status(); } catch { claudeStatus = null; }
+    checks.push(["Claude plugin registered", Boolean(claudeStatus?.marketplace && claudeStatus.installed)]);
+    checks.push(["Claude plugin enabled", Boolean(claudeStatus?.enabled)]);
+    checks.push(["Claude plugin cache version", claudeStatus?.version === installedVersion]);
+  }
+  if (selected("antigravity")) {
+    checks.push(["Antigravity IDE skills", await exists(join(antigravityHome, "skills", "cairn-plan", "SKILL.md"))]);
+    checks.push(["Antigravity CLI flat skills", await exists(join(antigravityCliHome, "skills", "cairn-plan.md"))]);
+  }
 
-  const codexStatus = hostJson(["plugin", "list", "--json"], { CODEX_HOME: codexHome });
-  const codexEntry = findPluginStatus(codexStatus, "cairn@cairn");
-  checks.push(["Codex plugin installed", Boolean(codexEntry?.installed)]);
-  checks.push(["Codex plugin enabled", Boolean(codexEntry?.enabled)]);
-  checks.push(["Codex plugin version", codexEntry?.version === releaseVersion]);
+  if (selected("codex")) {
+    const codexStatus = hostJson(["plugin", "list", "--json"], { CODEX_HOME: codexHome });
+    const codexEntry = findPluginStatus(codexStatus, "cairn@cairn");
+    checks.push(["Codex plugin installed", Boolean(codexEntry?.installed)]);
+    checks.push(["Codex plugin enabled", Boolean(codexEntry?.enabled)]);
+    checks.push(["Codex plugin version", codexEntry?.version === installedVersion]);
 
-  const featureResult = spawnSync("codex", ["features", "list"], { encoding: "utf8", env: { ...process.env, CODEX_HOME: codexHome } });
-  const featureStates = featureResult.status === 0 && !featureResult.error ? parseCodexFeatureList(featureResult.stdout) : null;
-  checks.push(["Codex feature plugins", featureStates?.plugins === true]);
-  checks.push(["Codex feature hooks", featureStates?.hooks === true]);
-  checks.push(["Codex feature multi_agent", featureStates?.multi_agent === true]);
+    const featureResult = spawnSync("codex", ["features", "list"], { encoding: "utf8", env: { ...process.env, CODEX_HOME: codexHome } });
+    const featureStates = featureResult.status === 0 && !featureResult.error ? parseCodexFeatureList(featureResult.stdout) : null;
+    checks.push(["Codex feature plugins", featureStates?.plugins === true]);
+    checks.push(["Codex feature hooks", featureStates?.hooks === true]);
+    checks.push(["Codex feature multi_agent", featureStates?.multi_agent === true]);
+  }
 
-  const agy = spawnSync("agy", ["--version"], { encoding: "utf8", env: process.env });
-  checks.push(["Antigravity CLI readiness", !agy.error && agy.status === 0 && /^\d+\.\d+\.\d+/.test(agy.stdout.trim())]);
-  checks.push(["Antigravity CLI skill validation", await validateAntigravitySkills(antigravityCliHome, skillNames(), versionedPluginRoot)]);
+  if (selected("antigravity")) {
+    const agy = spawnSync("agy", ["--version"], { encoding: "utf8", env: process.env });
+    checks.push(["Antigravity CLI readiness", !agy.error && agy.status === 0 && /^\d+\.\d+\.\d+/.test(agy.stdout.trim())]);
+    checks.push(["Antigravity CLI skill validation", await validateAntigravitySkills(antigravityCliHome, skillNames(), runtimeRoot)]);
+  }
   for (const [name, ok] of checks) console.log(`${ok ? "OK" : "FAIL"} ${name}`);
+  if (!ownership && legacyLayout && await exists(legacyLayout.ownershipPath)) {
+    console.log(`Legacy installation found at ${legacyLayout.installRoot}; run cairn upgrade to migrate`);
+  }
   if (checks.some(([, ok]) => !ok)) process.exitCode = 1;
 }
 
@@ -205,6 +426,61 @@ async function doctor() {
   function injectFailure(point) {
     if (process.env.CAIRN_TEST_FAIL_PHASE === point) throw new Error(`Injected lifecycle failure: ${point}`);
   }
+
+// The legacy journal is recovered first so the legacy manifest and artifacts are whole before the current
+// journal (which may hold a migration that moved them) is rolled back.
+async function recoverInterruptedTransactions() {
+  if (legacy) await legacy.transaction.recoverInterruptedTransaction();
+  await recoverInterruptedTransaction();
+}
+
+async function assertSingleOwnershipManifest() {
+  if (await exists(ownershipPath) && await exists(legacyLayout.ownershipPath)) {
+    throw new Error(`Both legacy and current ownership manifests exist: ${legacyLayout.ownershipPath}, ${ownershipPath}`);
+  }
+}
+
+// The 0.6.0 layout used the same ids at other paths. Its adoption checks run against those paths; ids without a
+// legacy counterpart (the canonical runtime) are skipped.
+function legacyLayoutTargets(targets) {
+  const mapped = [];
+  for (const target of targets) {
+    const expected = legacy.integrity.expectedManagedTarget(target.id);
+    if (expected) mapped.push({ ...target, path: expected.path });
+  }
+  return mapped;
+}
+
+function legacyRemovalTargets(ownership) {
+  const removals = ownership.targets.filter((record) => Object.hasOwn(legacyRootRemovals, record.id)).map((record) => ({
+    id: legacyRootRemovals[record.id], phase: "cleanup", path: record.path, type: record.type, operation: "remove", ownedBy: record.id,
+  }));
+  // Runtime retention does not apply to a migration: the legacy runtime is the Codex cache copy.
+  if (ownership.version !== releaseVersion && ownership.targets.some((record) => record.id === "codex-runtime")) {
+    removals.push({ id: "previous-codex-runtime", phase: "cleanup", path: layout.codexRuntimeRootFor(ownership.version), type: "tree", operation: "remove", ownedBy: "codex-runtime" });
+  }
+  return removals;
+}
+
+// Only empty directories are removed, so unmanaged children keep their parents; the legacy state root and the
+// legacy root itself are pruned after the legacy lock is released.
+async function pruneLegacyScaffolds() {
+  for (const path of [
+    join(legacyLayout.marketplaceRoot, "plugins"), join(legacyLayout.marketplaceRoot, ".agents", "plugins"),
+    join(legacyLayout.marketplaceRoot, ".agents"), legacyLayout.transactionRoot,
+  ]) {
+    try { await rmdir(path); }
+    catch (error) { if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes(error?.code)) throw error; }
+  }
+}
+
+// The installed copies live under the install root or the Codex cache; comparing real paths keeps a symlinked
+// temp or home directory from hiding that the CLI was started from one of them.
+function isInsidePath(root, candidate) {
+  const real = (path) => { try { return realpathSync(path); } catch { return resolve(path); } };
+  const [base, path] = [real(root), real(candidate)];
+  return path === base || path.startsWith(`${base}${sep}`);
+}
 
 function hostJson(args, extraEnv = {}) {
   const result = spawnSync("codex", args, { encoding: "utf8", env: { ...process.env, ...extraEnv } });

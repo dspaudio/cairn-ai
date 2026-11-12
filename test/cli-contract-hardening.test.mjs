@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 const rootCli = resolve("scripts", "cairn.mjs");
 const toolcheckCli = resolve("scripts", "cairn-toolcheck.mjs");
 const { version } = JSON.parse(await readFile("package.json", "utf8"));
-const usage = "Usage: cairn install|upgrade|doctor|uninstall|cleanup|init|memory|plan|work|review|toolcheck|goal|task\n";
+const usage = "Usage: cairn install|upgrade|doctor|uninstall|auto-upgrade|cleanup|init|memory|plan|work|review|toolcheck|goal|task\n";
 const toolcheckUsage = "Usage: cairn toolcheck [--root PATH] [--json] [--install --yes]\n";
 
 function run(script, args, options = {}) {
@@ -217,6 +217,44 @@ test("init rejects unknown options with exit 2 and creates no files", async () =
       const result = run(rootCli, args, { env });
       assertExit(result, { status: 2, stdout: "", stderr: `Cairn error: ${message}\n` });
     }
+    assert.deepEqual(await listTree(root), []);
+    assert.deepEqual(await listTree(home), []);
+    assert.deepEqual(await listTree(stateHome), []);
+  });
+});
+
+test("lifecycle commands accept only --hosts and --allow-downgrade on install and upgrade and keep the documented --help exception", async () => {
+  await withIsolatedCli(async ({ root, home, stateHome, env }) => {
+    const lifecycleEnv = {
+      ...env,
+      CODEX_HOME: join(home, ".codex"),
+      CLAUDE_HOME: join(home, ".claude"),
+      ANTIGRAVITY_HOME: join(home, ".gemini", "config"),
+      ANTIGRAVITY_CLI_HOME: join(home, ".gemini", "antigravity-cli"),
+      CODEX_CONFIG_PATH: join(home, ".codex", "config.toml"),
+      CAIRN_CLAUDE_CLI: "none",
+    };
+    for (const [args, message] of [
+      [["install", "--help"], "Lifecycle command install does not accept arguments: --help"],
+      [["upgrade", "--hosts", "all", "--help"], "Lifecycle command upgrade does not accept arguments: --help"],
+      [["doctor", "--hosts", "all"], "Lifecycle command doctor does not accept arguments: --hosts all"],
+      [["uninstall", "--hosts=claude"], "Lifecycle command uninstall does not accept arguments: --hosts=claude"],
+      [["install", "--hosts"], "Invalid --hosts value: missing"],
+      [["install", "--hosts="], "Invalid --hosts value: empty"],
+      [["upgrade", "--hosts", "gemini"], "Invalid --hosts value: gemini (unknown host gemini; use all or codex,claude,antigravity)"],
+      [["install", "--hosts", "claude,claude"], "Invalid --hosts value: claude,claude (duplicate host claude)"],
+      [["doctor", "--allow-downgrade"], "Lifecycle command doctor does not accept arguments: --allow-downgrade"],
+      [["uninstall", "--allow-downgrade"], "Lifecycle command uninstall does not accept arguments: --allow-downgrade"],
+      [["install", "--allow-downgrade", "--allow-downgrade"], "Lifecycle command install does not accept arguments: --allow-downgrade"],
+      [["upgrade", "--auto", "--allow-downgrade"], "--auto cannot be combined with --allow-downgrade"],
+    ]) {
+      assertExit(run(rootCli, args, { env: lifecycleEnv }), { status: 1, stdout: "", stderr: `Cairn lifecycle error: ${message}\n` });
+    }
+    assertExit(run(resolve("scripts", "cairn-lifecycle.mjs"), [], { env: lifecycleEnv }), {
+      status: 0,
+      stdout: "Usage: cairn install|upgrade [--hosts all|codex,claude,antigravity] [--allow-downgrade] | doctor | uninstall | toolcheck\n",
+      stderr: "",
+    });
     assert.deepEqual(await listTree(root), []);
     assert.deepEqual(await listTree(home), []);
     assert.deepEqual(await listTree(stateHome), []);

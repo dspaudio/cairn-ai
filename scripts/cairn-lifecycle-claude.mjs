@@ -5,10 +5,10 @@ import { quoteShellArg, renderMirrorFile, writeLocator } from "./cairn-lifecycle
 
 // Claude Code loads a plugin's default hooks/hooks.json and merges any manifest hooks, and it only expands
 // ${CLAUDE_PLUGIN_ROOT}. The shared package hooks use Codex's ${PLUGIN_ROOT}, so Claude gets a separate thin
-// plugin whose hooks call the installed versioned runtime by absolute path. Commands and agents stay in the
+// plugin whose hooks call the installed canonical runtime by absolute path. Commands and agents stay in the
 // existing ~/.claude mirrors so they are not listed twice.
 export async function stageClaudePlugin({
-  stageRoot, runtimeStage, destinationRoot, versionedPluginRoot, marketplaceName, pluginName,
+  stageRoot, runtimeStage, destinationRoot, runtimeRoot, marketplaceName, pluginName,
   releaseVersion, skillNames, platform = process.platform,
 }) {
   const staged = join(stageRoot, "claude-plugin");
@@ -30,23 +30,23 @@ export async function stageClaudePlugin({
     ...(packageJson.homepage ? { homepage: packageJson.homepage } : {}),
     ...(packageJson.license ? { license: packageJson.license } : {}),
   });
-  await writeJson(join(pluginDir, "hooks", "hooks.json"), await claudeHooks(runtimeStage, versionedPluginRoot, platform));
+  await writeJson(join(pluginDir, "hooks", "hooks.json"), await claudeHooks(runtimeStage, runtimeRoot, platform));
 
   for (const name of skillNames) {
     const skillStage = join(pluginDir, "skills", name);
     await cp(join(runtimeStage, "skills", name), skillStage, { recursive: true });
     const locatorPath = join(destinationRoot, pluginName, "skills", name, "references", "cairn-runtime.json");
     await renderMirrorFile(join(runtimeStage, "skills", name, "SKILL.md"), join(skillStage, "SKILL.md"), {
-      locatorPath, runtimeRoot: versionedPluginRoot, includeLocatorNotice: true,
+      locatorPath, runtimeRoot, includeLocatorNotice: true,
     });
-    await writeLocator(join(skillStage, "references", "cairn-runtime.json"), versionedPluginRoot);
+    await writeLocator(join(skillStage, "references", "cairn-runtime.json"), runtimeRoot);
   }
   return staged;
 }
 
-async function claudeHooks(runtimeStage, versionedPluginRoot, platform) {
+async function claudeHooks(runtimeStage, runtimeRoot, platform) {
   const source = JSON.parse(await readFile(join(runtimeStage, "hooks", "hooks.json"), "utf8"));
-  const stateScript = quoteShellArg(join(versionedPluginRoot, "scripts", "cairn-state.mjs"), platform);
+  const stateScript = quoteShellArg(join(runtimeRoot, "scripts", "cairn-state.mjs"), platform);
   const hooks = {};
   for (const [eventName, groups] of Object.entries(source.hooks ?? {})) {
     hooks[eventName] = groups.map((group) => ({
@@ -68,7 +68,11 @@ async function writeJson(path, value) {
 
 // Registration goes through the documented `claude plugin` CLI. CLAUDE_CONFIG_DIR is only set when the caller
 // overrode the Claude home, because setting it for the default home would move Claude's global config file.
-export function createClaudeRegistration({ claudeHome, claudeHomeOverridden, marketplaceRoot, marketplaceName, pluginName }) {
+// `legacyMarketplaceRoot` is the 0.6.0-layout marketplace directory under the Codex cache; a registration that
+// points there is Cairn's own and is moved to `marketplaceRoot`, while any other directory stays foreign.
+export function createClaudeRegistration({
+  claudeHome, claudeHomeOverridden, marketplaceRoot, legacyMarketplaceRoot, marketplaceName, pluginName, releaseVersion,
+}) {
   const cli = process.env.CAIRN_CLAUDE_CLI ?? "claude";
   const pluginId = `${pluginName}@${marketplaceName}`;
   const env = claudeHomeOverridden ? { ...process.env, CLAUDE_CONFIG_DIR: claudeHome } : process.env;
@@ -98,8 +102,10 @@ export function createClaudeRegistration({ claudeHome, claudeHomeOverridden, mar
     }
   }
 
-  const ownsMarketplace = (entry) => entry?.name === marketplaceName
-    && typeof entry.path === "string" && resolve(entry.path) === resolve(marketplaceRoot);
+  const pointsAt = (entry, root) => Boolean(root) && entry?.name === marketplaceName
+    && typeof entry.path === "string" && resolve(entry.path) === resolve(root);
+  const ownsMarketplace = (entry) => pointsAt(entry, marketplaceRoot);
+  const ownsLegacyMarketplace = (entry) => pointsAt(entry, legacyMarketplaceRoot);
   const ownedPlugins = (list) => (Array.isArray(list) ? list : [])
     .filter((entry) => entry?.id === pluginId && entry.scope === "user");
 
@@ -110,29 +116,69 @@ export function createClaudeRegistration({ claudeHome, claudeHomeOverridden, mar
     return {
       available: true,
       marketplace: ownsMarketplace(marketplace),
-      foreignMarketplace: Boolean(marketplace) && !ownsMarketplace(marketplace),
+      ownedLegacy: ownsLegacyMarketplace(marketplace),
+      foreignMarketplace: Boolean(marketplace) && !ownsMarketplace(marketplace) && !ownsLegacyMarketplace(marketplace),
       installed: Boolean(plugin),
       enabled: Boolean(plugin?.enabled),
+      version: plugin?.version,
     };
   }
 
   function register() {
-    if (!available()) return { registered: false, reason: "claude CLI not found" };
-    const current = status({ checked: true });
+    if (!available()) return { registered: false, cliMissing: true, reason: "claude CLI not found" };
+    let current = status({ checked: true });
     if (current.foreignMarketplace) {
       return { registered: false, reason: `a different Claude Code marketplace named "${marketplaceName}" already exists` };
     }
+    if (current.ownedLegacy) {
+      // The files already moved to marketplaceRoot, so the old registration points at a removed directory.
+      try {
+        if (current.installed) json(["plugin", "uninstall", pluginId, "--scope", "user"]);
+        json(["plugin", "marketplace", "remove", marketplaceName]);
+      } catch (error) {
+        error.legacyMarketplace = true;
+        throw error;
+      }
+      current = { ...current, ownedLegacy: false, installed: false, enabled: false, version: undefined };
+    }
     if (!current.marketplace) json(["plugin", "marketplace", "add", marketplaceRoot, "--scope", "user"]);
-    if (!current.installed) json(["plugin", "install", pluginId, "--scope", "user"]);
-    else if (!current.enabled) json(["plugin", "enable", pluginId, "--scope", "user"]);
-    return { registered: true };
+    // A fresh install copies the current marketplace version into Claude Code's plugin cache.
+    if (!current.installed) {
+      json(["plugin", "install", pluginId, "--scope", "user"]);
+      return { registered: true };
+    }
+    if (!current.enabled) json(["plugin", "enable", pluginId, "--scope", "user"]);
+    if (current.version === releaseVersion) return { registered: true };
+    return { registered: true, cacheRefresh: refreshCache(current.version) };
+  }
+
+  // An existing install keeps serving its cached copy until `plugin update` replaces it. The update is only
+  // requested when the cached version differs, so re-running install on a current cache stays a no-op.
+  function refreshCache(cachedVersion) {
+    try {
+      json(["plugin", "marketplace", "update", marketplaceName]);
+    } catch {
+      // A directory marketplace needs no refresh; `plugin update` below still reads the current files.
+    }
+    try {
+      json(["plugin", "update", pluginId, "--scope", "user"]);
+      // Without a reported version there is nothing to verify; the update itself is the best available signal.
+      if (cachedVersion === undefined) return { refreshed: true };
+      const version = ownedPlugins(json(["plugin", "list"]))[0]?.version;
+      if (version !== releaseVersion) {
+        return { refreshed: false, reason: `${pluginId} is still at ${version ?? "an unknown version"} (expected ${releaseVersion})` };
+      }
+      return { refreshed: true };
+    } catch (error) {
+      return { refreshed: false, reason: error.message };
+    }
   }
 
   function unregister() {
     if (!available()) return { unregistered: false, reason: "claude CLI not found" };
     const current = status({ checked: true });
-    // Only remove a registration that points at Cairn's own marketplace directory.
-    if (!current.marketplace) return { unregistered: false, reason: "no Cairn-owned Claude Code marketplace is registered" };
+    // Only remove a registration that points at Cairn's own marketplace directory (current or 0.6.0 layout).
+    if (!current.marketplace && !current.ownedLegacy) return { unregistered: false, reason: "no Cairn-owned Claude Code marketplace is registered" };
     if (current.installed) json(["plugin", "uninstall", pluginId, "--scope", "user"]);
     json(["plugin", "marketplace", "remove", marketplaceName]);
     return { unregistered: true };
