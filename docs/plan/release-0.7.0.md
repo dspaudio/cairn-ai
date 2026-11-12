@@ -7,7 +7,7 @@
 - Plan ID: `docs/plan/release-0.7.0.md`
 - Completion criteria (advisory text; Cairn does not enforce it — completion is gated only by required evidence): dev·main PR CI 성공과 병합, exact-main tarball 게시, registry version/digest 일치, 격리 설치에서 새 레이아웃·호스트 선택·`auto-upgrade` CLI 동작.
 - 버전: `0.7.0`. 설치 레이아웃 변경, 새 CLI(`cairn auto-upgrade`, `--hosts`, `--allow-downgrade`), 자동 업그레이드가 추가된 minor 릴리스라 main이 정했습니다. 사용자가 버전 올림, dev PR 병합, main PR 병합, npm 배포를 요청했습니다(2026-11-12).
-- Safety: 로컬 Cairn 설치본 업그레이드(0.6.0 → 새 레이아웃 이전)는 요청 범위가 아니라 하지 않습니다. `.omo/`와 기존 stash는 손대지 않습니다. npm 게시는 되돌릴 수 없습니다.
+- Safety: 로컬 Cairn 설치본 업그레이드(0.6.0 → 새 레이아웃 이전)는 처음 요청 범위가 아니었고, 게시 뒤 사용자가 요청해 실행했습니다(Evidence). `.omo/`와 기존 stash는 손대지 않습니다. npm 게시는 되돌릴 수 없습니다.
 
 ## Memory Inputs
 
@@ -44,7 +44,8 @@
 - `npm-publish`: `fd58b0d`의 clean detached worktree에서 pack 1회(prepack의 `npm run check` 통과). tarball `cairn-ai-0.7.0.tgz`, 213,275 bytes, 101 files, sha1 `a12d1de79b5eb911de512f7bddc7dee2089ce1f6`, integrity `sha512-1J0slPb1rv3TvK5IR+u39S0BhGT9RroL1RlYs08sw3GvKFvnCTYJc22FGKpjyvvSevbfuSrhz8sfTSeCheAU1g==`. 같은 파일로 dry-run 통과. `npm whoami`가 실패해 사용자가 터미널에서 `npm login --auth-type=web`을 마쳤고, 같은 tarball 경로로 `npm publish`를 사용자 터미널에서 실행해 `+ cairn-ai@0.7.0`을 받았다. 직후 조회는 404였고 수 분 뒤 `npm view cairn-ai@0.7.0`의 shasum·integrity가 tarball과 일치, `latest`는 `0.7.0`.
 - `release-verify`: 격리된 prefix, cache, HOME, `CAIRN_HOME`, 호스트 env(`CAIRN_CLAUDE_CLI=none`)에 registry 0.7.0을 설치해 확인했다. `cairn --version` 0.7.0. `cairn install --hosts claude` → manifest schema 2, `hosts: ["claude"]`, `origin: "package"`, phase는 `core`·`claude`만, `install/`에 `claude`·`runtime/0.7.0`·`lifecycle.json`, `CODEX_HOME`은 생성되지 않음. `cairn doctor` 첫 줄 `Hosts: claude`. `cairn auto-upgrade status` → `enabled: true`, `source: "default"`. `cairn upgrade --hosts all` → `hosts` 전체, Codex 캐시 `cairn/0.7.0` 생성, `config.toml`의 `source`가 `<CAIRN_HOME>/install/codex`. `cairn uninstall` 뒤 `CAIRN_HOME`이 비었다. 실제 `~/.cairn`에는 `projects`만 있다.
 - `release-record`: 이 기록 브랜치(`docs/release-0.7.0-record`)는 `main`의 머지 커밋 `fd58b0d`를 포함한 `dev`에서 시작해 증거를 기록한다.
-- 하지 않은 것: 로컬 Cairn 설치본 upgrade(요청 범위 아님). 이 PC의 설치본은 0.6.0 legacy 레이아웃이고 0.6.0에는 자동 업그레이드가 없으므로, `cairn upgrade`를 한 번 실행해야 새 레이아웃으로 이전되고 이후 자동 업그레이드가 동작한다. 실제 registry를 상대로 한 자동 업그레이드 runner는 다음 릴리스가 나와야 확인된다.
+- 로컬 설치본 upgrade(게시 뒤 사용자 요청, 2026-11-12): `npm install -g cairn-ai@0.7.0` → `cairn upgrade` exit 0. 실제 0.6.0 legacy 설치가 한 번에 이전됐다: `~/.cairn/install/`에 `claude`·`codex`·`runtime/0.7.0`·`lifecycle.json`(schema 2, `hosts` 전체, `origin: "package"`, `retained: []`), `~/.codex/plugins/cache/cairn`에는 `cairn/0.7.0`만 남음, `config.toml`의 `source`가 `~/.cairn/install/codex`, Claude 마켓플레이스가 `~/.cairn/install/claude`로 재등록되고 플러그인 캐시가 `0.7.0`으로 갱신됨. `cairn doctor` 전 항목 OK(exit 0), `cairn auto-upgrade status` → `enabled: true`.
+- 확인하지 못한 것: 실제 registry를 상대로 한 자동 업그레이드 runner는 다음 릴리스가 나와야 확인된다.
 - Memory promotion: docs/memory/release-process.md
 
 ## Status
