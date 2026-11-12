@@ -33,7 +33,8 @@
 
 ## Evidence
 
-- pending.
+- `release-commit`: 브랜치 `feat/auto-upgrade-cairn-home`, 커밋 `227b9d7`. 첫 `npm run check`는 `test/repo-index.test.mjs`(저장소 `PLAN.md` 엄격 검사)에서 실패했다. 원인은 기능 계획을 완료 목록으로 옮기며 쓴 요약이 120자를 넘고 완료 항목이 21개가 된 것. 요약을 줄이고 `cairn plan index --archive`를 실행한 뒤 `goal verify -- npm run check` exit 0.
+- `dev-pr`: https://github.com/dspaudio/cairn-ai/pull/83 (head `227b9d7`). CI 진행 중. 저장소가 GitHub auto-merge를 허용하지 않아 CI 통과 후 수동으로 head 고정 병합한다.
 
 ## Status
 
